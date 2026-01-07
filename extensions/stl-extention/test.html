@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rotated S-Curve</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+        }
+
+        .s-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+        }
+
+        /* Rotated S-shape */
+        .s-shape {
+            position: absolute;
+            width: 200px;
+            height: 400px;
+            top: 100px; /* Moved down */
+            right: 0; /* Positioned on right side */
+        }
+
+        .s-shape::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100px;
+            height: 200px;
+            border: 15px solid #ff4444;
+            border-top: none;
+            border-right: none;
+            border-radius: 0 0 0 200px;
+            transform: rotate(30deg); /* Rotated 90 degrees */
+            transform-origin: top left;
+        }
+    </style>
+</head>
+<body>
+    <div class="s-container">
+        <div class="s-shape"></div>
+    </div>
+</body>
+</html>

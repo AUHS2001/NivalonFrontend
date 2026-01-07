@@ -1,0 +1,1071 @@
+import React, { useEffect, useRef, useState, useContext, useCallback } from 'react';
+import * as THREE from 'three';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
+import "./styles/style.css";
+
+// Context
+import { StlInstanceContext } from './../../../platform/app/src/context/StlInstanceContext';
+import { StlInstanceListDataContext } from './../../../platform/app/src/context/StlInstanceListDataContext';
+import { ParentStudyIdContext } from './../../../platform/app/src/context/parentStudyIdContext';
+
+// Hooks
+import { useSTLLoader } from './hooks/useSTLLoader';
+import { useBoneRemoval } from './hooks/useBoneRemoval';
+import { useImplantViewer } from './hooks/useImplantViewer';
+import { useVersionHistory } from './hooks/useVersionHistory';
+import { useBrightness } from './hooks/useBrightness';
+
+// Components
+import { Toolbar } from './components/Toolbar';
+import { ControlPanel } from './components/ControlPanel';
+import { ViewerContainer } from './components/ViewerContainer';
+import { VersionHistory } from './components/VersionHistory';
+import { ImplantViewer } from './components/ImplantViewer';
+
+// Types
+import { MeshRefs, RemovalUndoItem } from './types/three.types';
+
+// Utils
+import { handleScreenshot as handleScreenshotUtil } from './utils/fileHandlers';
+// import cornerstoneTools from 'platform/core/src/__mocks__/cornerstone-tools';
+import cornerstoneTools from '../../../platform/core/src/__mocks__/cornerstone-tools';
+import { useVersionHistoryContext } from './context/VersionHistoryContext';
+import { useImplantContext } from './context/ImplantContext';
+import { SeriesSelectionPopup } from './components/SeriesSelectionPopup';
+import { useAngleMeasurementContext } from './context/AngleMeasurementContext';
+import { AngleMeasurementPanel } from './components/AngleMeasurementPanel';
+
+
+interface SpinalCordViewerProps {
+  servicesManager?: any;
+  commandsManager?: any;
+  extensionManager?: any;
+}
+
+
+const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
+  servicesManager: propServicesManager,
+  commandsManager,
+  extensionManager
+}) => {
+  // State
+  const [files, setFiles] = useState<File[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [brightnessEnabled, setBrightnessEnabled] = useState(false);
+  const [measurementEnabled, setMeasurementEnabled] = useState(false);
+  const [brightness, setBrightness] = useState(1.0);
+  const [undoStack, setUndoStack] = useState<THREE.BufferGeometry[][]>([]);
+  const [removalMode, setRemovalMode] = useState(false);
+  const [removalOutline, setRemovalOutline] = useState<{ x: number, y: number }[]>([]);
+  const [removing, setRemoving] = useState(false);
+  const [tetsStls, setTestStls] = useState<string[]>([]);
+  const [clickRemovalMode, setClickRemovalMode] = useState(false);
+  const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showRightView, setShowRightView] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
+
+  // Refs
+  const removalOutlinePoints = useRef<{ x: number, y: number }[]>([]);
+  const removalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const leftMountRef = useRef<HTMLDivElement>(null);
+  const rightMountRef = useRef<HTMLDivElement>(null);
+  const startMountRef = useRef<HTMLDivElement>(null);
+  const implantMountRef = useRef<HTMLDivElement>(null);
+
+  const leftSceneRef = useRef<THREE.Scene>(new THREE.Scene());
+  const rightSceneRef = useRef<THREE.Scene>(new THREE.Scene());
+  const startSceneRef = useRef<THREE.Scene>(new THREE.Scene());
+  const implantSceneRef = useRef<THREE.Scene>(new THREE.Scene());
+
+  const leftRendererRef = useRef<THREE.WebGLRenderer>();
+  const rightRendererRef = useRef<THREE.WebGLRenderer>();
+  const startRendererRef = useRef<THREE.WebGLRenderer>();
+  const implantRendererRef = useRef<THREE.WebGLRenderer>();
+
+  const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const implantCameraRef = useRef<THREE.PerspectiveCamera>();
+
+  const leftControlsRef = useRef<OrbitControls>();
+  const rightControlsRef = useRef<OrbitControls>();
+  const startControlsRef = useRef<OrbitControls>();
+  const implantControlsRef = useRef<OrbitControls>();
+
+  const leftGroupRef = useRef<THREE.Group>(new THREE.Group());
+  const rightGroupRef = useRef<THREE.Group>(new THREE.Group());
+  const startGroupRef = useRef<THREE.Group>(new THREE.Group());
+  const implantGroupRef = useRef<THREE.Group>(new THREE.Group());
+
+  const meshRefs = useRef<MeshRefs>({ left: [], right: [] });
+  const startMeshRefs = useRef<THREE.Mesh[]>([]);
+  const animationIdRef = useRef<number>();
+  const clickListenersRef = useRef<(() => void)[]>([]);
+
+  // Context
+  const context = useContext(StlInstanceContext);
+  const context1 = useContext(StlInstanceListDataContext);
+  const context3 = useContext(ParentStudyIdContext);
+
+  const { stlInstanceId, updateStlInstanceId, seriesList } = context;
+  const { stlInstanceListData, updateStlInstanceListData } = context1;
+  const { parentStudyId, updateParentStudyId } = context3;
+
+  const userRole = localStorage.getItem('userRole');
+  const userToken = localStorage.getItem('token');
+
+  const [isCreatingSegmentation, setIsCreatingSegmentation] = useState(false);
+  const [segmentationCreated, setSegmentationCreated] = useState(false);
+  const [ohifServices, setOhifServices] = useState<any>(null);
+  const [hasSegmentationService, setHasSegmentationService] = useState(false);
+  const { versionHistoryEnabled, versions, setVersions } = useVersionHistoryContext();
+  const { showImplantView } = useImplantContext();
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [showComparisonPopup, setShowComparisonPopup] = useState(false);
+
+  const {
+    angleMeasurementEnabled,
+    toggleAngleMeasurement,
+    setupAngleMeasurementMode,
+    cleanupAngleMeasurementMode
+  } = useAngleMeasurementContext();
+
+
+
+  const handleComparisonClick = useCallback(() => {
+    console.log('Opening comparison series selection popup');
+    setShowComparisonPopup(true);
+  }, []);
+
+
+  // Comparison button handler
+const handleComparisonConfirm = useCallback(() => {
+  if (!propServicesManager) {
+    console.error('Services manager not available');
+    return;
+  }
+
+  const { viewportGridService } = propServicesManager.services;
+
+  console.log('Activating comparison mode ==> ',viewportGridService);
+  setComparisonMode(true);
+
+  try {
+    // Create findOrCreateViewport function for comparison layout
+    const findOrCreateViewport = (index: number) => {
+      return {
+        displaySetInstanceUIDs: [],
+        displaySetOptions: [],
+        viewportOptions: {
+          viewportId: `comparisonViewport-${index}`,
+          customLayout: 'comparison'
+        },
+        customProps: {
+          seriesLabel: index === 0 ? 'series1' : 'series2'
+        }
+      };
+    };
+
+    // Set comparison layout with 2 columns
+    viewportGridService.setLayout({
+      numRows: 1,
+      numCols: 1,
+      layoutType: 'grid',
+      layoutOptions: [],
+      findOrCreateViewport: findOrCreateViewport,
+      activeViewportId: 'comparisonViewport-0',
+      isHangingProtocolLayout: false,
+    });
+
+    console.log('Comparison layout applied successfully');
+
+  } catch (error) {
+    console.error('Error applying comparison layout:', error);
+    setComparisonMode(false);
+  }
+}, [propServicesManager]);
+
+// Exit comparison handler
+const handleExitComparison = useCallback(() => {
+  if (!propServicesManager) return;
+
+  const { viewportGridService } = propServicesManager.services;
+
+  try {
+    // Return to single view layout
+    const findOrCreateViewport = (index: number) => {
+      return {
+        displaySetInstanceUIDs: [],
+        displaySetOptions: [],
+        viewportOptions: {
+          viewportId: `singleImageViewport-${index}`, // Changed from karachiViewport
+          customLayout: 'singleImageViewport' // Changed from karachi
+        }
+      };
+    };
+
+    viewportGridService.setLayout({
+      numRows: 1,
+      numCols: 1,
+      layoutType: 'grid',
+      layoutOptions: [],
+      findOrCreateViewport: findOrCreateViewport,
+      activeViewportId: 'singleImageViewport-0', // Changed from karachiViewport
+      isHangingProtocolLayout: false,
+    });
+
+    setComparisonMode(false);
+    console.log('Exited comparison mode');
+
+  } catch (error) {
+    console.error('Error exiting comparison mode:', error);
+  }
+}, [propServicesManager]);
+
+
+  const [restoredStlUrls, setRestoredStlUrls] = useState<string[]>([]);
+
+  const versionHistory = useVersionHistory({
+    setLoading,
+    setError,
+    setApproveSuccess
+  });
+
+  useEffect(() => {
+    if (versionHistory.versionUrlsToRestore.length > 0) {
+      console.log('🔄 Restoring version with URLs:', versionHistory.versionUrlsToRestore);
+
+      // Update the STL URLs to trigger the useSTLLoader hook
+      setTestStls(versionHistory.versionUrlsToRestore);
+
+      // Clear the restoration URLs after applying
+      // Note: You might need to add a setVersionUrlsToRestore function to your hook
+    }
+  }, [versionHistory.versionUrlsToRestore]);
+
+
+  useEffect(() => {
+    const checkServices = () => {
+      console.log('🔍 Checking for OHIF services...');
+
+      // Check services manager from props first
+      if (propServicesManager) {
+        console.log('✅ ServicesManager from props:', propServicesManager);
+
+        // Get the actual services from the services manager
+        const services = propServicesManager.services || propServicesManager;
+
+        // Check if segmentation service exists
+        const segmentationService = services.segmentationService ||
+                                  services.segmentation ||
+                                  services._services?.segmentationService;
+
+        if (segmentationService) {
+          console.log('✅ Segmentation service found:', segmentationService);
+          setOhifServices(services);
+          setHasSegmentationService(true);
+          return true;
+        } else {
+          console.log('❌ No segmentation service found in services manager');
+          console.log('Available services:', Object.keys(services));
+
+          // Check nested services
+          if (services._services) {
+            console.log('Nested services:', Object.keys(services._services));
+          }
+        }
+      }
+
+      // Fallback to window services
+      const windowServices = (window as any).OHIF?.services;
+      if (windowServices?.segmentationService) {
+        console.log('✅ Using window OHIF services');
+        setOhifServices(windowServices);
+        setHasSegmentationService(true);
+        return true;
+      }
+
+      console.log('❌ No valid services found');
+      return false;
+    };
+
+    if (!checkServices()) {
+      // If services not found immediately, wait a bit and try again
+      // OHIF services might still be initializing
+      const timeoutId = setTimeout(() => {
+        console.log('🔄 Retrying service detection...');
+        checkServices();
+      }, 2000);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [propServicesManager]);
+
+  // Debug effect to log service availability
+  useEffect(() => {
+    console.log('📊 Service Status:', {
+      hasServicesManager: !!propServicesManager,
+      hasOhifServices: !!ohifServices,
+      hasSegmentationService,
+      services: ohifServices ? Object.keys(ohifServices) : 'none'
+    });
+  }, [ohifServices, hasSegmentationService, propServicesManager]);
+
+  const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
+    removalMode,
+    leftRendererRef,
+    leftControlsRef,
+    cameraRef,
+    meshRefs,
+    removalCanvasRef,
+    setRemoving,
+    setUndoStack,
+    setRemovalOutline,
+    removalOutline
+  });
+
+  const {
+    implantFile,
+    implantMesh,
+    implantMountRef: implantMountRefFromHook,
+    handleImplantFileChange,
+    loadImplant,
+    centerImplant
+  } = useImplantViewer({
+    brightnessEnabled,
+    brightness
+  });
+
+  useBrightness({
+    brightnessEnabled,
+    brightness,
+    meshRefs,
+    startMeshRefs
+  });
+
+  useSTLLoader({
+    stlUrls: restoredStlUrls.length > 0 ? restoredStlUrls : tetsStls,
+    leftGroupRef,
+    rightGroupRef,
+    startGroupRef,
+    meshRefs,
+    startMeshRefs,
+    cameraRef,
+    leftControlsRef,
+    rightControlsRef,
+    startControlsRef,
+    startRendererRef,
+    startSceneRef,
+    setLoading,
+    setError
+  });
+
+
+  // Data fetching
+  useEffect(() => {
+    const fetchData = async () => {
+      setError(null);
+      try {
+        const response = await fetch(
+          `http://localhost:8000/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${userToken}`,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch data');
+        }
+
+        const data = await response.json();
+        console.log('Fetched segmentation URLs:', data?.data?.generated?.urls);
+        setTestStls(data?.data?.generated?.urls || []);
+        setVersions(data?.data?.versions || []);
+        versionHistory.getVersionHistory();
+      } catch (err: any) {
+        setError(err.message);
+      }
+    };
+
+    if (stlInstanceId) {
+      fetchData();
+    }
+  }, [stlInstanceId, userToken]);
+
+  // Three.js Viewer and Controls Setup
+  useEffect(() => {
+    const leftScene = leftSceneRef.current;
+    const rightScene = rightSceneRef.current;
+    const leftMount = leftMountRef.current!;
+    const rightMount = rightMountRef.current!;
+
+    leftScene.background = new THREE.Color(0x000000);
+    rightScene.background = new THREE.Color(0x000000);
+
+    const camera = new THREE.PerspectiveCamera(
+      45, leftMount.clientWidth / leftMount.clientHeight, 0.1, 10000
+    );
+    camera.position.set(300, 200, 350);
+    camera.lookAt(300, 300, 250);
+    cameraRef.current = camera;
+
+    const leftRenderer = new THREE.WebGLRenderer({ antialias: true });
+    leftRenderer.setSize(leftMount.clientWidth, leftMount.clientHeight);
+    leftRenderer.setPixelRatio(window.devicePixelRatio);
+    leftRendererRef.current = leftRenderer;
+    leftMount.appendChild(leftRenderer.domElement);
+
+    const rightRenderer = new THREE.WebGLRenderer({ antialias: true });
+    rightRenderer.setSize(rightMount.clientWidth, rightMount.clientHeight);
+    rightRenderer.setPixelRatio(window.devicePixelRatio);
+    rightRendererRef.current = rightRenderer;
+    rightMount.appendChild(rightRenderer.domElement);
+
+    const leftControls = new OrbitControls(camera, leftRenderer.domElement);
+    const rightControls = new OrbitControls(camera, rightRenderer.domElement);
+
+    [leftControls, rightControls].forEach(ctrl => {
+      ctrl.enableDamping = true;
+      ctrl.dampingFactor = 0.25;
+      ctrl.maxDistance = 5000;
+    });
+
+    leftControlsRef.current = leftControls;
+    rightControlsRef.current = rightControls;
+
+    function setupLighting(scene: THREE.Scene) {
+      scene.add(new THREE.AmbientLight(0x404040, 0.5));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(0, 1, 1).normalize();
+      scene.add(dir);
+    }
+
+    setupLighting(leftScene);
+    setupLighting(rightScene);
+
+    leftScene.add(leftGroupRef.current);
+    rightScene.add(rightGroupRef.current);
+
+    const animate = () => {
+      animationIdRef.current = requestAnimationFrame(animate);
+      leftControls.update();
+      rightControls.update();
+      leftRenderer.render(leftScene, camera);
+      rightRenderer.render(rightScene, camera);
+    };
+    animate();
+
+    const handleResize = () => {
+      const width = leftMount.clientWidth;
+      const height = leftMount.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      leftRenderer.setSize(width, height);
+      rightRenderer.setSize(width, height);
+
+      if (removalCanvasRef.current) {
+        removalCanvasRef.current.width = width;
+        removalCanvasRef.current.height = height;
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+      }
+      window.removeEventListener('resize', handleResize);
+
+      if (leftMount.contains(leftRenderer.domElement)) {
+        leftMount.removeChild(leftRenderer.domElement);
+      }
+      if (rightMount.contains(rightRenderer.domElement)) {
+        rightMount.removeChild(rightRenderer.domElement);
+      }
+
+      leftRenderer.dispose();
+      rightRenderer.dispose();
+    };
+  }, []);
+
+  // Start View Setup - Always visible
+  useEffect(() => {
+    if (!startMountRef.current) return;
+
+    const startScene = startSceneRef.current;
+    const startMount = startMountRef.current;
+    startScene.background = new THREE.Color(0x000000);
+
+    // Set up lighting
+    startScene.add(new THREE.AmbientLight(0x404040, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(0, 1, 1).normalize();
+    startScene.add(dirLight);
+
+    // Add the start group to the scene
+    startScene.add(startGroupRef.current);
+
+    // Create renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(startMount.clientWidth, startMount.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    startRendererRef.current = renderer;
+    startMount.appendChild(renderer.domElement);
+
+    // Create independent camera for start view
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      startMount.clientWidth / startMount.clientHeight,
+      0.1,
+      10000
+    );
+    camera.position.set(300, 200, 350);
+    camera.lookAt(300, 300, 250);
+
+    // Set up independent controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.25;
+    controls.maxDistance = 5000;
+    controls.enableRotate = true;
+    controls.rotateSpeed = 1.0;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 1.2;
+    controls.enablePan = true;
+    controls.panSpeed = 0.8;
+    startControlsRef.current = controls;
+
+    // Independent animation loop for start view
+    const animateStartView = () => {
+      requestAnimationFrame(animateStartView);
+      controls.update();
+      renderer.render(startScene, camera);
+    };
+    animateStartView();
+
+    // Handle resize for start view
+    const handleResize = () => {
+      if (startMountRef.current) {
+        const width = startMountRef.current.clientWidth;
+        const height = startMountRef.current.clientHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+        renderer.render(startScene, camera);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (startMount.contains(renderer.domElement)) {
+        startMount.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [versionHistoryEnabled]);
+
+  // Right view resize handler
+  useEffect(() => {
+    if (showRightView && rightRendererRef.current && rightMountRef.current && cameraRef.current && rightSceneRef.current) {
+      const width = rightMountRef.current.clientWidth;
+      const height = rightMountRef.current.clientHeight;
+
+      rightRendererRef.current.setSize(width, height);
+      rightRendererRef.current.render(rightSceneRef.current, cameraRef.current);
+    }
+  }, [showRightView]);
+
+  // Click removal mode
+  useEffect(() => {
+    if (!clickRemovalMode) return;
+
+    const leftRenderer = leftRendererRef.current;
+    const canvas = leftRenderer?.domElement;
+    if (!canvas) return;
+
+    const onClick = (event: MouseEvent) => {
+      if (event.button !== 0) return; // Only left-click
+
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, cameraRef.current!);
+
+      // Only consider visible meshes on the left side
+      const meshes = meshRefs.current.left.filter(mesh => mesh.visible);
+      const intersects = raycaster.intersectObjects(meshes, true);
+
+      if (intersects.length > 0) {
+        const selectedMesh = intersects[0].object as THREE.Mesh;
+
+        // Remove the mesh from scene and refs
+        const idx = meshRefs.current.left.findIndex(m => m === selectedMesh);
+        if (idx !== -1) {
+          const leftMesh = meshRefs.current.left[idx];
+          const rightMesh = meshRefs.current.right[idx];
+
+          // Remove from scene
+          leftGroupRef.current.remove(leftMesh);
+          rightGroupRef.current.remove(rightMesh);
+
+          // Remove from refs
+          meshRefs.current.left.splice(idx, 1);
+          meshRefs.current.right.splice(idx, 1);
+
+          // Push into undo stack
+          setClickRemovalUndoStack(stack => [
+            ...stack,
+            { leftMesh, rightMesh, index: idx }
+          ]);
+        }
+      }
+    };
+
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', onClick);
+
+    return () => {
+      canvas.style.cursor = 'auto';
+      canvas.removeEventListener('click', onClick);
+    };
+  }, [clickRemovalMode]);
+
+  // Brightness effect
+  useEffect(() => {
+    meshRefs.current.left.forEach(mesh => {
+      if (mesh.material) {
+        mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.needsUpdate = true;
+      }
+    });
+    meshRefs.current.right.forEach(mesh => {
+      if (mesh.material) {
+        mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.needsUpdate = true;
+      }
+    });
+    startMeshRefs.current.forEach(mesh => {
+      if (mesh.material) {
+        mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.needsUpdate = true;
+      }
+    });
+  }, [brightnessEnabled, brightness]);
+
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files).filter((f: File) =>
+        /\.stl$/i.test(f.name) && /(C|T|L|S)\d+/i.test(f.name)
+      );
+
+      if (newFiles.length === 0) {
+        setError('No valid STL files found. Files must have .stl extension and contain bone names (C, T, L, or S followed by numbers).');
+        return;
+      }
+
+      setFiles(newFiles);
+      setLoading(true);
+      setError(null);
+
+      try {
+        const loader = new STLLoader();
+
+        // Clear existing meshes from left and right views only
+        meshRefs.current.left.forEach(mesh => {
+          leftGroupRef.current.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(m => m.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        });
+
+        meshRefs.current.right.forEach(mesh => {
+          rightGroupRef.current.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(m => m.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        });
+
+        meshRefs.current.left = [];
+        meshRefs.current.right = [];
+
+        // Load each file
+        const loadPromises = newFiles.map(async (file) => {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const geometry = loader.parse(arrayBuffer);
+            geometry.computeBoundingBox();
+
+            const fileName = file.name;
+            return {
+              geometry,
+              fileName,
+              ...getVertebraInfo(fileName === 'L.stl' ? 'L1.stl' : fileName),
+            };
+          } catch {
+            return null;
+          }
+        });
+
+        const vertebrae = await Promise.all(loadPromises);
+        const valid = vertebrae.filter(Boolean);
+
+        if (valid.length === 0) {
+          throw new Error('No valid STL files could be loaded');
+        }
+
+        // Sort in anatomical order
+        const anatomicalOrder = ['C', 'T', 'L', 'S'];
+        valid.sort((a, b) => {
+          const diff = anatomicalOrder.indexOf(a!.type) - anatomicalOrder.indexOf(b!.type);
+          return diff !== 0 ? diff : a!.number - b!.number;
+        });
+
+        let currentY = 0, compression = 0, gap = 0;
+
+        const colorMap: { [key: string]: number } = {
+          C: 0x3498db,
+          T: 0x2ecc71,
+          L: 0xe74c3c,
+          S: 0xf1c40f,
+        };
+
+        // Create meshes only for left and right views
+        valid.forEach((v, i) => {
+          if (!v) return;
+
+          const bbox = v.geometry.boundingBox!;
+          const size = new THREE.Vector3();
+          bbox.getSize(size);
+          const center = new THREE.Vector3();
+          bbox.getCenter(center);
+
+          const color = new THREE.Color(colorMap[v.type] || 0x9b59b6);
+
+          // Left mesh = Latest View (White)
+          const matLeft = new THREE.MeshPhongMaterial({
+            color: 0xffffff, // White for left view
+            specular: 0xffffff,
+            shininess: 0,
+            side: THREE.DoubleSide,
+            emissive: new THREE.Color(0x000000),
+            emissiveIntensity: 0
+          });
+          const mesh = new THREE.Mesh(v.geometry, matLeft);
+          mesh.position.y = currentY - center.y * compression;
+          mesh.rotation.x = Math.PI / 2;
+          mesh.userData = v;
+          leftGroupRef.current.add(mesh);
+          meshRefs.current.left.push(mesh);
+
+          // Right mesh = Labelling View (Colored)
+          const matRight = new THREE.MeshPhongMaterial({
+            color: color.getHex(),
+            specular: 0x00000000,
+            shininess: 0,
+            side: THREE.DoubleSide,
+            emissive: new THREE.Color(0x000000),
+            emissiveIntensity: 0
+          });
+          const meshClone = new THREE.Mesh(v.geometry, matRight);
+          meshClone.position.copy(mesh.position);
+          meshClone.rotation.copy(mesh.rotation);
+          rightGroupRef.current.add(meshClone);
+          meshRefs.current.right.push(meshClone);
+
+          currentY -= size.y * compression + gap;
+        });
+
+        // Apply transformations to left and right views only
+        leftGroupRef.current.scale.y = -1;
+        rightGroupRef.current.scale.y = -1;
+
+        // Center camera on main view
+        const bbox = new THREE.Box3().setFromObject(leftGroupRef.current);
+        const center = bbox.getCenter(new THREE.Vector3());
+        const size = bbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        if (cameraRef.current) {
+          cameraRef.current.position.set(center.x, center.y, maxDim * 2.5);
+          cameraRef.current.lookAt(center);
+        }
+
+        if (leftControlsRef.current) {
+          leftControlsRef.current.target.copy(center);
+          leftControlsRef.current.update();
+        }
+
+        if (rightControlsRef.current) {
+          rightControlsRef.current.target.copy(center);
+          rightControlsRef.current.update();
+        }
+
+      } catch (err: any) {
+        setError(`Error loading STL files: ${err.message}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Add the getVertebraInfo function
+  const getVertebraInfo = (fileName: string) => {
+    const match = fileName.match(/(C|T|L|S)(\d+)/i);
+    if (!match) {
+      console.warn(`Invalid vertebra filename format: ${fileName}`);
+      return null;
+    }
+
+    return {
+      type: match[1].toUpperCase(),
+      number: parseInt(match[2]),
+      fullName: match[0].toUpperCase(),
+      fileName: fileName,
+    };
+  };
+
+  useEffect(() => {
+    setupAngleMeasurementMode({
+      leftRendererRef,
+      leftSceneRef,
+      cameraRef,
+      meshRefs
+    });
+
+    return () => {
+      cleanupAngleMeasurementMode();
+    };
+  }, []);
+
+  return (
+    <div style={{
+      width: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: '#000',
+      color: 'white',
+      height: '100%', // Use 100%
+      position: 'relative',
+      minHeight: 0 // Fallback
+    }}>
+
+      {
+        angleMeasurementEnabled === true ? 
+        <AngleMeasurementPanel /> :
+        <></>
+      }
+
+      {isCreatingSegmentation && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div style={{
+            background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
+            fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008", display: "flex", alignItems: "center"
+          }}>
+            <span className="spinner-border spinner-border-lg" style={{marginRight: 16}}/>
+            Creating automatic segmentations...
+          </div>
+        </div>
+      )}
+
+      {/* Success message */}
+      {segmentationCreated && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 2000,
+          background: "#2ecc71", color: "#fff", padding: "12px 20px", borderRadius: "8px",
+          fontSize: "14px", fontWeight: "bold", boxShadow: "0 4px 12px #0004"
+        }}>
+          ✅ Segmentations created successfully! Check OHIF segmentation panel.
+        </div>
+      )}
+
+     {!ohifServices?.segmentationService && (
+        <div style={{
+          position: "fixed", bottom: 20, left: 20, zIndex: 1000,
+          background: "#f39c12", color: "#fff", padding: "8px 16px", borderRadius: "6px",
+          fontSize: "12px", fontWeight: "bold", boxShadow: "0 2px 8px #0004"
+        }}>
+          ⚠️ Waiting for OHIF services...
+        </div>
+      )}
+
+
+      {removing && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div style={{
+            background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
+            fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008", display: "flex", alignItems: "center"
+          }}>
+            <span className="spinner-border spinner-border-lg" style={{marginRight: 16}}/>
+            Removing ...
+          </div>
+        </div>
+      )}
+
+         {!comparisonMode ? (
+            <button
+              onClick={handleComparisonClick}
+              style={{
+                marginTop: '10px',
+                marginBottom: '10px',
+                fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  backgroundColor: 'rgba(77, 255, 77, 0.2)',
+                  border: '1px solid rgba(77, 255, 77, 0.5)',
+                  color: '#4dff4d',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  flex: 1,
+                  height: "50px",
+                  justifyContent: 'center'
+              }}
+              title="Compare views side by side"
+            >
+              Comparison
+            </button>
+          ) : (
+        <button
+          onClick={handleExitComparison}
+          style={{
+                 marginTop: '10px',
+                 marginBottom: '10px',
+                 fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  backgroundColor: 'rgba(255, 100, 100, 0.2)',
+                  border: '1px solid rgba(255, 100, 100, 0.5)',
+                  color: '#ff4d4d',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  flex: 1,
+                  height: "50px",
+                  justifyContent: 'center'
+          }}
+        >
+          Exit Comparison
+        </button>
+      )}
+
+      <SeriesSelectionPopup
+        isOpen={showComparisonPopup}
+        onClose={() => setShowComparisonPopup(false)}
+        onConfirm={handleComparisonConfirm}
+        seriesList={seriesList}
+      />
+
+     { angleMeasurementEnabled === true ? <></> : (comparisonMode === false ? (versionHistoryEnabled ? <>
+      <ControlPanel
+                loading={loading}
+                error={error}
+                approveSuccess={approveSuccess}
+              >
+                <ImplantViewer
+                  showImplantView={showImplantView}
+                  onClose={() => {}}
+                />
+
+                <VersionHistory
+                  versions={versions}
+                  selectedVersion={versionHistory.selectedVersion}
+                  loadingVersions={versionHistory.loadingVersions}
+                  versionHistoryEnabled={versionHistory.versionHistoryEnabled}
+                  onSelectVersion={versionHistory.setSelectedVersion}
+                  onRestoreVersion={versionHistory.restoreVersion}
+                />
+              </ControlPanel>
+
+            <ViewerContainer
+              startMountRef={startMountRef}
+              leftMountRef={leftMountRef}
+              rightMountRef={rightMountRef}
+              removalCanvasRef={removalCanvasRef}
+              showRightView={showRightView}
+              show={versionHistoryEnabled}
+            >
+            </ViewerContainer>
+      </>
+      :<ViewerContainer
+      startMountRef={startMountRef}
+      leftMountRef={leftMountRef}
+      rightMountRef={rightMountRef}
+      removalCanvasRef={removalCanvasRef}
+      showRightView={showRightView}
+      show={versionHistoryEnabled}
+    >
+      <ControlPanel
+      loading={loading}
+      error={error}
+      approveSuccess={approveSuccess}
+    >
+      <ImplantViewer
+        implantMountRef={implantMountRefFromHook}
+        showImplantView={showImplantView}
+        onClose={() => {}}
+      />
+
+      <VersionHistory
+        versions={versions}
+        selectedVersion={versionHistory.selectedVersion}
+        loadingVersions={versionHistory.loadingVersions}
+        versionHistoryEnabled={versionHistory.versionHistoryEnabled}
+        onSelectVersion={versionHistory.setSelectedVersion}
+        onRestoreVersion={versionHistory.restoreVersion}
+      />
+    </ControlPanel>
+    </ViewerContainer>) : <></>) }
+
+
+      {/* Hidden file inputs */}
+      <input
+        id="stl-file-input"
+        type="file"
+        accept=".stl"
+        onChange={handleFileChange}
+        multiple
+        style={{ display: "none" }}
+        disabled={loading}
+      />
+      <input
+        id="implant-file-input"
+        type="file"
+        accept=".stl"
+        onChange={handleImplantFileChange}
+        style={{ display: "none" }}
+      />
+    </div>
+  );
+};
+
+export default SpinalCordViewer;
