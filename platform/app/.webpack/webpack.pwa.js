@@ -80,10 +80,10 @@ module.exports = (env, argv) => {
         path.resolve(__dirname, '../../../node_modules'),
         SRC_DIR,
         path.resolve(__dirname, 'extensions/stl-extention/node_modules'),
-        path.resolve(
-          __dirname,
-          '/Users/afnan/Desktop/MYOHIF/Viewers/modes/signon-viewer/node_modules'
-        ),
+        // path.resolve(
+        //   __dirname,
+        //   '/Users/afnan/Desktop/MYOHIF/Viewers/modes/signon-viewer/node_modules'
+        // ),
       ],
     },
     plugins: [

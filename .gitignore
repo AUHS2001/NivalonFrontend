@@ -133,7 +133,14 @@ dist
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+!yarn.lock
 
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# commit file
+commit.txt
+
+# macOS
+.DS_Store

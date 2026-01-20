@@ -60,10 +60,6 @@ async function loadModule(module) {
     const imported = await import("@ohif/extension-tmtv");
     return imported.default;
   }
-  if( module==="@ohif/extension-test") {
-    const imported = await import("@ohif/extension-test");
-    return imported.default;
-  }
   if( module==="@ohif/extension-cornerstone-dicom-rt") {
     const imported = await import("@ohif/extension-cornerstone-dicom-rt");
     return imported.default;
