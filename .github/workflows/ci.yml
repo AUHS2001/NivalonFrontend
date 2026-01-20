@@ -1,4 +1,4 @@
-name: NodeJS with Webpack
+name: Nivalon Frontend CI
 
 on:
   push:
@@ -23,14 +23,10 @@ jobs:
         node-version: ${{ matrix.node-version }}
 
     - name: NPM Install
-      run: |
-        npm i --legacy-peer-deps
+      run: npm i --legacy-peer-deps
 
     - name: YARN Install
-      run: |
-        yarn install
+      run: yarn install
 
     - name: YARN Publish
-      run: |
-        yarn run build
-
+      run: yarn run build
