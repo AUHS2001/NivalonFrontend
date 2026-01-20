@@ -76,6 +76,8 @@
   },
   "dependencies": {
     "bootstrap": "5.3.6",
+    "dicom-parser": "^1.8.21",
+    "execa": "^8.0.1",
     "three": "^0.178.0"
   },
   "optionalDependencies": {
