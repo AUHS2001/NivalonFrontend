@@ -6,6 +6,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    env:
+      VERSION: $(date +%Y.%m.%d.%H:%M)
 
     strategy:
       matrix:
@@ -24,12 +27,9 @@ jobs:
 
     - name: YARN Publish
       run: yarn run build
-
-    - name: Set Package ENV
-      run: echo "PACKAGE=nivalon-frontend-$(date +%Y.%m.%d.%H:%M).tar.gz" >> $PACKAGE
-
+      
     - name: Tarball Build Artifacts
-      run: tar -czf nivalon-frontend-${{ env.PACKAGE }} ./platform/app/dist
+      run: tar -czf nivalon-frontend-${{ env.VERSION }}.tar.gz ./platform/app/dist
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -41,5 +41,5 @@ jobs:
       uses: usualdesigner/s3-artifact-upload@main
       with:
         bucket-name: ${{ secrets.AWS_S3_BUCKET }}
-        file: nivalon-frontend-${{ env.PACKAGE }}
-        destination-key: nivalon-frontend-${{ env.PACKAGE }}
+        file: nivalon-frontend-${{ env.VERSION }}.tar.gz
+        destination-key: nivalon-frontend-${{ env.VERSION }}.tar.gz
