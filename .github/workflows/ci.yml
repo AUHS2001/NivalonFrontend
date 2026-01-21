@@ -30,24 +30,3 @@ jobs:
 
     - name: YARN Publish
       run: yarn run build
-
-    - name: Set version info
-      run: echo "VERSION=$(date +%Y.%m.%d.%H:%M)" >> $VERSION
-
-    - name: Tarball Build Artifacts
-      run: tar -czf build-artifacts-$VERSION.tar.gz ./platform/app/dist
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-        aws-secret-access-key: ${{ secrets.AWS_ACCESS_KEY_SECRET }}
-        aws-region: ${{ secrets.AWS_S3_BUCKET_REGION }}
-
-    - name: Upload artifacts to AWS S3
-      uses: usualdesigner/s3-artifact-upload@main
-      with:
-        bucket-name: ${{ secrets.AWS_S3_BUCKET }}
-        file: build-artifacts-$VERSION.tar.gz
-        destination-key: build-artifacts-$VERSION.tar.gz
-
