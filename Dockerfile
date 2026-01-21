@@ -8,14 +8,14 @@ COPY package.json preinstall.js ./
 # commit.txt file is required
 RUN touch commit.txt
 
-# Install with npm using legacy peer deps (as requested)
-RUN npm i --legacy-peer-deps
-
-# Ensure Yarn via Corepack and install workspace deps
+# Install dependencies
 RUN yarn install
 
 # Copy the rest of the app
 COPY . .
+
+# Build the application
+RUN yarn run build
 
 # Common dev port (adjust if your dev script uses another)
 EXPOSE 3000

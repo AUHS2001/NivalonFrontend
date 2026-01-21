@@ -21,6 +21,10 @@ node --version
 2. Install dependencies:
 
 ```bash
+npm install --global yarn
+```
+
+```bash
 yarn install
 ```
 
