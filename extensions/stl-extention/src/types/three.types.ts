@@ -5,6 +5,7 @@ export interface VertebraInfo {
   number: number;
   fullName: string;
   fileName: string;
+  isImplant?: boolean;
 }
 
 export interface Measurement {

@@ -1,4 +1,4 @@
-import { useEffect, useCallback,  } from 'react';
+import { useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { VertebraInfo, MeshRefs } from '../types/three.types';
@@ -48,9 +48,21 @@ export const useSTLLoader = ({
     startMeshRefs
   });
 
+  const getVertebraInfo = useCallback((fileName: string, url: string): VertebraInfo & { fileName: string } => {
+    console.log('🔍 Analyzing file:', fileName, 'URL:', url);
 
-  const getVertebraInfo = useCallback((fileName: string): VertebraInfo & { fileName: string } => {
-    console.log('🔍 Analyzing file:', fileName);
+    // Check if this is an implant file (blob URL)
+    const isImplantFile = url.startsWith('blob:') || fileName.includes('blob:') || fileName === 'implant.stl';
+    
+    if (isImplantFile) {
+      console.log('🟢 Identified as IMPLANT file');
+      return {
+        type: 'I', // I for Implant
+        number: 0,
+        fullName: 'IMPLANT',
+        fileName: 'implant.stl',
+      };
+    }
 
     // Remove file extension and convert to lowercase for easier matching
     const nameWithoutExt = fileName.replace('.stl', '').toLowerCase();
@@ -138,6 +150,23 @@ export const useSTLLoader = ({
   }, []);
 
   const createMeshMaterial = useCallback((color: number, isRightView: boolean = false, isStartView: boolean = false, organType?: string) => {
+    console.log('🎨 Creating material for organType:', organType, 'isRightView:', isRightView, 'isStartView:', isStartView);
+    
+    // IMPLANT (Type 'I'): Always use GREEN in all views
+    if (organType === 'I') {
+      console.log('✅ Creating GREEN material for implant');
+      return new THREE.MeshPhongMaterial({
+        color: 0x00ff00, // BRIGHT GREEN for implants
+        specular: 0x111111,
+        shininess: 30,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9,
+        emissive: new THREE.Color(0x00ff00),
+        emissiveIntensity: 0.3
+      });
+    }
+
     // For organs in Labelling view (right view), use pink/purple
     if (isRightView && organType) {
       if (organType === 'A') {
@@ -213,6 +242,10 @@ export const useSTLLoader = ({
 
   // Function to convert "generated" to "approved" in URLs for start view only
   const getApprovedUrl = useCallback((url: string): string => {
+    // Don't convert blob URLs (implants)
+    if (url.startsWith('blob:')) {
+      return url;
+    }
     return url.replace('/generated/', '/approved/');
   }, []);
 
@@ -271,7 +304,7 @@ export const useSTLLoader = ({
         geometry.computeBoundingBox();
 
         const fileName = url.substring(url.lastIndexOf('/') + 1);
-        const vertebraInfo = getVertebraInfo(fileName);
+        const vertebraInfo = getVertebraInfo(fileName, url);
 
         console.log(`✅ Parsed STL: ${fileName}`, {
           type: vertebraInfo.type,
@@ -302,13 +335,15 @@ export const useSTLLoader = ({
           console.log(`   ${index + 1}. ${obj!.fileName} -> Type: '${obj!.type}', Name: '${obj!.fullName}'`);
         });
 
-        // Separate vertebrae from organs
+        // Separate objects by type
         const vertebrae = valid.filter(v => ['C', 'T', 'L', 'S'].includes(v!.type));
         const organs = valid.filter(v => ['A', 'H'].includes(v!.type));
+        const implants = valid.filter(v => v!.type === 'I'); // NEW: Filter implants
         const unknown = valid.filter(v => v!.type === 'X');
 
         console.log(`🦴 Vertebrae count: ${vertebrae.length}`);
         console.log(`❤️ Organs count: ${organs.length}`, organs.map(o => o!.fullName));
+        console.log(`🟢 Implants count: ${implants.length}`, implants.map(i => i!.fileName));
         console.log(`❓ Unknown files count: ${unknown.length}`, unknown.map(u => u!.fileName));
 
         // If we have unknown files, they might be our organs - let's try to identify them
@@ -342,6 +377,7 @@ export const useSTLLoader = ({
           S: 0xf1c40f,    // Sacral - Yellow
           A: 0x3498db,    // Aorta - Blue (for vertebrae coloring)
           H: 0xe74c3c,    // Heart - Red (for vertebrae coloring)
+          I: 0x00ff00,    // Implant - BRIGHT GREEN
           X: 0x00ff00,    // Unknown - Green (so they stand out)
         };
 
@@ -361,7 +397,7 @@ export const useSTLLoader = ({
           const color = new THREE.Color(colorMap[v.type] || 0x9b59b6);
 
           // Left mesh = Latest View (White for vertebrae) - Use generated
-          const matLeft = createMeshMaterial(color.getHex(), showRightView);
+          const matLeft = createMeshMaterial(color.getHex(), showRightView, false, v.type);
           const mesh = new THREE.Mesh(v.geometry, matLeft);
           mesh.position.y = currentY - center.y * compression;
           mesh.rotation.x = Math.PI / 2;
@@ -370,7 +406,7 @@ export const useSTLLoader = ({
           meshRefs.current.left.push(mesh);
 
           // Right mesh = Labelling View (Colored for vertebrae) - Use generated
-          const matRight = createMeshMaterial(color.getHex(), true);
+          const matRight = createMeshMaterial(color.getHex(), true, false, v.type);
           const meshClone = new THREE.Mesh(v.geometry, matRight);
           meshClone.position.copy(mesh.position);
           meshClone.rotation.copy(mesh.rotation);
@@ -382,7 +418,69 @@ export const useSTLLoader = ({
           allCreatedMeshes.push({
             fileName: v.fileName,
             originalUrl: v.originalUrl,
-            meshIndex: meshRefs.current.left.length - 1 // Current index in the array
+            meshIndex: meshRefs.current.left.length - 1
+          });
+        });
+
+        // Calculate center of all vertebrae for implant positioning
+        let vertebraeCenterY = 0;
+        if (meshRefs.current.left.length > 0) {
+          const vertebraeBbox = new THREE.Box3();
+          meshRefs.current.left.forEach(mesh => {
+            vertebraeBbox.expandByObject(mesh);
+          });
+          const vertebraeCenter = new THREE.Vector3();
+          vertebraeBbox.getCenter(vertebraeCenter);
+          vertebraeCenterY = vertebraeCenter.y;
+        }
+
+        // Now create IMPLANTS with GREEN color
+        console.log('🟢 Creating implant meshes with GREEN color...');
+        implants.forEach((implant, index) => {
+          if (!implant) return;
+
+          console.log(`🟢 Creating GREEN implant: ${implant.fileName}`);
+
+          // CENTER THE GEOMETRY so rotation happens around its own center
+          // This is crucial for proper rotation behavior
+          implant.geometry.center();
+          implant.geometry.computeBoundingBox();
+
+          const bbox = implant.geometry.boundingBox!;
+          const size = new THREE.Vector3();
+          bbox.getSize(size);
+
+          // Implant color is always BRIGHT GREEN (0x00ff00)
+          const implantColor = 0x00ff00;
+
+          // Position implant at the center of vertebrae
+          // Since geometry is now centered, we just position the mesh directly
+          let implantX = 0;
+          let implantY = vertebraeCenterY;
+          let implantZ = 0;
+
+          // Left mesh = Latest View - Use GREEN material
+          const matLeft = createMeshMaterial(implantColor, showRightView, false, 'I');
+          const mesh = new THREE.Mesh(implant.geometry.clone(), matLeft);
+          mesh.position.set(implantX, implantY, implantZ);
+          mesh.rotation.x = Math.PI / 2;
+          mesh.userData = { ...implant, isImplant: true };
+          leftGroup.add(mesh);
+          meshRefs.current.left.push(mesh);
+
+          // Right mesh = Labelling View - Also GREEN (use cloned geometry)
+          const matRight = createMeshMaterial(implantColor, true, false, 'I');
+          const meshClone = new THREE.Mesh(implant.geometry.clone(), matRight);
+          meshClone.position.copy(mesh.position);
+          meshClone.rotation.copy(mesh.rotation);
+          rightGroup.add(meshClone);
+          meshRefs.current.right.push(meshClone);
+
+          console.log(`✅ Created GREEN implant mesh: ${implant.fileName} at center Y: ${vertebraeCenterY}`);
+          allCreatedMeshes.push({
+            fileName: implant.fileName,
+            originalUrl: implant.originalUrl,
+            meshIndex: meshRefs.current.left.length - 1
           });
         });
 
@@ -390,6 +488,27 @@ export const useSTLLoader = ({
         console.log('🔄 Loading APPROVED versions for START view...');
         const startViewPromises = valid.map(async (obj) => {
           if (!obj) return;
+
+          // Skip implants for start view (they don't have approved versions)
+          if (obj.type === 'I') {
+            console.log(`⏭️ Skipping implant for start view: ${obj.fileName}`);
+
+            // But still create a mesh for start view with implant
+            // Geometry is already centered from the main implant creation
+            const color = new THREE.Color(colorMap['I'] || 0x00ff00);
+            const matStart = createMeshMaterial(color.getHex(), false, true, 'I');
+            const startMesh = new THREE.Mesh(obj.geometry.clone(), matStart);
+
+            // Position implant at center of vertebrae (geometry is already centered)
+            startMesh.position.set(0, vertebraeCenterY, 0);
+            startMesh.rotation.x = Math.PI / 2;
+            startMesh.userData = { ...obj, isApproved: false };
+            startGroup.add(startMesh);
+            startMeshRefs.current.push(startMesh);
+
+            console.log(`✅ Created implant mesh for start view: ${obj.fileName}`);
+            return;
+          }
 
           try {
             const approvedUrl = getApprovedUrl(obj.originalUrl);
@@ -559,16 +678,9 @@ export const useSTLLoader = ({
           allCreatedMeshes.push({
             fileName: organ.fileName,
             originalUrl: organ.originalUrl,
-            meshIndex: meshRefs.current.left.length - 1 // Current index in the array
+            meshIndex: meshRefs.current.left.length - 1
           });
         });
-
-        // const filesToAdd = valid.map(obj => ({
-        //   fileName: obj!.fileName,
-        //   originalUrl: obj!.originalUrl
-        // }));
-        // addStlFiles(filesToAdd);
-        // Wait for all start view promises to complete
 
         addStlFiles(allCreatedMeshes);
         return Promise.all(startViewPromises);
@@ -628,6 +740,7 @@ export const useSTLLoader = ({
         console.log('📊 Summary:');
         console.log('   - Left/Right views: Generated STLs');
         console.log('   - Start view: Approved STLs (with fallback to generated)');
+        console.log('   - Implants: GREEN color in all views');
       })
       .catch((error) => {
         console.error('❌ Error in STL loading:', error);
@@ -637,5 +750,5 @@ export const useSTLLoader = ({
         console.log('🏁 STL loading process finished');
         setLoading(false);
       });
-  }, [stlUrls,showRightView]);
+  }, [stlUrls, showRightView]);
 };

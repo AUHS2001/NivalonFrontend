@@ -84,3 +84,32 @@
 .selected {
   background-color: #3a5a80 !important;
 }
+
+/* Spine Labeling Styles */
+.spine-labeling-popup {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.spine-labeling-popup h3 {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  letter-spacing: 1px;
+}
+
+.spine-labeling-popup button {
+  transition: all 0.2s ease;
+}
+
+.spine-labeling-popup button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.spine-labeling-popup button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  backdrop-filter: blur(4px);
+}

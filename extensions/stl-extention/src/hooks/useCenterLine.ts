@@ -1,24 +1,32 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import * as THREE from 'three';
+import {
+  Enums,
+  getRenderingEngine,
+  utilities as csUtils,
+  cache,
+} from '@cornerstonejs/core';
 
 interface UseCenterLineProps {
   meshRefs: React.RefObject<{ left: THREE.Mesh[]; right: THREE.Mesh[] }>;
   leftSceneRef: React.RefObject<THREE.Scene>;
   rightSceneRef: React.RefObject<THREE.Scene>;
+  servicesManager?: any;
 }
 
 export const useCenterLine = ({
   meshRefs,
   leftSceneRef,
-  rightSceneRef
+  rightSceneRef,
+  servicesManager
 }: UseCenterLineProps) => {
   const centerLineRefs = useRef<{
-    left: THREE.Line | null;
-    right: THREE.Line | null;
-    leftGlow: THREE.Line | null;
-    rightGlow: THREE.Line | null;
-    dicomIndicators: HTMLDivElement[];
-  }>({ left: null, right: null, leftGlow: null, rightGlow: null, dicomIndicators: [] });
+    left: THREE.Mesh | null;
+    right: THREE.Mesh | null;
+    leftGlow: THREE.Mesh | null;
+    rightGlow: THREE.Mesh | null;
+    dicomCanvases: Map<string, HTMLCanvasElement>;
+  }>({ left: null, right: null, leftGlow: null, rightGlow: null, dicomCanvases: new Map() });
 
   const originalMaterials = useRef<{
     left: (THREE.Material | THREE.Material[])[];
@@ -27,334 +35,484 @@ export const useCenterLine = ({
 
   const [centerLineEnabled, setCenterLineEnabled] = useState(false);
 
-  const type = localStorage.getItem('myLayout');
+  // Store centerline points in both coordinate systems
+  const centerLineWorldPointsRef = useRef<Array<[number, number, number]>>([]);
+  const stlBoundsRef = useRef<{ min: THREE.Vector3; max: THREE.Vector3 } | null>(null);
+  const volumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[] } | null>(null);
 
-  console.log("type ==> ", type);
+  // Store event listeners for cleanup
+  const eventListenersRef = useRef<Array<{ element: any; event: string; handler: (e: any) => void }>>([]);
 
-  const detectViewportType = useCallback((viewport: Element): string => {
-    const viewports = Array.from(document.querySelectorAll([
-      '[data-cy="viewport-container"]',
-      '.viewport-element',
-      '.cornerstone-viewport',
-      '.ohif-viewport',
-      '.viewport-wrapper',
-      '.viewer-viewport'
-    ].join(',')));
+  /**
+   * Get Cornerstone viewports and volume bounds from servicesManager
+   */
+  const getCornerstoneViewportsAndBounds = useCallback(() => {
+    const { cornerstoneViewportService, viewportGridService } = servicesManager?.services || {};
 
-    const currentIndex = viewports.indexOf(viewport);
+    if (!cornerstoneViewportService || !viewportGridService) {
+      console.log('⚠️ Cornerstone services not available');
+      return { viewports: [], volumeBounds: null };
+    }
 
-    // Simple layout mapping
-    const viewportLayoutMapping = new Map([
-      [0, 'axial'],    // First view: Axial
-      [1, 'sagittal'],
-      [2, 'coronal'],  // Third view: Coronal
-    ]);
+    const viewportState = viewportGridService.getState();
+    const viewports = viewportState?.viewports;
 
-    return viewportLayoutMapping.get(currentIndex) || 'sagittal';
-  }, []);
+    if (!viewports) return { viewports: [], volumeBounds: null };
 
-  // NEW: Function to create center line indicators in DICOM views
-  const createDICOMCenterLineIndicators = useCallback((centerPoints: THREE.Vector3[]) => {
-    // Clear any existing indicators first
-    removeDICOMCenterLineIndicators();
+    const result: Array<{
+      viewportId: string;
+      viewport: any;
+      element: HTMLElement;
+      orientation: string;
+    }> = [];
 
-    const viewportSelectors = [
-      '[data-cy="viewport-container"]',
-      '.viewport-element',
-      '.cornerstone-viewport',
-      '.ohif-viewport',
-      '.viewport-wrapper',
-      '.viewer-viewport'
+    let volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction: number[] } | null = null;
+
+    const viewportEntries = viewports instanceof Map
+      ? Array.from(viewports.entries())
+      : Object.entries(viewports);
+
+    viewportEntries.forEach(([viewportId, viewportInfo]: [string, any]) => {
+      const viewportOptions = viewportInfo?.viewportOptions || {};
+
+      // Skip karachi (3D) viewport
+      if (viewportOptions.customLayout === 'karachi' || viewportId === 'karachiViewport') {
+        return;
+      }
+
+      try {
+        const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+        if (viewport && viewport.element) {
+          const orientation = viewportOptions.orientation || 'axial';
+          result.push({
+            viewportId,
+            viewport,
+            element: viewport.element,
+            orientation
+          });
+
+          // Try to get volume bounds from this viewport
+          if (!volumeBounds) {
+            try {
+              const imageData = viewport.getImageData?.();
+              if (imageData) {
+                volumeBounds = {
+                  origin: imageData.origin || [0, 0, 0],
+                  dimensions: imageData.dimensions || [512, 512, 100],
+                  spacing: imageData.spacing || [1, 1, 1],
+                  direction: imageData.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1]
+                };
+                console.log('📊 Got volume bounds:', volumeBounds);
+              }
+            } catch (e) {
+              console.warn('Could not get image data from viewport');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Error getting viewport ${viewportId}:`, e);
+      }
+    });
+
+    console.log(`📺 Found ${result.length} Cornerstone viewports`);
+    return { viewports: result, volumeBounds };
+  }, [servicesManager]);
+
+  /**
+   * Transform STL coordinates to DICOM world coordinates
+   * Preserves the actual shape/curvature of the centerline
+   */
+  const transformSTLToDICOMWorld = useCallback((
+    stlPoint: THREE.Vector3,
+    stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
+    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[] }
+  ): [number, number, number] => {
+    // Calculate the size of the STL bounding box
+    const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
+    const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
+
+    // Calculate the size of the DICOM volume in world coordinates
+    const volumeSize = [
+      volumeBounds.dimensions[0] * volumeBounds.spacing[0],
+      volumeBounds.dimensions[1] * volumeBounds.spacing[1],
+      volumeBounds.dimensions[2] * volumeBounds.spacing[2]
     ];
 
-    const indicators: HTMLDivElement[] = [];
+    // Calculate volume center in world coordinates
+    const volumeCenter = [
+      volumeBounds.origin[0] + volumeSize[0] / 2,
+      volumeBounds.origin[1] + volumeSize[1] / 2,
+      volumeBounds.origin[2] + volumeSize[2] / 2
+    ];
 
-    viewportSelectors.forEach(selector => {
-      const viewports = document.querySelectorAll(selector);
+    // Get the offset from STL center (preserving actual distances/shape)
+    const offsetFromCenter = new THREE.Vector3().subVectors(stlPoint, stlCenter);
 
-      viewports.forEach(viewport => {
-        const rect = viewport.getBoundingClientRect();
+    // Calculate uniform scale factor based on the Z axis (superior-inferior)
+    // This preserves the shape/curvature of the centerline
+    const stlHeight = stlSize.y; // STL Y is the vertical axis
+    const volumeHeight = volumeSize[2]; // DICOM Z is superior-inferior
+    // Use 1:1 scale ratio to match actual DICOM coordinates
+    const uniformScale = volumeHeight / stlHeight;
 
-        if (rect.width > 100 && rect.height > 100 &&
-            rect.top >= 0 && rect.left >= 0 &&
-            viewport instanceof HTMLElement &&
-            viewport.offsetParent !== null) {
+    // Apply uniform scaling to preserve shape
+    const scaledOffsetX = offsetFromCenter.x * uniformScale;
+    const scaledOffsetY = offsetFromCenter.y * uniformScale; // This becomes Z in DICOM
+    const scaledOffsetZ = offsetFromCenter.z * uniformScale; // This becomes Y in DICOM
 
-          try {
-            const viewType = detectViewportType(viewport);
-            console.log(`🎯 Creating center line for ${viewType.toUpperCase()} view`);
+    // Map to DICOM world coordinates with axis transformation
+    // STL (after Three.js rotation): X=left/right, Y=up/down, Z=front/back
+    // DICOM LPS: X=Left/Right, Y=Posterior/Anterior, Z=Superior/Inferior
 
-            // Calculate position based on view type
-            const position = calculateDICOMPositionForCenterLine(centerPoints, viewport, viewType);
+    const dicomX = volumeCenter[0] + scaledOffsetX;
 
-            // Create the indicator
-            const indicator = createCenterLineIndicator(viewport, position, viewType);
-            indicators.push(indicator);
+    // Y (anterior-posterior): STL Z maps here
+    // Invert both the offset and position to flip the line horizontally in sagittal view
+    const posteriorOffset = volumeSize[1] * 0.05;
+    const dicomY = volumeCenter[1] - scaledOffsetZ - posteriorOffset;
 
-          } catch (error) {
-            console.error('Error creating DICOM center line indicator:', error);
-          }
-        }
-      });
-    });
+    // Z (superior-inferior): STL Y maps here
+    const superiorOffset = volumeSize[2] * 0.18;
+    const dicomZ = volumeCenter[2] - scaledOffsetY + superiorOffset;
 
-    // Store references to all created indicators
-    centerLineRefs.current.dicomIndicators = indicators;
-
-    console.log(`📍 Created ${indicators.length} DICOM center line indicators`);
-  }, [detectViewportType]);
-
-  // NEW: Function to calculate center line position in DICOM views
-  const calculateDICOMPositionForCenterLine = useCallback((centerPoints: THREE.Vector3[], viewport: Element, viewType: string): { x: number, y: number } => {
-    const rect = viewport.getBoundingClientRect();
-    const viewportWidth = rect.width;
-    const viewportHeight = rect.height;
-
-    // For center line, we want to show it at a consistent position based on the view type
-    let normalizedX = 0.5; // Center horizontally
-    let normalizedY = 0.5; // Center vertically by default
-
-    // Adjust position based on view type for better anatomical representation
-    switch (viewType.toLowerCase()) {
-      case 'axial':
-        // Axial view: Show vertical center line
-        normalizedX = 0.5; // Center line
-        normalizedY = 0.5; // Middle of viewport
-        break;
-      case 'sagittal':
-        // Sagittal view: Show vertical line slightly offset for spinal cord
-        normalizedX = 0.5; // Right of center (spinal cord position)
-        normalizedY = 0.5;
-        break;
-      case 'coronal':
-        // Coronal view: Show vertical center line
-        normalizedX = 0.5;
-        normalizedY = 0.7;
-        break;
-      default:
-        normalizedX = 0.5;
-        normalizedY = 0.5;
-    }
-
-    const finalX = viewportWidth * normalizedX;
-    const finalY = viewportHeight * normalizedY;
-
-    console.log(`🎯 ${viewType.toUpperCase()} center line position:`, {
-      normalized: { x: normalizedX, y: normalizedY },
-      pixels: { x: Math.round(finalX), y: Math.round(finalY) }
-    });
-
-    return { x: finalX, y: finalY };
+    return [dicomX, dicomY, dicomZ];
   }, []);
 
-  // NEW: Function to create visual indicator for center line in DICOM views
-  const createCenterLineIndicator = useCallback((viewport: Element, position: { x: number, y: number }, viewType: string): HTMLDivElement => {
-    // Remove any existing center line indicators from this viewport
-    const existingIndicators = viewport.querySelectorAll('.spinal-centerline-indicator');
-    existingIndicators.forEach(indicator => indicator.remove());
+  /**
+   * Draw centerline on a Cornerstone viewport using worldToCanvas
+   */
+  const drawCenterlineOnViewport = useCallback((
+    viewportId: string,
+    viewport: any,
+    worldPoints: Array<[number, number, number]>
+  ) => {
+    if (!viewport || worldPoints.length < 2) return;
 
-    // Get colors based on view type
-    const getViewColors = (viewType: string) => {
-      switch (viewType.toLowerCase()) {
-        case 'axial':
-          return { primary: '#ff0000', accent: '#cc0000', name: 'AXIAL' };
-        case 'coronal':
-          return { primary: '#ff0000', accent: '#cc0000', name: 'CORONAL' };
-        case 'sagittal':
-          return { primary: '#ff0000', accent: '#cc0000', name: 'SAGITTAL' };
-        default:
-          return { primary: '#ff0000', accent: '#cc0000', name: 'CENTERLINE' };
-      }
-    };
+    const element = viewport.element;
+    if (!element) return;
 
-    const colors = getViewColors(viewType);
+    // Get or create canvas overlay
+    let canvas = centerLineRefs.current.dicomCanvases.get(viewportId);
 
-    // Create the main indicator container
-    const indicator = document.createElement('div');
-    indicator.className = 'spinal-centerline-indicator';
-    indicator.style.position = 'absolute';
-    indicator.style.zIndex = '9999';
-    indicator.style.pointerEvents = 'none';
-
-    if (viewType.toLowerCase() === 'coronal') {
-      // CORONAL VIEW: Show multiple vertical lines for each vertebra
-      const rect = viewport.getBoundingClientRect();
-      const viewportHeight = rect.height;
-      console.log(rect.width," =>coronel")
-
-      // Get actual vertebra count from the 3D model
-      const meshes = meshRefs.current?.left || [];
-      const vertebrae = meshes.filter(mesh => {
-        const userData = mesh.userData;
-        return userData && ['C', 'T', 'L', 'S'].includes(userData.type);
-      });
-
-      const vertebraCount = vertebrae.length;
-      console.log(`🦴 Found ${vertebraCount} vertebrae in 3D model`);
-
-      if (vertebraCount > 0) {
-        // Create a container for all vertebra lines
-        indicator.style.left = '0';
-        indicator.style.top = '15px';
-        indicator.style.width = '100%';
-        indicator.style.height = '100%';
-        indicator.style.background = 'transparent';
-
-        // Calculate the height for each segment
-        const segmentHeight = viewportHeight / (vertebraCount + 1);
-
-        // Create individual lines for each vertebra segment
-        for (let i = 1; i <= vertebraCount; i++) {
-          const vertebraLine = document.createElement('div');
-          vertebraLine.className = 'vertebra-line';
-          vertebraLine.style.position = 'absolute';
-          vertebraLine.style.left = `${position.x}px`;
-          vertebraLine.style.top = `${(i * segmentHeight) - (segmentHeight / 2)}px`;
-          vertebraLine.style.width = '2px';
-          vertebraLine.style.height = `${segmentHeight}px`; // Shorter line for individual vertebra
-          vertebraLine.style.background = `linear-gradient(180deg,
-            transparent 0%,
-            ${colors.primary} 20%,
-            ${colors.primary} 80%,
-            transparent 100%)`;
-          vertebraLine.style.boxShadow = `0 0 8px ${colors.primary}, 0 0 16px ${colors.primary}`;
-          vertebraLine.style.opacity = '0.7';
-          vertebraLine.style.transform = 'translateY(-50%)';
-
-          indicator.appendChild(vertebraLine);
-        }
-      } else {
-        // Fallback if no vertebrae found
-        console.warn('No vertebrae found in 3D model, showing default center line');
-        indicator.style.left = `${position.x}px`;
-        indicator.style.top = '15px';
-        indicator.style.width = '2px';
-        indicator.style.height = '100%';
-        indicator.style.background = `linear-gradient(180deg,
-          transparent 0%,
-          ${colors.primary} 10%,
-          ${colors.primary} 90%,
-          transparent 100%)`;
-        indicator.style.boxShadow = `0 0 10px ${colors.primary}, 0 0 20px ${colors.primary}`;
-        indicator.style.opacity = '0.8';
-      }
-    } else if(viewType.toLowerCase() === 'sagittal') {
-      indicator.className = 'spinal-centerline-indicator s-curve-indicator';
-      indicator.style.position = 'absolute';
-      indicator.style.width = '150px';
-      indicator.style.height = '72%';
-      indicator.style.top = '40%';
-      indicator.style.left = (type === 'main3D' || type === 'fourUp') ? '54%' : '50%';
-      indicator.style.transform = 'translate(-50%, -50%)';
-      indicator.style.pointerEvents = 'none';
-
-      indicator.innerHTML = '<div class="s-shape"></div>';
-    } else {
-      // CORONAL and SAGITTAL VIEWS: Show dot at the calculated position
-      indicator.style.left = `${position.x}px`;
-      indicator.style.top = `${position.y}px`;
-      indicator.style.width = '5px'; // Dot size
-      indicator.style.height = '5px';
-      indicator.style.background = colors.primary;
-      indicator.style.borderRadius = '50%';
-      indicator.style.boxShadow = `0 0 15px ${colors.primary}, 0 0 30px ${colors.primary}`;
-      indicator.style.opacity = '0.9';
-    }
-
-    viewport.appendChild(indicator);
-
-    console.log(`📍 Created ${viewType} center line ${viewType === 'axial' ? 'line' : 'dot'} at X:${position.x}, Y:${position.y}`);
-
-    return indicator;
-  }, []);
-
-  // NEW: Function to remove DICOM center line indicators
-  const removeDICOMCenterLineIndicators = useCallback(() => {
-    // Remove all center line indicators from DOM
-    const indicators = document.querySelectorAll('.spinal-centerline-indicator');
-    indicators.forEach(indicator => indicator.remove());
-
-    // Clear the stored references
-    centerLineRefs.current.dicomIndicators = [];
-
-    console.log('🗑️ Removed all DICOM center line indicators');
-  }, []);
-
-  // NEW: Add CSS styles for center line indicators
-  const addCenterLineStyles = useCallback(() => {
-    if (!document.querySelector('#spinal-centerline-styles')) {
-      const style = document.createElement('style');
-      style.id = 'spinal-centerline-styles';
-      style.textContent = `
-        @keyframes centerline-appear {
-          0% {
-            transform: translateX(-20px);
-            opacity: 0;
-          }
-          100% {
-            transform: translateX(0);
-            opacity: 0.8;
-          }
-        }
-
-        @keyframes dot-appear {
-          0% {
-            transform: translate(-50%, -50%) scale(0);
-            opacity: 0;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.9;
-          }
-        }
-
-
-        @keyframes dot-pulse {
-          0%, 100% {
-            transform: translate(-50%, -50%) scale(1);
-            box-shadow: 0 0 15px currentColor, 0 0 30px currentColor;
-          }
-          50% {
-            transform: translate(-50%, -50%) scale(1.2);
-            box-shadow: 0 0 25px currentColor, 0 0 50px currentColor;
-          }
-        }
-
-        .s-curve-indicator .s-shape::before {
-          content: '';
-          position: absolute;
-          top: 0px;
-          left: 73%;
-          width: 70px;
-          height: 100%;
-          border: 2px solid #ff0000; /* Changed to 2px */
-          border-top: none;
-          border-right: none;
-          border-radius: 0 0 0 65px;
-          transform: rotate(16deg);
-          transform-origin: top left;
-        }
-
-        .spinal-centerline-indicator {
-          animation: centerline-appear 0.5s ease-out forwards;
-        }
-
-        .spinal-centerline-indicator {
-          animation: centerline-glow 2s ease-in-out infinite;
-        }
-
-        /* Specific styles for dot indicators (coronal/sagittal) */
-        .spinal-centerline-indicator[style*="border-radius"] {
-          animation: dot-appear 0.5s ease-out forwards, dot-pulse 2s ease-in-out infinite !important;
-        }
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.className = 'centerline-overlay-canvas';
+      canvas.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 50;
       `;
-      document.head.appendChild(style);
+
+      // Append to the viewport element's parent
+      const parent = element.parentElement || element;
+      parent.style.position = 'relative';
+      parent.appendChild(canvas);
+      centerLineRefs.current.dicomCanvases.set(viewportId, canvas);
     }
+
+    const rect = element.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Get camera info to determine view type
+    const camera = viewport.getCamera?.();
+    if (!camera) {
+      console.log(`⚠️ No camera for viewport ${viewportId}`);
+      return;
+    }
+
+    // Determine view orientation from camera
+    const { viewPlaneNormal, focalPoint } = camera;
+    const absNormal = viewPlaneNormal.map((n: number) => Math.abs(n));
+    const maxIndex = absNormal.indexOf(Math.max(...absNormal));
+
+    let viewType = 'axial';
+    if (maxIndex === 0) viewType = 'sagittal';
+    else if (maxIndex === 1) viewType = 'coronal';
+    else viewType = 'axial';
+
+    // Convert world points to canvas coordinates
+    const canvasPoints: Array<{ x: number; y: number; distance: number }> = [];
+
+    // Get volume info for calculating world-space offsets
+    const imageData = viewport.getImageData?.();
+    const volumeSpacing = imageData?.spacing || [1, 1, 1];
+    const volumeDimensions = imageData?.dimensions || [512, 512, 100];
+    const volumeHeight = volumeDimensions[2] * volumeSpacing[2]; // Z extent in mm
+
+    // Get volume center for reference
+    const volumeOrigin = imageData?.origin || [0, 0, 0];
+    const volumeCenter = [
+      volumeOrigin[0] + (volumeDimensions[0] * volumeSpacing[0]) / 2,
+      volumeOrigin[1] + (volumeDimensions[1] * volumeSpacing[1]) / 2,
+      volumeOrigin[2] + (volumeDimensions[2] * volumeSpacing[2]) / 2
+    ];
+
+    worldPoints.forEach((worldPoint) => {
+      try {
+        // Apply view-specific world coordinate adjustments
+        let adjustedWorldPoint = [...worldPoint] as [number, number, number];
+
+        if (viewType === 'sagittal') {
+          // For sagittal: flip Z around volume center and apply offset
+          const zOffset = worldPoint[2] - volumeCenter[2];
+          adjustedWorldPoint[2] = volumeCenter[2] - zOffset + volumeHeight * 0.17;
+        } else if (viewType === 'coronal') {
+          // For coronal: small downward offset
+          adjustedWorldPoint[2] = worldPoint[2] - volumeHeight * 0.02;
+        }
+
+        const canvasPoint = viewport.worldToCanvas(adjustedWorldPoint);
+        if (canvasPoint && !isNaN(canvasPoint[0]) && !isNaN(canvasPoint[1])) {
+          // Calculate distance from focal plane
+          let distance = 0;
+          if (viewType === 'axial') {
+            distance = Math.abs(worldPoint[2] - focalPoint[2]);
+          } else if (viewType === 'sagittal') {
+            distance = Math.abs(worldPoint[0] - focalPoint[0]);
+          } else if (viewType === 'coronal') {
+            distance = Math.abs(worldPoint[1] - focalPoint[1]);
+          }
+
+          canvasPoints.push({
+            x: canvasPoint[0],
+            y: canvasPoint[1],
+            distance
+          });
+        }
+      } catch (e) {
+        // Point couldn't be converted
+      }
+    });
+
+    if (canvasPoints.length === 0) {
+      console.log(`⚠️ No points could be projected for ${viewportId}`);
+      return;
+    }
+
+    // Draw the centerline
+    const color = '#ff0000';
+    const glowColor = 'rgba(255, 68, 68, 0.5)';
+
+    ctx.save();
+
+    if (viewType === 'axial') {
+      // For axial view, find the point closest to the current slice and draw a crosshair
+      const closestPoint = canvasPoints.reduce((prev, curr) =>
+        prev.distance < curr.distance ? prev : curr
+      );
+
+      // Only draw if the point is close to the current slice (within a threshold)
+      const sliceThickness = 10; // mm threshold - increased for visibility
+      if (closestPoint.distance < sliceThickness) {
+        const size = 20;
+        const { x, y } = closestPoint;
+
+        // Check if point is within canvas bounds
+        if (x >= 0 && x <= canvas.width && y >= 0 && y <= canvas.height) {
+          // Draw glow
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 15;
+          ctx.strokeStyle = glowColor;
+          ctx.lineWidth = 5;
+
+          ctx.beginPath();
+          ctx.moveTo(x - size, y);
+          ctx.lineTo(x + size, y);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x, y + size);
+          ctx.stroke();
+
+          // Draw main crosshair
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+
+          ctx.beginPath();
+          ctx.moveTo(x - size, y);
+          ctx.lineTo(x + size, y);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x, y + size);
+          ctx.stroke();
+
+          // Draw center dot
+          ctx.beginPath();
+          ctx.fillStyle = color;
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else {
+      // For sagittal and coronal views, draw the full centerline
+      // Filter to points that are reasonably close to the view plane
+      const threshold = 500; // mm - large threshold to show all points
+      const visiblePoints = canvasPoints.filter(p => p.distance < threshold);
+
+      // No canvas-space adjustments - all handled in world coordinates now
+      const adjustedPoints = visiblePoints;
+
+      // Sort by canvas Y to draw a smooth line
+      const sortedPoints = [...adjustedPoints].sort((a, b) => a.y - b.y);
+
+      if (sortedPoints.length >= 2) {
+        // Filter to points within canvas bounds
+        const validPoints = sortedPoints.filter(p =>
+          p.x >= -50 && p.x <= canvas.width + 50 &&
+          p.y >= -50 && p.y <= canvas.height + 50
+        );
+
+        if (validPoints.length >= 2) {
+          // Draw glow path
+          ctx.beginPath();
+          ctx.strokeStyle = glowColor;
+          ctx.lineWidth = 8;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 20;
+
+          validPoints.forEach((point, i) => {
+            if (i === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+          });
+          ctx.stroke();
+
+          // Draw main path
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 4;
+          ctx.shadowBlur = 0;
+
+          validPoints.forEach((point, i) => {
+            if (i === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+          });
+          ctx.stroke();
+
+          // Draw dots at each vertebra center
+          validPoints.forEach(point => {
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
+            ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+      }
+    }
+
+    ctx.restore();
   }, []);
 
+  /**
+   * Redraw centerlines on all viewports
+   */
+  const redrawAllCenterlines = useCallback(() => {
+    const worldPoints = centerLineWorldPointsRef.current;
+    if (worldPoints.length < 2) return;
+
+    const { viewports } = getCornerstoneViewportsAndBounds();
+    viewports.forEach(({ viewportId, viewport }) => {
+      drawCenterlineOnViewport(viewportId, viewport, worldPoints);
+    });
+  }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport]);
+
+  /**
+   * Setup event listeners for viewport changes
+   */
+  const setupEventListeners = useCallback(() => {
+    // Clean up existing listeners
+    eventListenersRef.current.forEach(({ element, event, handler }) => {
+      try { element.removeEventListener(event, handler); } catch (e) {}
+    });
+    eventListenersRef.current = [];
+
+    const { viewports } = getCornerstoneViewportsAndBounds();
+
+    viewports.forEach(({ viewportId, viewport, element }) => {
+      // Debounced redraw handler
+      let timeout: NodeJS.Timeout | null = null;
+      const handleChange = () => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          if (centerLineWorldPointsRef.current.length > 0) {
+            drawCenterlineOnViewport(viewportId, viewport, centerLineWorldPointsRef.current);
+          }
+        }, 16);
+      };
+
+      // Cornerstone events
+      const cornerstoneEvents = [
+        Enums.Events.CAMERA_MODIFIED,
+        Enums.Events.VOLUME_NEW_IMAGE,
+        Enums.Events.STACK_NEW_IMAGE,
+        Enums.Events.IMAGE_RENDERED,
+      ];
+
+      cornerstoneEvents.forEach(eventName => {
+        if (eventName) {
+          element.addEventListener(eventName, handleChange);
+          eventListenersRef.current.push({ element, event: eventName, handler: handleChange });
+        }
+      });
+
+      // Wheel event for scroll
+      element.addEventListener('wheel', handleChange);
+      eventListenersRef.current.push({ element, event: 'wheel', handler: handleChange });
+    });
+
+    console.log(`🎧 Setup ${eventListenersRef.current.length} event listeners`);
+  }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport]);
+
+  /**
+   * Remove all DICOM centerlines
+   */
+  const removeDICOMCenterlines = useCallback(() => {
+    // Clean up event listeners
+    eventListenersRef.current.forEach(({ element, event, handler }) => {
+      try { element.removeEventListener(event, handler); } catch (e) {}
+    });
+    eventListenersRef.current = [];
+
+    // Remove canvas overlays
+    centerLineRefs.current.dicomCanvases.forEach((canvas) => {
+      canvas.remove();
+    });
+    centerLineRefs.current.dicomCanvases.clear();
+
+    // Clear points
+    centerLineWorldPointsRef.current = [];
+    stlBoundsRef.current = null;
+    volumeBoundsRef.current = null;
+  }, []);
+
+  /**
+   * Calculate spinal centerline from vertebra meshes and convert to DICOM world coordinates
+   */
   const calculateSpinalCenterline = useCallback(() => {
     const meshes = meshRefs.current?.left || [];
-    if (meshes.length === 0) return null;
+    if (meshes.length === 0) {
+      console.warn('⚠️ No meshes found');
+      return null;
+    }
+
+    console.log(`📦 Processing ${meshes.length} meshes`);
 
     // Filter only vertebrae meshes (C, T, L, S types)
     const vertebrae = meshes.filter(mesh => {
@@ -362,37 +520,135 @@ export const useCenterLine = ({
       return userData && ['C', 'T', 'L', 'S'].includes(userData.type);
     });
 
-    if (vertebrae.length === 0) return null;
+    console.log(`🦴 Found ${vertebrae.length} vertebrae`);
 
-    // Calculate center points for each vertebra
+    // Sort vertebrae in anatomical order (C1-C7, T1-T12, L1-L5, S1-S5)
+    const anatomicalOrder = ['C', 'T', 'L', 'S'];
+    const sortedVertebrae = [...(vertebrae.length > 0 ? vertebrae : meshes)].sort((a, b) => {
+      const aData = a.userData || {};
+      const bData = b.userData || {};
+      const aType = aData.type || 'X';
+      const bType = bData.type || 'X';
+      const aNum = aData.number || 0;
+      const bNum = bData.number || 0;
+
+      const typeOrderDiff = anatomicalOrder.indexOf(aType) - anatomicalOrder.indexOf(bType);
+      if (typeOrderDiff !== 0) return typeOrderDiff;
+      return aNum - bNum;
+    });
+
+    // Calculate center points for each vertebra in world coordinates (in anatomical order)
     const centerPoints: THREE.Vector3[] = [];
 
-    vertebrae.forEach(mesh => {
+    // Calculate overall STL bounds
+    const overallBounds = {
+      min: new THREE.Vector3(Infinity, Infinity, Infinity),
+      max: new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+    };
+
+    sortedVertebrae.forEach(mesh => {
       const geometry = mesh.geometry;
       geometry.computeBoundingBox();
 
       const boundingBox = geometry.boundingBox;
       if (boundingBox) {
+        // Get center in local space
         const center = new THREE.Vector3();
         boundingBox.getCenter(center);
 
-        // Transform to world coordinates
+        // Apply mesh's world matrix to get world position
         center.applyMatrix4(mesh.matrixWorld);
         centerPoints.push(center);
+
+        // Update overall bounds
+        const min = boundingBox.min.clone().applyMatrix4(mesh.matrixWorld);
+        const max = boundingBox.max.clone().applyMatrix4(mesh.matrixWorld);
+        overallBounds.min.min(min);
+        overallBounds.max.max(max);
+
+        console.log(`  📍 ${mesh.userData?.fullName || 'Unknown'}: center = (${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)})`);
       }
     });
 
-    // Sort points by Y position (assuming spinal column runs vertically)
-    centerPoints.sort((a, b) => a.y - b.y);
-
-    // Simple linear regression to find the best fit line
     if (centerPoints.length < 2) return null;
 
-    return centerPoints;
-  }, [meshRefs]);
+    console.log(`✅ Calculated ${centerPoints.length} centerline points`);
+    const stlSize = new THREE.Vector3().subVectors(overallBounds.max, overallBounds.min);
+    console.log('📏 STL bounds:', overallBounds);
+    console.log('📏 STL size:', { x: stlSize.x.toFixed(1), y: stlSize.y.toFixed(1), z: stlSize.z.toFixed(1) });
 
+    stlBoundsRef.current = overallBounds;
+
+    // Get volume bounds from Cornerstone
+    const { volumeBounds } = getCornerstoneViewportsAndBounds();
+
+    if (!volumeBounds) {
+      console.warn('⚠️ Could not get volume bounds from viewports');
+      // Use default bounds based on typical CT dimensions
+      volumeBoundsRef.current = {
+        origin: [-250, -250, -500],
+        dimensions: [512, 512, 200],
+        spacing: [1, 1, 2.5]
+      };
+    } else {
+      volumeBoundsRef.current = volumeBounds;
+    }
+
+    console.log('📊 Volume bounds:', volumeBoundsRef.current);
+
+    // Calculate volume size for logging
+    const volSize = [
+      volumeBoundsRef.current!.dimensions[0] * volumeBoundsRef.current!.spacing[0],
+      volumeBoundsRef.current!.dimensions[1] * volumeBoundsRef.current!.spacing[1],
+      volumeBoundsRef.current!.dimensions[2] * volumeBoundsRef.current!.spacing[2]
+    ];
+    console.log('📐 Volume size (mm):', volSize);
+    console.log('📐 Scale factor:', (volSize[2] / stlSize.y).toFixed(3));
+
+    // Transform center points to DICOM world coordinates
+    const worldPoints: Array<[number, number, number]> = centerPoints.map(p =>
+      transformSTLToDICOMWorld(p, stlBoundsRef.current!, volumeBoundsRef.current!)
+    );
+
+    console.log('📍 First world point:', worldPoints[0]);
+    console.log('📍 Last world point:', worldPoints[worldPoints.length - 1]);
+    console.log('📍 Middle world point:', worldPoints[Math.floor(worldPoints.length / 2)]);
+
+    return { threePoints: centerPoints, worldPoints };
+  }, [meshRefs, getCornerstoneViewportsAndBounds, transformSTLToDICOMWorld]);
+
+  /**
+   * Create DICOM centerlines on all viewports
+   */
+  const createDICOMCenterlines = useCallback((centerData: { threePoints: THREE.Vector3[], worldPoints: Array<[number, number, number]> }) => {
+    console.log('🚀 Creating DICOM centerlines...');
+
+    centerLineWorldPointsRef.current = centerData.worldPoints;
+
+    // Wait for viewports to be ready
+    setTimeout(() => {
+      const { viewports } = getCornerstoneViewportsAndBounds();
+
+      if (viewports.length === 0) {
+        console.log('⚠️ No viewports found, retrying...');
+        setTimeout(() => {
+          redrawAllCenterlines();
+          setupEventListeners();
+        }, 1000);
+        return;
+      }
+
+      viewports.forEach(({ viewportId, viewport }) => {
+        drawCenterlineOnViewport(viewportId, viewport, centerData.worldPoints);
+      });
+
+      setupEventListeners();
+      console.log('✅ DICOM centerlines created');
+    }, 500);
+  }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport, setupEventListeners, redrawAllCenterlines]);
+
+  // Material handling functions
   const makeMeshesTransparent = useCallback(() => {
-    // Store original materials and make meshes transparent with BRIGHTER white color
     if (meshRefs.current) {
       originalMaterials.current.left = meshRefs.current.left.map(mesh => {
         if (Array.isArray(mesh.material)) {
@@ -410,87 +666,46 @@ export const useCenterLine = ({
         }
       });
 
-      // Apply BRIGHTER white transparency to left meshes
-      meshRefs.current.left.forEach(mesh => {
+      const applyTransparency = (mesh: THREE.Mesh) => {
         if (Array.isArray(mesh.material)) {
           mesh.material.forEach(mat => {
             if (mat instanceof THREE.Material) {
               mat.transparent = true;
-              mat.opacity = 0.2; // INCREASED opacity for better brightness
-              // Change to BRIGHTER white appearance
-              if (mat instanceof THREE.MeshPhongMaterial) {
-                mat.color = new THREE.Color(0xffffff); // Pure white
-                mat.emissive = new THREE.Color(0xaaaaaa); // LIGHTER gray emissive
-                mat.emissiveIntensity = 0.7; // INCREASED emissive intensity
-                mat.specular = new THREE.Color(0xffffff); // White specular for shine
-                mat.shininess = 15; // Add some shininess
-                // Increase overall brightness
-                mat.needsUpdate = true;
-              }
-            }
-          });
-        } else {
-          mesh.material.transparent = true;
-          mesh.material.opacity = 0.2; // INCREASED opacity
-          if (mesh.material instanceof THREE.MeshPhongMaterial) {
-            const phongMat = mesh.material as THREE.MeshPhongMaterial;
-            phongMat.color = new THREE.Color(0xffffff);
-            phongMat.emissive = new THREE.Color(0xaaaaaa); // LIGHTER gray
-            phongMat.emissiveIntensity = 0.7; // INCREASED intensity
-            phongMat.specular = new THREE.Color(0xffffff);
-            phongMat.shininess = 15;
-            phongMat.needsUpdate = true;
-          }
-        }
-      });
-
-      // Apply BRIGHTER white transparency to right meshes
-      meshRefs.current.right.forEach(mesh => {
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach(mat => {
-            if (mat instanceof THREE.Material) {
-              mat.transparent = true;
-              mat.opacity = 0.2; // INCREASED opacity
+              mat.opacity = 0.2;
               if (mat instanceof THREE.MeshPhongMaterial) {
                 mat.color = new THREE.Color(0xffffff);
-                mat.emissive = new THREE.Color(0xaaaaaa); // LIGHTER gray
-                mat.emissiveIntensity = 0.7; // INCREASED intensity
-                mat.specular = new THREE.Color(0xffffff);
-                mat.shininess = 15;
+                mat.emissive = new THREE.Color(0xaaaaaa);
+                mat.emissiveIntensity = 0.7;
                 mat.needsUpdate = true;
               }
             }
           });
         } else {
           mesh.material.transparent = true;
-          mesh.material.opacity = 0.2; // INCREASED opacity
+          mesh.material.opacity = 0.2;
           if (mesh.material instanceof THREE.MeshPhongMaterial) {
-            const phongMat = mesh.material as THREE.MeshPhongMaterial;
-            phongMat.color = new THREE.Color(0xffffff);
-            phongMat.emissive = new THREE.Color(0xaaaaaa); // LIGHTER gray
-            phongMat.emissiveIntensity = 0.7; // INCREASED intensity
-            phongMat.specular = new THREE.Color(0xffffff);
-            phongMat.shininess = 15;
-            phongMat.needsUpdate = true;
+            mesh.material.color = new THREE.Color(0xffffff);
+            mesh.material.emissive = new THREE.Color(0xaaaaaa);
+            mesh.material.emissiveIntensity = 0.7;
+            mesh.material.needsUpdate = true;
           }
         }
-      });
+      };
+
+      meshRefs.current.left.forEach(applyTransparency);
+      meshRefs.current.right.forEach(applyTransparency);
     }
   }, [meshRefs]);
 
   const restoreOriginalMaterials = useCallback(() => {
-    // Restore original materials
     if (meshRefs.current && originalMaterials.current.left.length > 0) {
       meshRefs.current.left.forEach((mesh, index) => {
         if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((mat, matIndex) => {
-            mat.dispose();
-          });
+          mesh.material.forEach(mat => mat.dispose());
         } else {
           mesh.material.dispose();
         }
 
-        // Restore original material
         const originalMaterial = originalMaterials.current.left[index];
         if (Array.isArray(originalMaterial)) {
           mesh.material = originalMaterial.map(mat => mat.clone());
@@ -501,9 +716,7 @@ export const useCenterLine = ({
 
       meshRefs.current.right.forEach((mesh, index) => {
         if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((mat, matIndex) => {
-            mat.dispose();
-          });
+          mesh.material.forEach(mat => mat.dispose());
         } else {
           mesh.material.dispose();
         }
@@ -516,13 +729,12 @@ export const useCenterLine = ({
         }
       });
 
-      // Clear stored materials
       originalMaterials.current = { left: [], right: [] };
     }
   }, [meshRefs]);
 
   const removeCenterLine = useCallback(() => {
-    // Remove main line from 3D views
+    // Remove 3D centerlines
     if (centerLineRefs.current.left) {
       leftSceneRef.current?.remove(centerLineRefs.current.left);
       centerLineRefs.current.left.geometry.dispose();
@@ -533,8 +745,6 @@ export const useCenterLine = ({
       centerLineRefs.current.right.geometry.dispose();
       (centerLineRefs.current.right.material as THREE.Material).dispose();
     }
-
-    // Remove glow lines from 3D views
     if (centerLineRefs.current.leftGlow) {
       leftSceneRef.current?.remove(centerLineRefs.current.leftGlow);
       centerLineRefs.current.leftGlow.geometry.dispose();
@@ -546,10 +756,9 @@ export const useCenterLine = ({
       (centerLineRefs.current.rightGlow.material as THREE.Material).dispose();
     }
 
-    // NEW: Remove DICOM center line indicators
-    removeDICOMCenterLineIndicators();
+    // Remove DICOM centerlines
+    removeDICOMCenterlines();
 
-    // Reset 3D line references
     centerLineRefs.current = {
       ...centerLineRefs.current,
       left: null,
@@ -558,76 +767,45 @@ export const useCenterLine = ({
       rightGlow: null
     };
 
-    // Restore original mesh materials
     restoreOriginalMaterials();
-
     setCenterLineEnabled(false);
 
-    console.log('🗑️ Spinal Center Line removed from ALL views');
-  }, [leftSceneRef, rightSceneRef, restoreOriginalMaterials, removeDICOMCenterLineIndicators]);
-
+    console.log('🗑️ Centerline removed');
+  }, [leftSceneRef, rightSceneRef, restoreOriginalMaterials, removeDICOMCenterlines]);
 
   const showCenterLine = useCallback(() => {
-    // Remove existing center lines
+    console.log('🎯 showCenterLine called');
+
     removeCenterLine();
 
-    const centerPoints = calculateSpinalCenterline();
-    if (!centerPoints || centerPoints.length < 2) {
-      console.warn('Not enough vertebrae found to calculate center line');
+    const centerData = calculateSpinalCenterline();
+    if (!centerData || centerData.threePoints.length < 2) {
+      console.warn('⚠️ Not enough points for centerline');
       return;
     }
 
-    // Add CSS styles for center line indicators
-    addCenterLineStyles();
+    const { threePoints } = centerData;
 
-    // Create a smooth curve from the center points for THICK tube geometry
-    const curve = new THREE.CatmullRomCurve3(centerPoints);
+    // Create 3D tube
+    const curve = new THREE.CatmullRomCurve3(threePoints);
 
-    // Create THICK tube geometry for the main center line
-    const tubeGeometry = new THREE.TubeGeometry(
-      curve,
-      centerPoints.length * 20, // More segments for smoother curve
-      1.5, // RADIUS - this makes it thick! Increase for thicker lines
-      8,   // Radial segments
-      false // Not closed
-    );
+    const tubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 1.5, 8, false);
+    const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 1.0 });
 
-    // Create material for the thick tube
-    const tubeMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff0000, // Bright red
-      transparent: true,
-      opacity: 1.0
-    });
-
-    // Create tube objects for 3D views
     const leftTube = new THREE.Mesh(tubeGeometry, tubeMaterial);
     const rightTube = new THREE.Mesh(tubeGeometry.clone(), tubeMaterial);
 
-    // Create even THICKER glow tube
-    const glowTubeGeometry = new THREE.TubeGeometry(
-      curve,
-      centerPoints.length * 20,
-      2.5, // LARGER radius for glow - makes it even thicker
-      8,
-      false
-    );
-
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff4444, // Lighter red for glow
-      transparent: true,
-      opacity: 0.6
-    });
+    const glowTubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 2.5, 8, false);
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.6 });
 
     const leftGlowTube = new THREE.Mesh(glowTubeGeometry, glowMaterial);
     const rightGlowTube = new THREE.Mesh(glowTubeGeometry.clone(), glowMaterial);
 
-    // Add both tubes to 3D scenes (glow first, then main tube)
     leftSceneRef.current?.add(leftGlowTube);
     leftSceneRef.current?.add(leftTube);
     rightSceneRef.current?.add(rightGlowTube);
     rightSceneRef.current?.add(rightTube);
 
-    // Store references to both tubes
     centerLineRefs.current = {
       ...centerLineRefs.current,
       left: leftTube,
@@ -636,25 +814,21 @@ export const useCenterLine = ({
       rightGlow: rightGlowTube
     };
 
-    // NEW: Create center line indicators in DICOM views
-    createDICOMCenterLineIndicators(centerPoints);
+    // Create DICOM centerlines
+    createDICOMCenterlines(centerData);
 
-    // Make meshes transparent with BRIGHT white color
     makeMeshesTransparent();
-
     setCenterLineEnabled(true);
 
-    console.log('🎯 THICK Spinal Center Line enabled on ALL views (3D + DICOM)');
+    console.log('✅ Centerline enabled');
   }, [
     calculateSpinalCenterline,
     leftSceneRef,
     rightSceneRef,
     makeMeshesTransparent,
-    addCenterLineStyles,
-    createDICOMCenterLineIndicators,
+    createDICOMCenterlines,
     removeCenterLine
   ]);
-
 
   const toggleCenterLine = useCallback(() => {
     if (centerLineRefs.current.left) {
@@ -663,6 +837,16 @@ export const useCenterLine = ({
       showCenterLine();
     }
   }, [showCenterLine, removeCenterLine]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      eventListenersRef.current.forEach(({ element, event, handler }) => {
+        try { element.removeEventListener(event, handler); } catch (e) {}
+      });
+      centerLineRefs.current.dicomCanvases.forEach(canvas => canvas.remove());
+    };
+  }, []);
 
   return {
     showCenterLine,

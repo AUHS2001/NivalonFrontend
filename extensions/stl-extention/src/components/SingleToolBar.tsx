@@ -9,6 +9,7 @@ import { useImplantContext } from '../context/ImplantContext';
 import { useCenterLineContext } from '../context/CenterLineContext';
 import { useVersionHistory } from '../hooks/useVersionHistory'
 import { useAngleMeasurementContext } from '../context/AngleMeasurementContext';
+import { useSpineLabelingContext } from '../context/SpineLabelingContext';
 
 
 interface SingleToolbarProps {
@@ -29,9 +30,13 @@ interface SingleToolbarProps {
   rotationMode1?: boolean;
   rotationMode2?: boolean;
   rotationMode3?: boolean;
+  implantMoveMode?: boolean;
+  spineLabelingMode?: boolean;
+  onToggleSpineLabeling?: () => void;
   onToggleRotation1?: () => void;
   onToggleRotation2?: () => void;
   onToggleRotation3?: () => void;
+  onToggleImplantMove?: () => void;
   onToggleLinking?: () => void;
   onToggleRotation?: () => void;
   onFileSelect: () => void;
@@ -64,6 +69,8 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   rotationMode1,
   rotationMode2,
   rotationMode3,
+  implantMoveMode,
+  spineLabelingMode,
   onFileSelect,
   onRefresh,
   onUndo,
@@ -78,7 +85,9 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   onToggleRotation,
   onToggleRotation1,
   onToggleRotation2,
-  onToggleRotation3
+  onToggleRotation3,
+  onToggleImplantMove,
+  onToggleSpineLabeling
 }) => {
   // Add this CSS to your global styles or component
   const scrollbarStyles = `
@@ -129,6 +138,11 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
       setError,
       setApproveSuccess
     });
+
+  const { 
+      spineLabelingMode: spineLabelMode, 
+      toggleSpineLabelingMode 
+  } = useSpineLabelingContext();
 
   useEffect(() => {
     const loadFromLocalStorage = () => {
@@ -355,6 +369,17 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             <i className="fas fa-sync-alt" />
           </button>
 
+          {/* Implant Move Mode */}
+          <button
+            className={`icon-button${implantMoveMode === true ? " selected" : ""}`}
+            type="button"
+            data-tooltip={implantMoveMode ? "Implant Move (ON)" : "Move Implant"}
+            onClick={onToggleImplantMove}
+            style={{ minWidth: '45px', minHeight: '45px' }}
+          >
+            <i className="fas fa-hand-rock" />
+          </button>
+
           {/* Screenshot */}
           <button
             className="icon-button"
@@ -408,6 +433,16 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             style={{ minWidth: '45px', minHeight: '45px' }}
           >
             <i className="fas fa-columns" />
+          </button>
+
+          <button
+            className={`icon-button${spineLabelMode ? " selected" : ""}`}
+            type="button"
+            data-tooltip={spineLabelMode ? "Spine Labeling" : "Spine Labeling"}
+            onClick={toggleSpineLabelingMode}
+            style={{ minWidth: '45px', minHeight: '45px' }}
+          >
+            <i className="fas fa-tag" />
           </button>
 
           {/* Approve */}

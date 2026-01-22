@@ -49,6 +49,7 @@ import { VersionHistoryProvider } from '../../../extensions/stl-extention/src/co
 import { ImplantProvider } from '../../../extensions/stl-extention/src/context/ImplantContext';
 import { StlVisibilityProvider } from '../../../extensions/stl-extention/src/context/StlVisibilityContext';
 import { AngleMeasurementProvider } from '../../../extensions/stl-extention/src/context/AngleMeasurementContext';
+import { SpineLabelingProvider } from '../../../extensions/stl-extention/src/context/SpineLabelingContext';
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -177,6 +178,7 @@ function App({
 
   return (
     <CombinedProviders>
+      <SpineLabelingProvider>
       <AngleMeasurementProvider>
       <StlVisibilityProvider>
       <ImplantProvider>
@@ -205,6 +207,7 @@ function App({
       </ImplantProvider>
       </StlVisibilityProvider>
       </AngleMeasurementProvider>
+      </SpineLabelingProvider>
     </CombinedProviders>
   );
 }

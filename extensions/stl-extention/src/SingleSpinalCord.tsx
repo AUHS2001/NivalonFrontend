@@ -34,12 +34,18 @@ import { useSTLToDICOMLinking } from './hooks/useSTLToDICOMLinking';
 import { STLToDICOMConfig } from './types/three.types';
 import { useVersionHistoryContext } from './context/VersionHistoryContext'
 import { useCenterLine } from './hooks/useCenterLine';
+import { useImplantHighlight } from './hooks/useImplantHighlight';
 import { CenterLineProvider } from './context/CenterLineContext';
 import { servicesManager, commandsManager } from '../../../platform/app/src/App';
 import { useViewportGrid } from '@ohif/ui-next';
 import { useViewportRendering } from '../../cornerstone/src/hooks/useViewportRendering';
 import FileLoaderService from 'platform/app/src/routes/Local/fileLoaderService';
 import { useAngleMeasurementContext } from './context/AngleMeasurementContext';
+import { useImplantContext } from './context/ImplantContext';
+
+import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineLabelingContext';
+import { SpineLabelingPopup } from './components/SpineLabelingPopup';
+import { useSpineLabeling } from './hooks/useSpineLabeling';
 
 interface SingleSpinalCordProps {
   servicesManager?: any;
@@ -137,13 +143,14 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
 
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { layout, activeViewportId, viewports, isHangingProtocolLayout } = viewportGrid;
-  const viewport1Rendering = useViewportRendering(activeViewportId);
+  // const viewport1Rendering = useViewportRendering(activeViewportId || "");
   const { versionHistoryEnabled, versions, setVersions } = useVersionHistoryContext();
 
   const [rotationMode, setRotationMode] = useState(false);
   const [rotationMode1, setRotationMode1] = useState(false);
   const [rotationMode2, setRotationMode2] = useState(false);
   const [rotationMode3, setRotationMode3] = useState(false);
+  const [implantMoveMode, setImplantMoveMode] = useState(false);
 
   const isRotatingRef = useRef(false);
   const initialMousePos = useRef({ x: 0, y: 0 });
@@ -155,6 +162,43 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   }>>([]);
   const initialRotationRef = useRef<THREE.Euler>(new THREE.Euler());
   const selectedBoneCenterRef = useRef<THREE.Vector3 | null>(null);
+  const { implantFile } = useImplantContext();
+  const implantUrlRef = useRef<string | null>(null);
+
+  const { 
+    spineLabelingMode, 
+    isLabelingPopupOpen, 
+    closeLabelingPopup 
+  } = useSpineLabelingContext();
+  
+  // Initialize spine labeling hook
+  const spineLabeling = useSpineLabeling({
+    leftSceneRef,
+    rightSceneRef,
+    cameraRef,
+    meshRefs,
+    leftRendererRef
+  });
+  
+  // Add DICOM viewport labeling handler (if needed)
+  // useEffect(() => {
+  //   if (!spineLabelingMode || !propServicesManager || !labelingConfig) return;
+    
+  //   // This would handle DICOM viewport labeling
+  //   // You would need to integrate with OHIF's cornerstoneTools
+  //   const handleDICOMClick = (event: any) => {
+  //     // Implementation depends on OHIF's API
+  //     // This is a placeholder
+  //     console.log('DICOM viewport clicked for labeling');
+      
+  //     // You would get the 2D position and convert it
+  //     // const dicomPosition = new THREE.Vector3(x, y, 0);
+  //     // addLabel(dicomPosition, 'dicom');
+  //   };
+    
+  //   // Add event listener to OHIF viewports
+  //   // This part depends on your OHIF setup
+  // }, [spineLabelingMode, propServicesManager, labelingConfig]);
 
   const {
     angleMeasurementEnabled,
@@ -174,45 +218,50 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode) return;
-  
+
       const rect = leftMount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  
+
       raycaster.setFromCamera(mouse, cameraRef.current!);
-      const intersects = raycaster.intersectObjects(meshRefs.current.left);
-  
+      // Filter out implants from raycasting
+      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      const intersects = raycaster.intersectObjects(nonImplantMeshes);
+
       if (intersects.length > 0) {
         leftControlsRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        
+
         const clickedMesh = intersects[0].object as THREE.Mesh;
         selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
       }
     };
-  
+
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-    
+
       const deltaX = event.clientX - initialMousePos.current.x;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-    
+
       const horizontalAmount = deltaX * 0.5; // Controls left/right movement speed
-      
+
       const clickedIndex = selectedMeshIndex.current;
-      
-      // For each bone from clicked down to bottom
+
+      // For each bone from clicked down to bottom (skip implants)
       for (let i = clickedIndex; i >= 0; i--) {
         const leftMesh = meshRefs.current.left[i];
         const rightMesh = meshRefs.current.right[i];
-        
+
+        // Skip implants
+        if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
+
         if (leftMesh) {
           // Move left bone left/right on X-axis based on mouse X movement
-          leftMesh.position.x += horizontalAmount; 
+          leftMesh.position.x += horizontalAmount;
         }
-        
-        if (rightMesh) {
+
+        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
           // Move right bone in opposite direction for symmetry
           rightMesh.position.x -= horizontalAmount;
         }
@@ -246,45 +295,50 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode1) return;
-  
+
       const rect = leftMount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  
+
       raycaster.setFromCamera(mouse, cameraRef.current!);
-      const intersects = raycaster.intersectObjects(meshRefs.current.left);
-  
+      // Filter out implants from raycasting
+      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      const intersects = raycaster.intersectObjects(nonImplantMeshes);
+
       if (intersects.length > 0) {
         leftControlsRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        
+
         const clickedMesh = intersects[0].object as THREE.Mesh;
         selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
       }
     };
-  
+
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-    
+
       const deltaY = event.clientY - initialMousePos.current.y;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-    
+
       const verticalAmount = deltaY * 0.5; // Controls up/down movement speed
       const rotationAmount = deltaY * 0.01; // Controls rotation speed
-      
+
       const clickedIndex = selectedMeshIndex.current;
-      
-      // For each bone from clicked down to bottom
+
+      // For each bone from clicked down to bottom (skip implants)
       for (let i = clickedIndex; i >= 0; i--) {
         const leftMesh = meshRefs.current.left[i];
         const rightMesh = meshRefs.current.right[i];
-        
+
+        // Skip implants
+        if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
+
         if (leftMesh) {
           leftMesh.position.y += verticalAmount; // Negative because Three.js Y-axis is up
         }
-        
-        if (rightMesh) {
+
+        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
           rightMesh.rotation.x += rotationAmount;
           rightMesh.position.y -= verticalAmount;
         }
@@ -324,14 +378,16 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, cameraRef.current!);
-      const intersects = raycaster.intersectObjects(meshRefs.current.left);
+      // Filter out implants from raycasting
+      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      const intersects = raycaster.intersectObjects(nonImplantMeshes);
 
       if (intersects.length > 0) {
         event.preventDefault();
         leftControlsRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        
+
         const clickedMesh = intersects[0].object as THREE.Mesh;
         selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
       }
@@ -339,21 +395,23 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
 
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-    
+
       const deltaX = event.clientX - initialMousePos.current.x;
       initialMousePos.current.x = event.clientX;
-    
+
       const spinSensitivity = 0.001;
       const angle = deltaX * spinSensitivity;
-    
+
       const clickedIndex = selectedMeshIndex.current;
-    
+
       for (let i = clickedIndex; i >= 0; i--) {
         const leftMesh = meshRefs.current.left[i];
         const rightMesh = meshRefs.current.right[i];
-    
+
         if (!leftMesh || !rightMesh) continue;
-    
+        // Skip implants
+        if (leftMesh.userData?.isImplant || leftMesh.userData?.type === 'I') continue;
+
         // Top-down rotation (Y-axis) - LEFT bone clockwise
         leftMesh.rotation.x -= -angle;
       }
@@ -392,13 +450,15 @@ useEffect(() => {
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouse, cameraRef.current!);
-    const intersects = raycaster.intersectObjects(meshRefs.current.left);
+    // Filter out implants from raycasting
+    const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+    const intersects = raycaster.intersectObjects(nonImplantMeshes);
 
     if (intersects.length > 0) {
       leftControlsRef.current!.enabled = false;
       isRotatingRef.current = true;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-      
+
       const clickedMesh = intersects[0].object as THREE.Mesh;
       selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
     }
@@ -406,24 +466,27 @@ useEffect(() => {
 
   const onMouseMove = (event: MouseEvent) => {
     if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-  
+
     const deltaY = event.clientY - initialMousePos.current.y;
     initialMousePos.current = { x: event.clientX, y: event.clientY };
-  
+
     const depthAmount = deltaY * 0.5; // Controls forward/backward movement speed
-    
+
     const clickedIndex = selectedMeshIndex.current;
-    
-    // For each bone from clicked down to bottom
+
+    // For each bone from clicked down to bottom (skip implants)
     for (let i = clickedIndex; i >= 0; i--) {
       const leftMesh = meshRefs.current.left[i];
       const rightMesh = meshRefs.current.right[i];
-      
+
+      // Skip implants
+      if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
+
       if (leftMesh) {
         leftMesh.position.z += depthAmount; // Forward/backward on Z-axis
       }
-      
-      if (rightMesh) {
+
+      if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
         rightMesh.position.z += depthAmount; // Both move together
       }
     }
@@ -446,6 +509,119 @@ useEffect(() => {
   };
 }, [rotationMode3]); // Changed dependency to rotationMode3
 
+// IMPLANT MOVE MODE - When active, clicking on implant moves only the implant
+useEffect(() => {
+  const leftMount = leftMountRef.current;
+  if (!leftMount || !implantMoveMode) return;
+
+  let isDragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // Find the implant mesh
+  const getImplantMeshes = () => {
+    const leftImplant = meshRefs.current.left.find(
+      m => m.userData?.isImplant || m.userData?.type === 'I'
+    );
+    const rightImplant = meshRefs.current.right.find(
+      m => m.userData?.isImplant || m.userData?.type === 'I'
+    );
+    return { leftImplant, rightImplant };
+  };
+
+  const onMouseDown = (event: MouseEvent) => {
+    if (!implantMoveMode) return;
+
+    const rect = leftMount.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, cameraRef.current!);
+
+    // Only raycast against implant meshes
+    const { leftImplant } = getImplantMeshes();
+    if (!leftImplant) return;
+
+    const intersects = raycaster.intersectObject(leftImplant);
+
+    // Only start dragging if we clicked on the implant
+    if (intersects.length > 0) {
+      isDragging = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+
+      // Disable orbit controls
+      if (leftControlsRef.current) {
+        leftControlsRef.current.enabled = false;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const onMouseMove = (event: MouseEvent) => {
+    if (!isDragging || !implantMoveMode) return;
+
+    const deltaX = event.clientX - lastX;
+    const deltaY = event.clientY - lastY;
+    lastX = event.clientX;
+    lastY = event.clientY;
+
+    const { leftImplant, rightImplant } = getImplantMeshes();
+
+    // Move implant only (shift for rotation)
+    if (event.shiftKey) {
+      // Rotate around the implant's own center
+      // Since geometry is centered at load time, simple rotation works
+      const rotateSpeed = 0.03;
+
+      if (leftImplant) {
+        // Mouse left/right = spin around vertical axis (Y in world, but Z in local due to rotation.x = PI/2)
+        leftImplant.rotateZ(deltaX * rotateSpeed);
+        // Mouse up/down = tilt forward/back
+        leftImplant.rotateX(-deltaY * rotateSpeed);
+      }
+
+      if (rightImplant) {
+        rightImplant.rotateZ(deltaX * rotateSpeed);
+        rightImplant.rotateX(-deltaY * rotateSpeed);
+      }
+    } else {
+      // Move - increased speed for better responsiveness
+      const moveSpeed = 1.5;
+      if (leftImplant) {
+        leftImplant.position.x += deltaX * moveSpeed;  // Right = right
+        leftImplant.position.y += deltaY * moveSpeed;  // Up = up (adjusted for scale.y=-1)
+      }
+      if (rightImplant) {
+        rightImplant.position.x += deltaX * moveSpeed;
+        rightImplant.position.y += deltaY * moveSpeed;
+      }
+    }
+  };
+
+  const onMouseUp = () => {
+    isDragging = false;
+    // Re-enable orbit controls
+    if (leftControlsRef.current) {
+      leftControlsRef.current.enabled = true;
+    }
+  };
+
+  leftMount.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+
+  return () => {
+    leftMount.removeEventListener('mousedown', onMouseDown);
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  };
+}, [implantMoveMode]);
 
   const applyBoneAndRainbowToAllViewports = () => {
     console.log('🎨 Applying bone preset with OHIF services...');
@@ -536,6 +712,9 @@ useEffect(() => {
   };
 
 
+  // Use propServicesManager if available, fallback to imported servicesManager
+  const effectiveServicesManager = propServicesManager || servicesManager;
+
   const {
     showCenterLine,
     removeCenterLine,
@@ -545,7 +724,19 @@ useEffect(() => {
   } = useCenterLine({
     meshRefs,
     leftSceneRef,
-    rightSceneRef
+    rightSceneRef,
+    servicesManager: effectiveServicesManager
+  });
+
+  // Implant highlight - draws yellow block when merge is active
+  const {
+    showHighlights: showImplantHighlights,
+    removeHighlights: removeImplantHighlights,
+    detectImplantPosition
+  } = useImplantHighlight({
+    meshRefs,
+    servicesManager: effectiveServicesManager,
+    showMerge
   });
 
   // Add debug effect
@@ -553,9 +744,12 @@ useEffect(() => {
     console.log('🔗 STL-DICOM Linking Status:', {
       isLinkingActive,
       ohifStatus,
-      hasServicesManager: !!propServicesManager
+      hasServicesManager: !!propServicesManager,
+      hasImportedServicesManager: !!servicesManager,
+      hasEffectiveServicesManager: !!effectiveServicesManager,
+      hasCornerstoneViewportService: !!effectiveServicesManager?.services?.cornerstoneViewportService
     });
-  }, [isLinkingActive, ohifStatus, propServicesManager]);
+  }, [isLinkingActive, ohifStatus, propServicesManager, effectiveServicesManager]);
 
   const {
     clearMeasurements,
@@ -1081,7 +1275,6 @@ const createAutomaticSegmentation = async () => {
   });
 
   const {
-    implantFile,
     implantMesh,
     implantMountRef: implantMountRefFromHook,
     handleImplantFileChange,
@@ -1455,6 +1648,26 @@ const createAutomaticSegmentation = async () => {
   }, [clickRemovalMode]);
 
 
+  useEffect(() => {
+  if (implantFile) {
+    const implantUrl = URL.createObjectURL(implantFile);
+    
+    // Add implant directly to existing STLs
+    setTestStls(prevStls => {
+      return [...prevStls, implantUrl]; // Just add the URL directly
+    });
+    
+    // Cleanup function
+    return () => {
+      URL.revokeObjectURL(implantUrl);
+    };
+  } else {
+    // Remove all object URLs (assuming they're all implants)
+    // Or if you need to clear implants, you'll need another approach
+    setTestStls(prevStls => prevStls.filter(url => !url.startsWith('blob:')));
+  }
+}, [implantFile]);
+
 
   // Update your refresh function
   const handleRefresh = () => {
@@ -1600,7 +1813,7 @@ const createAutomaticSegmentation = async () => {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${userToken}`,
-          "Content-Type": "application/json"
+          // Don't set Content-Type for FormData - browser sets it automatically with correct boundary
         },
         body: formData,
       });
@@ -1719,6 +1932,23 @@ const createAutomaticSegmentation = async () => {
           </div>
         )}
 
+        {isLabelingPopupOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <SpineLabelingPopup onClose={closeLabelingPopup} />
+          </div>
+        )}
+
         <SingleViewerContainer
           startMountRef={startMountRef}
           leftMountRef={leftMountRef}
@@ -1741,29 +1971,41 @@ const createAutomaticSegmentation = async () => {
                 rotationMode1={rotationMode1}
                 rotationMode2={rotationMode2}
                 rotationMode3={rotationMode3}
+                implantMoveMode={implantMoveMode}
                 onToggleRotation={() => {
                   setRotationMode(!rotationMode);
                   setRotationMode1(false);
                   setRotationMode2(false);
                   setRotationMode3(false);
+                  setImplantMoveMode(false);
                 }}
                 onToggleRotation1={() => {
                   setRotationMode1(!rotationMode1);
                   setRotationMode(false);
                   setRotationMode2(false);
                   setRotationMode3(false);
+                  setImplantMoveMode(false);
                 }}
                 onToggleRotation2={() => {
                   setRotationMode2(!rotationMode2);
                   setRotationMode(false);
                   setRotationMode1(false);
                   setRotationMode3(false);
+                  setImplantMoveMode(false);
                 }}
                 onToggleRotation3={() => {
                   setRotationMode3(!rotationMode3);
                   setRotationMode(false);
                   setRotationMode1(false);
                   setRotationMode2(false);
+                  setImplantMoveMode(false);
+                }}
+                onToggleImplantMove={() => {
+                  setImplantMoveMode(!implantMoveMode);
+                  setRotationMode(false);
+                  setRotationMode1(false);
+                  setRotationMode2(false);
+                  setRotationMode3(false);
                 }}
                 onFileSelect={() => document.getElementById('stl-file-input')?.click()}
                 onRefresh={handleRefresh}

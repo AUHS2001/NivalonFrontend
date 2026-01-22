@@ -54,6 +54,17 @@ export const useImplantViewer = ({
     implantGroupRef.current.clear();
     if (implantMesh) {
       implantGroupRef.current.remove(implantMesh);
+      // Dispose of old material and geometry to prevent memory leaks
+      if (implantMesh.material) {
+        if (Array.isArray(implantMesh.material)) {
+          implantMesh.material.forEach(material => material.dispose());
+        } else {
+          implantMesh.material.dispose();
+        }
+      }
+      if (implantMesh.geometry) {
+        implantMesh.geometry.dispose();
+      }
       setImplantMesh(null);
     }
 
@@ -64,17 +75,26 @@ export const useImplantViewer = ({
         geometry.computeVertexNormals();
         geometry.computeBoundingBox();
 
+        // IMPLANT: Always use GREEN
+        const implantColor = 0x00ff00; // BRIGHT GREEN
+        
         const mat = new THREE.MeshPhongMaterial({
-          color: 0xffffff,
-          specular: 0x00000000,
-          shininess: 0,
+          color: implantColor,
+          specular: 0x111111,
+          shininess: 30,
           side: THREE.DoubleSide,
-          emissive: brightnessEnabled ? new THREE.Color(0x8888ff) : new THREE.Color(0xffffff),
-          emissiveIntensity: brightnessEnabled ? brightness * 0.5 : 0.2,
+          transparent: true,
+          opacity: 0.9,
+          emissive: new THREE.Color(implantColor),
+          emissiveIntensity: brightnessEnabled ? brightness * 0.5 : 0.3,
         });
 
         const mesh = new THREE.Mesh(geometry, mat);
-        mesh.userData = { fileName: file.name };
+        mesh.userData = { 
+          fileName: file.name,
+          isImplant: true,
+          type: 'I' // Mark as implant type
+        };
 
         implantGroupRef.current.add(mesh);
         setImplantMesh(mesh);
@@ -146,11 +166,18 @@ export const useImplantViewer = ({
     const implantMount = implantMountRef.current;
     implantScene.background = new THREE.Color(0x000000);
 
-    // Set up lighting
+    // Set up lighting - use green tinted light for implants
     implantScene.add(new THREE.AmbientLight(0x404040, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    
+    // Green directional light to enhance the green color
+    const dirLight = new THREE.DirectionalLight(0x00ff00, 0.8);
     dirLight.position.set(0, 1, 1).normalize();
     implantScene.add(dirLight);
+    
+    // Add some white light for better visibility
+    const whiteLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    whiteLight.position.set(1, 1, 0).normalize();
+    implantScene.add(whiteLight);
 
     implantScene.add(implantGroupRef.current);
 
@@ -220,16 +247,30 @@ export const useImplantViewer = ({
   // Handle brightness changes for implant
   useEffect(() => {
     if (implantMesh && implantMesh.material) {
-      implantMesh.material.emissive = brightnessEnabled ?
-        new THREE.Color(0xffffff) : new THREE.Color(0xffffff);
-      implantMesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
-      implantMesh.material.needsUpdate = true;
+      // Ensure implant stays green even with brightness changes
+      const implantColor = 0x00ff00;
+      
+      if (Array.isArray(implantMesh.material)) {
+        implantMesh.material.forEach(material => {
+          if (material instanceof THREE.MeshPhongMaterial) {
+            material.color.setHex(implantColor);
+            material.emissive.setHex(implantColor);
+            material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.3;
+            material.needsUpdate = true;
+          }
+        });
+      } else if (implantMesh.material instanceof THREE.MeshPhongMaterial) {
+        implantMesh.material.color.setHex(implantColor);
+        implantMesh.material.emissive.setHex(implantColor);
+        implantMesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.3;
+        implantMesh.material.needsUpdate = true;
+      }
 
       if (implantRendererRef.current && implantCamera) {
         implantRendererRef.current.render(implantSceneRef.current, implantCamera);
       }
     }
-  }, [brightnessEnabled, brightness, implantMesh]);
+  }, [brightnessEnabled, brightness, implantMesh, implantCamera]);
 
   return {
     implantFile,
