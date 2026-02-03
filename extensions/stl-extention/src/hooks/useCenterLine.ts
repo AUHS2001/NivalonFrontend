@@ -34,6 +34,7 @@ export const useCenterLine = ({
   }>({ left: [], right: [] });
 
   const [centerLineEnabled, setCenterLineEnabled] = useState(false);
+  const [transparencyEnabled, setTransparencyEnabled] = useState(true);
 
   // Store centerline points in both coordinate systems
   const centerLineWorldPointsRef = useRef<Array<[number, number, number]>>([]);
@@ -257,6 +258,9 @@ export const useCenterLine = ({
       volumeOrigin[2] + (volumeDimensions[2] * volumeSpacing[2]) / 2
     ];
 
+    // Calculate volume Y size for axial adjustment
+    const volumeYSize = volumeDimensions[1] * volumeSpacing[1]; // Y extent in mm (anterior-posterior)
+
     worldPoints.forEach((worldPoint) => {
       try {
         // Apply view-specific world coordinate adjustments
@@ -266,9 +270,15 @@ export const useCenterLine = ({
           // For sagittal: flip Z around volume center and apply offset
           const zOffset = worldPoint[2] - volumeCenter[2];
           adjustedWorldPoint[2] = volumeCenter[2] - zOffset + volumeHeight * 0.17;
+          // Move posterior (right in sagittal view) to position in spinal canal
+          adjustedWorldPoint[1] = worldPoint[1] + volumeYSize * 0.12;
         } else if (viewType === 'coronal') {
           // For coronal: small downward offset
           adjustedWorldPoint[2] = worldPoint[2] - volumeHeight * 0.02;
+        } else if (viewType === 'axial') {
+          // For axial: move posterior (increase Y) to position in spinal canal
+          // The centerline should be in the spinal canal, not at the vertebral body
+          adjustedWorldPoint[1] = worldPoint[1] + volumeYSize * 0.15;
         }
 
         const canvasPoint = viewport.worldToCanvas(adjustedWorldPoint);
@@ -733,6 +743,20 @@ export const useCenterLine = ({
     }
   }, [meshRefs]);
 
+  const toggleTransparency = useCallback(() => {
+    if (!centerLineEnabled) return;
+
+    if (transparencyEnabled) {
+      // Turn off transparency - restore original materials
+      restoreOriginalMaterials();
+      setTransparencyEnabled(false);
+    } else {
+      // Turn on transparency
+      makeMeshesTransparent();
+      setTransparencyEnabled(true);
+    }
+  }, [centerLineEnabled, transparencyEnabled, restoreOriginalMaterials, makeMeshesTransparent]);
+
   const removeCenterLine = useCallback(() => {
     // Remove 3D centerlines
     if (centerLineRefs.current.left) {
@@ -769,6 +793,7 @@ export const useCenterLine = ({
 
     restoreOriginalMaterials();
     setCenterLineEnabled(false);
+    setTransparencyEnabled(true);
 
     console.log('🗑️ Centerline removed');
   }, [leftSceneRef, rightSceneRef, restoreOriginalMaterials, removeDICOMCenterlines]);
@@ -819,6 +844,7 @@ export const useCenterLine = ({
 
     makeMeshesTransparent();
     setCenterLineEnabled(true);
+    setTransparencyEnabled(true);
 
     console.log('✅ Centerline enabled');
   }, [
@@ -852,7 +878,9 @@ export const useCenterLine = ({
     showCenterLine,
     removeCenterLine,
     toggleCenterLine,
+    toggleTransparency,
     hasCenterLine: !!centerLineRefs.current.left,
-    centerLineEnabled
+    centerLineEnabled,
+    transparencyEnabled
   };
 };

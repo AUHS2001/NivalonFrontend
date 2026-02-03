@@ -9,6 +9,24 @@ import { StlInstanceContext } from '../../context/StlInstanceContext';
 import { StlInstanceListDataContext } from '../../../../app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from '../../../../app/src/context/parentStudyIdContext';
 
+interface Series {
+  series_instance_uid: string;
+  series_number: string;
+  description: string;
+  modality: string;
+  num_series_instances: number;
+  instance_urls: string[];
+}
+
+interface Study {
+  study_instance_uid: string;
+  patient_name: string;
+  patient_id: string;
+  date: string;
+  time: string;
+  description: string;
+  series: Series[];
+}
 
 export default function StudyList() {
     const navigate = useNavigate()
@@ -25,6 +43,15 @@ export default function StudyList() {
     const context3 = useContext(ParentStudyIdContext);
     const { parentStudyId, updateParentStudyId } = context3;
     const system = useSystem();
+
+    // Comparison popup state
+    const [showComparisonPopup, setShowComparisonPopup] = useState(false);
+    const [comparisonMode, setComparisonMode] = useState<'same' | 'different'>('same');
+    const [selectedStudy1, setSelectedStudy1] = useState<Study | null>(null);
+    const [selectedStudy2, setSelectedStudy2] = useState<Study | null>(null);
+    const [selectedSeries1, setSelectedSeries1] = useState<Series | null>(null);
+    const [selectedSeries2, setSelectedSeries2] = useState<Series | null>(null);
+    const [comparisonError, setComparisonError] = useState<string>('');
 
     const toggleRow = (studyInstanceUid: string) => {
       setExpandedStudyId(expandedStudyId === studyInstanceUid ? null : studyInstanceUid);
@@ -195,6 +222,97 @@ export default function StudyList() {
         return Object.values(result);
       }
 
+    // Comparison functions
+    const openComparisonPopup = () => {
+        setShowComparisonPopup(true);
+        setComparisonMode('same');
+        setSelectedStudy1(null);
+        setSelectedStudy2(null);
+        setSelectedSeries1(null);
+        setSelectedSeries2(null);
+        setComparisonError('');
+    };
+
+    const closeComparisonPopup = () => {
+        setShowComparisonPopup(false);
+        setSelectedStudy1(null);
+        setSelectedStudy2(null);
+        setSelectedSeries1(null);
+        setSelectedSeries2(null);
+        setComparisonError('');
+    };
+
+    const handleComparisonModeChange = (mode: 'same' | 'different') => {
+        setComparisonMode(mode);
+        setSelectedStudy1(null);
+        setSelectedStudy2(null);
+        setSelectedSeries1(null);
+        setSelectedSeries2(null);
+        setComparisonError('');
+    };
+
+    const handleStudySelect = (study: Study, position: 1 | 2) => {
+        if (position === 1) {
+            setSelectedStudy1(study);
+            setSelectedSeries1(null);
+        } else {
+            setSelectedStudy2(study);
+            setSelectedSeries2(null);
+        }
+        setComparisonError('');
+    };
+
+    const handleSeriesSelect = (series: Series, position: 1 | 2) => {
+        if (position === 1) {
+            setSelectedSeries1(series);
+        } else {
+            setSelectedSeries2(series);
+        }
+        setComparisonError('');
+    };
+
+    const handleComparisonConfirm = () => {
+        if (!selectedSeries1 || !selectedSeries2) {
+            setComparisonError('Please select two series for comparison');
+            return;
+        }
+
+        if (selectedSeries1.series_instance_uid === selectedSeries2.series_instance_uid) {
+            setComparisonError('Please select two different series');
+            return;
+        }
+
+        // Build URL with query parameters
+        const params = new URLSearchParams();
+        params.set('series1', selectedSeries1.series_instance_uid);
+        params.set('series2', selectedSeries2.series_instance_uid);
+        params.set('series1Name', selectedSeries1.description || 'Series 1');
+        params.set('series2Name', selectedSeries2.description || 'Series 2');
+
+        if (comparisonMode === 'different' && selectedStudy1 && selectedStudy2) {
+            params.set('study1', selectedStudy1.study_instance_uid);
+            params.set('study2', selectedStudy2.study_instance_uid);
+            params.set('study1Name', selectedStudy1.patient_name || selectedStudy1.description || 'Study 1');
+            params.set('study2Name', selectedStudy2.patient_name || selectedStudy2.description || 'Study 2');
+        } else if (comparisonMode === 'same' && selectedStudy1) {
+            params.set('study1', selectedStudy1.study_instance_uid);
+            params.set('study2', selectedStudy1.study_instance_uid);
+            params.set('study1Name', selectedStudy1.patient_name || selectedStudy1.description || 'Study');
+            params.set('study2Name', selectedStudy1.patient_name || selectedStudy1.description || 'Study');
+        }
+
+        closeComparisonPopup();
+        // Open in new tab
+        window.open(`/comparison?${params.toString()}`, '_blank');
+    };
+
+    const getSeriesListForPosition = (position: 1 | 2): Series[] => {
+        if (comparisonMode === 'same') {
+            return selectedStudy1?.series || [];
+        }
+        return position === 1 ? (selectedStudy1?.series || []) : (selectedStudy2?.series || []);
+    };
+
     return (
         <div className="p-3" style={{
                 backgroundColor: "#0a0e17",
@@ -232,9 +350,30 @@ export default function StudyList() {
             {/* Header */}
             <div className="d-flex justify-content-between align-items-center mb-3 px-2">
                 <h4>Study List</h4>
-                <div className="text-end">
-                    <span className="text-primary me-2">{data?.length ?? 0}</span>
-                    <span className="text">Studies</span>
+                <div className="d-flex align-items-center gap-3">
+                    <button
+                        onClick={openComparisonPopup}
+                        style={{
+                            padding: '4px 12px',
+                            backgroundColor: 'rgba(77, 255, 77, 0.2)',
+                            border: '1px solid rgba(77, 255, 77, 0.5)',
+                            borderRadius: '4px',
+                            color: '#4dff4d',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <span style={{ fontSize: '14px' }}>&#x2194;</span>
+                        Compare 3D
+                    </button>
+                    <div className="text-end">
+                        <span className="text-primary me-2">{data?.length ?? 0}</span>
+                        <span className="text">Studies</span>
+                    </div>
                 </div>
             </div>
 
@@ -423,6 +562,343 @@ export default function StudyList() {
             ))
             }
             </div>
+
+            {/* Comparison Popup */}
+            {showComparisonPopup && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10000,
+                }}>
+                    <div style={{
+                        backgroundColor: '#0a0b29',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        width: '950px',
+                        maxWidth: '95%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        border: '1px solid #333',
+                    }}>
+                        {/* Popup Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                            paddingBottom: '10px',
+                            borderBottom: '1px solid #333',
+                        }}>
+                            <h3 style={{ margin: 0, color: '#fff' }}>Select Series for 3D Comparison</h3>
+                            <button
+                                onClick={closeComparisonPopup}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    fontSize: '28px',
+                                    cursor: 'pointer',
+                                    padding: '0',
+                                    width: '30px',
+                                    height: '30px',
+                                    lineHeight: '30px'
+                                }}
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        {/* Mode Toggle */}
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                            <button
+                                onClick={() => handleComparisonModeChange('same')}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    backgroundColor: comparisonMode === 'same' ? 'rgba(30, 144, 255, 0.3)' : 'transparent',
+                                    border: comparisonMode === 'same' ? '2px solid rgba(30, 144, 255, 0.8)' : '1px solid #444',
+                                    borderRadius: '8px',
+                                    color: comparisonMode === 'same' ? '#fff' : '#aaa',
+                                    cursor: 'pointer',
+                                    fontWeight: comparisonMode === 'same' ? 'bold' : 'normal',
+                                }}
+                            >
+                                Same Study
+                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                                    Compare series from one study
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => handleComparisonModeChange('different')}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    backgroundColor: comparisonMode === 'different' ? 'rgba(30, 144, 255, 0.3)' : 'transparent',
+                                    border: comparisonMode === 'different' ? '2px solid rgba(30, 144, 255, 0.8)' : '1px solid #444',
+                                    borderRadius: '8px',
+                                    color: comparisonMode === 'different' ? '#fff' : '#aaa',
+                                    cursor: 'pointer',
+                                    fontWeight: comparisonMode === 'different' ? 'bold' : 'normal',
+                                }}
+                            >
+                                Different Studies
+                                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                                    Compare series from different studies
+                                </div>
+                            </button>
+                        </div>
+
+                        {/* Error Message */}
+                        {comparisonError && (
+                            <div style={{
+                                backgroundColor: 'rgba(255, 100, 100, 0.2)',
+                                border: '1px solid rgba(255, 100, 100, 0.5)',
+                                color: '#ff4d4d',
+                                padding: '10px',
+                                borderRadius: '6px',
+                                marginBottom: '20px',
+                            }}>
+                                {comparisonError}
+                            </div>
+                        )}
+
+                        {/* Selection Panels */}
+                        <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+                            {/* Left Panel - Series 1 */}
+                            <div style={{ flex: 1 }}>
+                                <h4 style={{ color: '#fff', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                        width: '12px',
+                                        height: '12px',
+                                        borderRadius: '50%',
+                                        backgroundColor: '#ffffff',
+                                        display: 'inline-block',
+                                        border: '1px solid #444'
+                                    }}></span>
+                                    Series 1 {selectedSeries1 && <span style={{ color: '#4dff4d', fontSize: '12px' }}>({selectedSeries1.description})</span>}
+                                </h4>
+
+                                {/* Study Dropdown */}
+                                <div style={{ marginBottom: '10px' }}>
+                                    <label style={{ color: '#aaa', fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+                                        Select Study:
+                                    </label>
+                                    <select
+                                        value={selectedStudy1?.study_instance_uid || ''}
+                                        onChange={(e) => {
+                                            const study = data?.find((s: Study) => s.study_instance_uid === e.target.value);
+                                            if (study) handleStudySelect(study, 1);
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            backgroundColor: '#1a1a2e',
+                                            border: '1px solid #444',
+                                            borderRadius: '4px',
+                                            color: '#fff',
+                                            fontSize: '12px',
+                                        }}
+                                    >
+                                        <option value="">-- Select a Study --</option>
+                                        {data?.map((study: Study) => (
+                                            <option key={study.study_instance_uid} value={study.study_instance_uid}>
+                                                {study.patient_name || 'Unknown'} - {study.date || 'N/A'} - {study.description || 'No description'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Series List */}
+                                <div style={{
+                                    height: '200px',
+                                    overflowY: 'auto',
+                                    border: '1px solid #444',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    backgroundColor: '#0a0b29',
+                                }}>
+                                    {!selectedStudy1 ? (
+                                        <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>
+                                            Select a study first
+                                        </div>
+                                    ) : getSeriesListForPosition(1).length === 0 ? (
+                                        <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>
+                                            No series available
+                                        </div>
+                                    ) : (
+                                        getSeriesListForPosition(1).map((series: Series) => (
+                                            <div
+                                                key={series.series_instance_uid}
+                                                onClick={() => handleSeriesSelect(series, 1)}
+                                                style={{
+                                                    padding: '10px',
+                                                    marginBottom: '6px',
+                                                    backgroundColor: selectedSeries1?.series_instance_uid === series.series_instance_uid
+                                                        ? 'rgba(77, 255, 77, 0.2)'
+                                                        : 'transparent',
+                                                    border: selectedSeries1?.series_instance_uid === series.series_instance_uid
+                                                        ? '1px solid rgba(77, 255, 77, 0.5)'
+                                                        : '1px solid #333',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    color: '#fff',
+                                                }}
+                                            >
+                                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{series.description || 'No description'}</div>
+                                                <div style={{ fontSize: '11px', color: '#888' }}>
+                                                    Series {series.series_number} | {series.modality} | {series.num_series_instances} instances
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Panel - Series 2 */}
+                            <div style={{ flex: 1 }}>
+                                <h4 style={{ color: '#00ffff', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                        width: '12px',
+                                        height: '12px',
+                                        borderRadius: '50%',
+                                        backgroundColor: '#00ffff',
+                                        display: 'inline-block'
+                                    }}></span>
+                                    Series 2 {selectedSeries2 && <span style={{ color: '#4dff4d', fontSize: '12px' }}>({selectedSeries2.description})</span>}
+                                </h4>
+
+                                {/* Study Dropdown (only for different mode) */}
+                                {comparisonMode === 'different' ? (
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <label style={{ color: '#aaa', fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+                                            Select Study:
+                                        </label>
+                                        <select
+                                            value={selectedStudy2?.study_instance_uid || ''}
+                                            onChange={(e) => {
+                                                const study = data?.find((s: Study) => s.study_instance_uid === e.target.value);
+                                                if (study) handleStudySelect(study, 2);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '8px',
+                                                backgroundColor: '#1a1a2e',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                color: '#fff',
+                                                fontSize: '12px',
+                                            }}
+                                        >
+                                            <option value="">-- Select a Study --</option>
+                                            {data?.map((study: Study) => (
+                                                <option key={study.study_instance_uid} value={study.study_instance_uid}>
+                                                    {study.patient_name || 'Unknown'} - {study.date || 'N/A'} - {study.description || 'No description'}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div style={{ marginBottom: '10px', padding: '8px', color: '#888', fontSize: '12px' }}>
+                                        Using same study as Series 1
+                                    </div>
+                                )}
+
+                                {/* Series List */}
+                                <div style={{
+                                    height: '200px',
+                                    overflowY: 'auto',
+                                    border: '1px solid #444',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    backgroundColor: '#0a0b29',
+                                }}>
+                                    {(comparisonMode === 'same' && !selectedStudy1) || (comparisonMode === 'different' && !selectedStudy2) ? (
+                                        <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>
+                                            {comparisonMode === 'same' ? 'Select a study in Series 1 first' : 'Select a study first'}
+                                        </div>
+                                    ) : getSeriesListForPosition(2).length === 0 ? (
+                                        <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>
+                                            No series available
+                                        </div>
+                                    ) : (
+                                        getSeriesListForPosition(2).map((series: Series) => (
+                                            <div
+                                                key={series.series_instance_uid}
+                                                onClick={() => handleSeriesSelect(series, 2)}
+                                                style={{
+                                                    padding: '10px',
+                                                    marginBottom: '6px',
+                                                    backgroundColor: selectedSeries2?.series_instance_uid === series.series_instance_uid
+                                                        ? 'rgba(0, 255, 255, 0.2)'
+                                                        : 'transparent',
+                                                    border: selectedSeries2?.series_instance_uid === series.series_instance_uid
+                                                        ? '1px solid rgba(0, 255, 255, 0.5)'
+                                                        : '1px solid #333',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    color: '#fff',
+                                                }}
+                                            >
+                                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{series.description || 'No description'}</div>
+                                                <div style={{ fontSize: '11px', color: '#888' }}>
+                                                    Series {series.series_number} | {series.modality} | {series.num_series_instances} instances
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Popup Footer */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '12px',
+                            paddingTop: '15px',
+                            borderTop: '1px solid #333',
+                        }}>
+                            <button
+                                onClick={closeComparisonPopup}
+                                style={{
+                                    padding: '10px 24px',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid #555',
+                                    borderRadius: '6px',
+                                    color: '#aaa',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleComparisonConfirm}
+                                disabled={!selectedSeries1 || !selectedSeries2}
+                                style={{
+                                    padding: '10px 24px',
+                                    backgroundColor: selectedSeries1 && selectedSeries2
+                                        ? 'rgba(30, 144, 255, 0.8)'
+                                        : 'rgba(30, 144, 255, 0.3)',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    color: '#ffffff',
+                                    cursor: selectedSeries1 && selectedSeries2 ? 'pointer' : 'not-allowed',
+                                    fontWeight: 'bold',
+                                }}
+                            >
+                                Open Comparison View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Animation styles */}
             <style>{`

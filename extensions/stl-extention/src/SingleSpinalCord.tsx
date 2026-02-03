@@ -114,9 +114,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
 
   // Context
   const context = useContext(StlInstanceContext);
-
-  const { stlInstanceId, updateStlInstanceId } = context;
-
+  const { stlInstanceId, updateStlInstanceId, seriesList } = context;
 
   const userRole = localStorage.getItem('userRole');
   const userToken = localStorage.getItem('token');
@@ -151,6 +149,11 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [rotationMode2, setRotationMode2] = useState(false);
   const [rotationMode3, setRotationMode3] = useState(false);
   const [implantMoveMode, setImplantMoveMode] = useState(false);
+  const [inertialRotationMode, setInertialRotationMode] = useState(false);
+  const [pivotPoint, setPivotPoint] = useState<THREE.Vector3 | null>(null);
+  const [pivotBoneIndex, setPivotBoneIndex] = useState<number | null>(null);
+  const [currentRotationAngle, setCurrentRotationAngle] = useState<number>(0);
+  const resetBoneRef = useRef<(() => void) | null>(null);
 
   const isRotatingRef = useRef(false);
   const initialMousePos = useRef({ x: 0, y: 0 });
@@ -165,10 +168,17 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const { implantFile } = useImplantContext();
   const implantUrlRef = useRef<string | null>(null);
 
-  const { 
-    spineLabelingMode, 
-    isLabelingPopupOpen, 
-    closeLabelingPopup 
+  const {
+    clearMeasurements,
+    setupMeasurementMode,
+    cleanupMeasurementMode,
+    updateMeasurementsOnBoneMove
+  } = useMeasurementContext();
+
+  const {
+    spineLabelingMode,
+    isLabelingPopupOpen,
+    closeLabelingPopup
   } = useSpineLabelingContext();
   
   // Initialize spine labeling hook
@@ -207,7 +217,6 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     cleanupAngleMeasurementMode,
     clearAngleMeasurements
   } = useAngleMeasurementContext();
-
 
   useEffect(() => {
     const leftMount = leftMountRef.current;
@@ -266,24 +275,27 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
           rightMesh.position.x -= horizontalAmount;
         }
       }
+
+      // Update measurements when bones move
+      updateMeasurementsOnBoneMove();
     };
-  
+
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
       leftControlsRef.current!.enabled = true;
     };
-  
+
     leftMount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  
+
     return () => {
       leftMount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode]);
+  }, [rotationMode, updateMeasurementsOnBoneMove]);
 
   // UP - DOWN (Motion)
   useEffect(() => {
@@ -343,24 +355,27 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
           rightMesh.position.y -= verticalAmount;
         }
       }
+
+      // Update measurements when bones move
+      updateMeasurementsOnBoneMove();
     };
-  
+
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
       leftControlsRef.current!.enabled = true;
     };
-  
+
     leftMount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  
+
     return () => {
       leftMount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode1]);
+  }, [rotationMode1, updateMeasurementsOnBoneMove]);
 
 
   useEffect(() => {
@@ -415,8 +430,11 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         // Top-down rotation (Y-axis) - LEFT bone clockwise
         leftMesh.rotation.x -= -angle;
       }
+
+      // Update measurements when bones move
+      updateMeasurementsOnBoneMove();
     };
-    
+
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
@@ -432,7 +450,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-}, [rotationMode2]);
+}, [rotationMode2, updateMeasurementsOnBoneMove]);
 
 // FORWARD - BACKWARD (Motion)
 useEffect(() => {
@@ -490,6 +508,9 @@ useEffect(() => {
         rightMesh.position.z += depthAmount; // Both move together
       }
     }
+
+    // Update measurements when bones move
+    updateMeasurementsOnBoneMove();
   };
 
   const onMouseUp = () => {
@@ -507,7 +528,7 @@ useEffect(() => {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   };
-}, [rotationMode3]); // Changed dependency to rotationMode3
+}, [rotationMode3, updateMeasurementsOnBoneMove]);
 
 // IMPLANT MOVE MODE - When active, clicking on implant moves only the implant
 useEffect(() => {
@@ -623,6 +644,529 @@ useEffect(() => {
   };
 }, [implantMoveMode]);
 
+// INTERACTIVE ROTATION MODE - 3-matic style: Direct, precise rotation with axis handles
+// No momentum/inertia - rotation stops immediately when mouse is released
+useEffect(() => {
+  const leftMount = leftMountRef.current;
+  const scene = leftSceneRef.current;
+  const camera = cameraRef.current;
+
+  if (!leftMount || !inertialRotationMode || !scene || !camera) {
+    return;
+  }
+
+  // State variables
+  let isRotating = false;
+  let isDraggingPivot = false;
+  let activeAxis: 'x' | 'y' | 'z' | null = null;
+  let currentPivot: THREE.Vector3 | null = null;
+  let currentBoneIndex: number | null = null;
+  let accumulatedRotation = 0;
+  let gizmoCreated = false;
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // Store ALL bones' original quaternions when mode starts
+  const allOriginalQuaternions: { left: THREE.Quaternion[], right: THREE.Quaternion[] } = {
+    left: [],
+    right: []
+  };
+
+  // Save all bones' initial state
+  meshRefs.current.left.forEach((mesh, idx) => {
+    if (mesh && !mesh.userData?.isImplant) {
+      allOriginalQuaternions.left[idx] = mesh.quaternion.clone();
+    }
+  });
+  meshRefs.current.right.forEach((mesh, idx) => {
+    if (mesh && !mesh.userData?.isImplant) {
+      allOriginalQuaternions.right[idx] = mesh.quaternion.clone();
+    }
+  });
+
+  // Reset ALL bones to their initial positions
+  const resetAllBones = () => {
+    meshRefs.current.left.forEach((mesh, idx) => {
+      if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions.left[idx]) {
+        mesh.quaternion.copy(allOriginalQuaternions.left[idx]);
+      }
+    });
+    meshRefs.current.right.forEach((mesh, idx) => {
+      if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions.right[idx]) {
+        mesh.quaternion.copy(allOriginalQuaternions.right[idx]);
+      }
+    });
+    setCurrentRotationAngle(0);
+    updateMeasurementsOnBoneMove();
+  };
+
+  // Expose reset all bones function via ref
+  resetBoneRef.current = resetAllBones;
+
+  // Gizmo visual elements
+  let gizmoGroup: THREE.Group | null = null;
+  let rotationArc: THREE.Mesh | null = null;
+
+  const GIZMO_SIZE = 15;
+
+  // Create ring geometry
+  const createRing = (radius: number, color: number, thickness: number = 0.5) => {
+    const geometry = new THREE.TorusGeometry(radius, thickness, 8, 64);
+    const material = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.8,
+      depthTest: false
+    });
+    const ring = new THREE.Mesh(geometry, material);
+    ring.renderOrder = 999;
+    return ring;
+  };
+
+  // Create the 3-matic style rotation gizmo
+  const createGizmo = (position: THREE.Vector3) => {
+    if (gizmoGroup) {
+      scene.remove(gizmoGroup);
+      gizmoGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          (child.material as THREE.Material).dispose();
+        }
+      });
+    }
+
+    gizmoGroup = new THREE.Group();
+    gizmoGroup.position.copy(position);
+
+    // X-axis ring (Red) - rotation around X axis, in YZ plane
+    const xRing = createRing(GIZMO_SIZE * 0.7, 0xff0000);
+    xRing.rotation.y = Math.PI / 2;
+    xRing.userData = { axis: 'x' };
+    gizmoGroup.add(xRing);
+
+    // Y-axis ring (Blue) - rotation around Y axis, in XZ plane
+    const yRing = createRing(GIZMO_SIZE * 0.85, 0x0066ff);
+    yRing.rotation.x = Math.PI / 2;
+    yRing.userData = { axis: 'y' };
+    gizmoGroup.add(yRing);
+
+    // Z-axis ring (Green) - rotation around Z axis, in XY plane
+    const zRing = createRing(GIZMO_SIZE, 0x00ff00);
+    zRing.userData = { axis: 'z' };
+    gizmoGroup.add(zRing);
+
+    // Center pivot point (Yellow sphere) - draggable
+    const centerGeom = new THREE.SphereGeometry(1.5, 16, 16);
+    const centerMat = new THREE.MeshBasicMaterial({
+      color: 0xffff00,
+      depthTest: false
+    });
+    const centerDot = new THREE.Mesh(centerGeom, centerMat);
+    centerDot.renderOrder = 1000;
+    centerDot.userData = { isPivot: true };
+    gizmoGroup.add(centerDot);
+
+    scene.add(gizmoGroup);
+    gizmoCreated = true;
+  };
+
+  // Show rotation arc (cyan wedge showing rotation amount)
+  const showRotationArc = (angle: number, axis: 'x' | 'y' | 'z') => {
+    if (!gizmoGroup) return;
+
+    // Remove old arc
+    if (rotationArc) {
+      gizmoGroup.remove(rotationArc);
+      rotationArc.geometry.dispose();
+      (rotationArc.material as THREE.Material).dispose();
+      rotationArc = null;
+    }
+
+    if (Math.abs(angle) < 0.01) return;
+
+    const radius = axis === 'z' ? GIZMO_SIZE : (axis === 'y' ? GIZMO_SIZE * 0.85 : GIZMO_SIZE * 0.7);
+    const startA = angle > 0 ? 0 : angle;
+    const endA = angle > 0 ? angle : 0;
+
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.absarc(0, 0, radius, startA, endA, false);
+    shape.lineTo(0, 0);
+
+    const geometry = new THREE.ShapeGeometry(shape);
+    rotationArc = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthTest: false
+    }));
+
+    if (axis === 'x') rotationArc.rotation.y = Math.PI / 2;
+    else if (axis === 'y') rotationArc.rotation.x = Math.PI / 2;
+
+    rotationArc.renderOrder = 998;
+    gizmoGroup.add(rotationArc);
+  };
+
+  // Store the world-space center point for rotation
+  let rotationCenter: THREE.Vector3 | null = null;
+  let geometryCentered = false;
+
+  // Center the geometry so rotation happens around its true center
+  const centerGeometry = (mesh: THREE.Mesh) => {
+    if (!mesh.geometry.boundingBox) {
+      mesh.geometry.computeBoundingBox();
+    }
+
+    const center = new THREE.Vector3();
+    mesh.geometry.boundingBox!.getCenter(center);
+
+    // Translate geometry so center is at local origin
+    mesh.geometry.translate(-center.x, -center.y, -center.z);
+
+    // Move mesh position to compensate (keep visual position same)
+    center.applyQuaternion(mesh.quaternion);
+    mesh.position.add(center);
+
+    mesh.geometry.computeBoundingBox();
+  };
+
+  // Apply rotation - 3-matic style exact rotation around geometry center
+  const rotateBone = (deltaAngle: number, axis: 'x' | 'y' | 'z') => {
+    if (currentBoneIndex === null) return;
+
+    const rotAxis = new THREE.Vector3(
+      axis === 'x' ? 1 : 0,
+      axis === 'y' ? 1 : 0,
+      axis === 'z' ? 1 : 0
+    );
+
+    const deltaQuat = new THREE.Quaternion().setFromAxisAngle(rotAxis, deltaAngle);
+
+    const leftMesh = meshRefs.current.left[currentBoneIndex];
+    if (leftMesh && !leftMesh.userData?.isImplant) {
+      // Pure quaternion rotation - geometry is already centered
+      leftMesh.quaternion.premultiply(deltaQuat);
+    }
+
+    const rightMesh = meshRefs.current.right[currentBoneIndex];
+    if (rightMesh && !rightMesh.userData?.isImplant) {
+      rightMesh.quaternion.premultiply(deltaQuat);
+    }
+
+    updateMeasurementsOnBoneMove();
+  };
+
+  // Store original state for reset
+  let originalLeftQuaternion: THREE.Quaternion | null = null;
+  let originalRightQuaternion: THREE.Quaternion | null = null;
+  let originalLeftPosition: THREE.Vector3 | null = null;
+  let originalRightPosition: THREE.Vector3 | null = null;
+
+  // Reset single bone to original rotation (for double-click)
+  const resetBone = () => {
+    if (currentBoneIndex === null) return;
+
+    const leftMesh = meshRefs.current.left[currentBoneIndex];
+    const rightMesh = meshRefs.current.right[currentBoneIndex];
+
+    if (leftMesh && originalLeftQuaternion) {
+      leftMesh.quaternion.copy(originalLeftQuaternion);
+    }
+
+    if (rightMesh && originalRightQuaternion) {
+      rightMesh.quaternion.copy(originalRightQuaternion);
+    }
+
+    accumulatedRotation = 0;
+    setCurrentRotationAngle(0);
+    updateMeasurementsOnBoneMove();
+  };
+
+  // Track last mouse angle for rotation calculation
+  let lastMouseAngle = 0;
+
+  // Calculate rotation based on angular movement around gizmo center
+  // This ensures ring, cursor and bone all move in same direction
+  const getRotationDelta = (e: MouseEvent, axis: 'x' | 'y' | 'z'): number => {
+    if (!gizmoGroup || !camera) return 0;
+
+    const rect = leftMount.getBoundingClientRect();
+    const projected = gizmoGroup.position.clone().project(camera);
+    const cx = (projected.x + 1) / 2 * rect.width;
+    const cy = (-projected.y + 1) / 2 * rect.height;
+
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Calculate angle of mouse relative to gizmo center
+    const currentAngle = Math.atan2(my - cy, mx - cx);
+
+    // Calculate angle change
+    let angleDelta = currentAngle - lastMouseAngle;
+
+    // Handle wrap-around at +/- PI
+    if (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
+    if (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
+
+    // Update last angle
+    lastMouseAngle = currentAngle;
+
+    // Get camera position relative to gizmo
+    const camPos = camera.position.clone().sub(gizmoGroup.position);
+
+    // Determine direction based on which side of the plane camera is on
+    let direction = 1;
+
+    if (axis === 'x') {
+      // X rotation: check camera X position
+      direction = camPos.x > 0 ? 1 : -1;
+    } else if (axis === 'y') {
+      // Y rotation: check camera Y position
+      direction = camPos.y > 0 ? -1 : 1;
+    } else {
+      // Z rotation: check camera Z position
+      direction = camPos.z > 0 ? 1 : -1;
+    }
+
+    return angleDelta * direction;
+  };
+
+  // Mouse down handler
+  const handleMouseDown = (e: MouseEvent) => {
+    const rect = leftMount.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // If gizmo exists, check for interaction with it
+    if (gizmoGroup && gizmoCreated) {
+      const projected = gizmoGroup.position.clone().project(camera);
+      const cx = (projected.x + 1) / 2 * rect.width;
+      const cy = (-projected.y + 1) / 2 * rect.height;
+
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2);
+
+      const screenSize = GIZMO_SIZE * 3;
+
+      // Check if clicking on center pivot (to drag or double-click to reset)
+      if (dist < screenSize * 0.15) {
+        isDraggingPivot = true;
+        leftControlsRef.current && (leftControlsRef.current.enabled = false);
+        e.preventDefault();
+        return;
+      }
+
+      // Check if clicking on a ring
+      if (dist > screenSize * 0.4 && dist < screenSize * 1.2) {
+        const ratio = dist / screenSize;
+
+        if (ratio > 0.9) activeAxis = 'z';
+        else if (ratio > 0.7) activeAxis = 'y';
+        else activeAxis = 'x';
+
+        isRotating = true;
+        // Initialize angle for rotation tracking
+        lastMouseAngle = Math.atan2(my - cy, mx - cx);
+        accumulatedRotation = 0;
+
+        leftControlsRef.current && (leftControlsRef.current.enabled = false);
+        e.preventDefault();
+        return;
+      }
+
+      // Clicked outside gizmo - do nothing
+      return;
+    }
+
+    // No gizmo yet - place one on clicked bone
+    const bones = meshRefs.current.left.filter(
+      m => m.visible && !m.userData?.isImplant && m.userData?.type !== 'I'
+    );
+
+    const hits = raycaster.intersectObjects(bones, false);
+
+    if (hits.length > 0) {
+      const hitPoint = hits[0].point.clone();
+      const hitMesh = hits[0].object as THREE.Mesh;
+      const boneIdx = meshRefs.current.left.indexOf(hitMesh);
+
+      currentPivot = hitPoint;
+      currentBoneIndex = boneIdx;
+
+      // Store original state BEFORE centering
+      originalLeftQuaternion = hitMesh.quaternion.clone();
+      originalLeftPosition = hitMesh.position.clone();
+
+      const rightMesh = meshRefs.current.right[boneIdx];
+      if (rightMesh) {
+        originalRightQuaternion = rightMesh.quaternion.clone();
+        originalRightPosition = rightMesh.position.clone();
+      }
+
+      // Center the geometry so rotation happens around true center
+      if (!hitMesh.userData.geometryCentered) {
+        centerGeometry(hitMesh);
+        hitMesh.userData.geometryCentered = true;
+      }
+      if (rightMesh && !rightMesh.userData.geometryCentered) {
+        centerGeometry(rightMesh);
+        rightMesh.userData.geometryCentered = true;
+      }
+
+      // Place gizmo at the CLICK POINT (where user clicked)
+      setPivotPoint(hitPoint);
+      setPivotBoneIndex(boneIdx);
+
+      createGizmo(hitPoint);
+      e.preventDefault();
+    }
+  };
+
+  // Double-click handler - reset bone to original position
+  const handleDoubleClick = (e: MouseEvent) => {
+    if (!gizmoGroup || !gizmoCreated) return;
+
+    const rect = leftMount.getBoundingClientRect();
+    const projected = gizmoGroup.position.clone().project(camera);
+    const cx = (projected.x + 1) / 2 * rect.width;
+    const cy = (-projected.y + 1) / 2 * rect.height;
+
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2);
+
+    const screenSize = GIZMO_SIZE * 3;
+
+    // Double-click on center pivot resets bone
+    if (dist < screenSize * 0.2) {
+      resetBone();
+      e.preventDefault();
+    }
+  };
+
+  // Mouse move handler
+  const handleMouseMove = (e: MouseEvent) => {
+    // Dragging pivot to reposition
+    if (isDraggingPivot && gizmoGroup) {
+      const rect = leftMount.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const bones = meshRefs.current.left.filter(
+        m => m.visible && !m.userData?.isImplant && m.userData?.type !== 'I'
+      );
+
+      const hits = raycaster.intersectObjects(bones, false);
+
+      if (hits.length > 0) {
+        const newPos = hits[0].point.clone();
+        const hitMesh = hits[0].object as THREE.Mesh;
+        const boneIdx = meshRefs.current.left.indexOf(hitMesh);
+
+        currentBoneIndex = boneIdx;
+
+        // Store original state
+        originalLeftQuaternion = hitMesh.quaternion.clone();
+        originalLeftPosition = hitMesh.position.clone();
+
+        const rightMesh = meshRefs.current.right[boneIdx];
+        if (rightMesh) {
+          originalRightQuaternion = rightMesh.quaternion.clone();
+          originalRightPosition = rightMesh.position.clone();
+        }
+
+        // Center geometry if not already
+        if (!hitMesh.userData.geometryCentered) {
+          centerGeometry(hitMesh);
+          hitMesh.userData.geometryCentered = true;
+        }
+        if (rightMesh && !rightMesh.userData.geometryCentered) {
+          centerGeometry(rightMesh);
+          rightMesh.userData.geometryCentered = true;
+        }
+
+        // Move gizmo to where user is dragging (click point)
+        gizmoGroup.position.copy(newPos);
+        currentPivot = newPos;
+
+        setPivotPoint(newPos);
+        setPivotBoneIndex(boneIdx);
+      }
+      return;
+    }
+
+    // Rotating bone
+    if (isRotating && activeAxis) {
+      // Get rotation amount based on angular movement
+      const delta = getRotationDelta(e, activeAxis);
+
+      // Apply rotation directly - no smoothing, no momentum
+      rotateBone(delta, activeAxis);
+
+      // Update accumulated rotation for display
+      accumulatedRotation += delta;
+      setCurrentRotationAngle(accumulatedRotation * (180 / Math.PI));
+
+      // Show rotation arc
+      showRotationArc(accumulatedRotation, activeAxis);
+    }
+  };
+
+  // Mouse up handler - IMMEDIATE STOP, no momentum
+  const handleMouseUp = () => {
+    if (isRotating && rotationArc && gizmoGroup) {
+      gizmoGroup.remove(rotationArc);
+      rotationArc.geometry.dispose();
+      (rotationArc.material as THREE.Material).dispose();
+      rotationArc = null;
+    }
+
+    // Reset state - rotation stops immediately
+    isRotating = false;
+    isDraggingPivot = false;
+    activeAxis = null;
+    setCurrentRotationAngle(0);
+
+    leftControlsRef.current && (leftControlsRef.current.enabled = true);
+  };
+
+  // Set cursor
+  leftMount.style.cursor = 'crosshair';
+
+  // Add event listeners
+  leftMount.addEventListener('mousedown', handleMouseDown);
+  leftMount.addEventListener('dblclick', handleDoubleClick);
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
+
+  // Cleanup
+  return () => {
+    leftMount.removeEventListener('mousedown', handleMouseDown);
+    leftMount.removeEventListener('dblclick', handleDoubleClick);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+    leftMount.style.cursor = 'default';
+
+    if (gizmoGroup) {
+      scene.remove(gizmoGroup);
+      gizmoGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          (child.material as THREE.Material).dispose();
+        }
+      });
+    }
+  };
+}, [inertialRotationMode, updateMeasurementsOnBoneMove]);
+
   const applyBoneAndRainbowToAllViewports = () => {
     console.log('🎨 Applying bone preset with OHIF services...');
     console.log('Viewports:', viewports);
@@ -719,8 +1263,10 @@ useEffect(() => {
     showCenterLine,
     removeCenterLine,
     toggleCenterLine,
+    toggleTransparency,
     hasCenterLine,
-    centerLineEnabled
+    centerLineEnabled,
+    transparencyEnabled
   } = useCenterLine({
     meshRefs,
     leftSceneRef,
@@ -750,12 +1296,6 @@ useEffect(() => {
       hasCornerstoneViewportService: !!effectiveServicesManager?.services?.cornerstoneViewportService
     });
   }, [isLinkingActive, ohifStatus, propServicesManager, effectiveServicesManager]);
-
-  const {
-    clearMeasurements,
-    setupMeasurementMode,
-    cleanupMeasurementMode
-  } = useMeasurementContext();
 
   const {
     brightnessEnabled,
@@ -1954,7 +2494,39 @@ const createAutomaticSegmentation = async () => {
           leftMountRef={leftMountRef}
           rightMountRef={rightMountRef}
           removalCanvasRef={removalCanvasRef}
+          inertialRotationMode={inertialRotationMode}
+          pivotBoneIndex={pivotBoneIndex}
+          currentRotationAngle={currentRotationAngle}
+          onResetBone={() => resetBoneRef.current?.()}
         >
+          {/* Transparency Toggle Button - Only shows when centerline is enabled */}
+          {centerLineEnabled && (
+            <button
+              onClick={toggleTransparency}
+              style={{
+                position: 'absolute',
+                top: '50px',
+                left: '10px',
+                zIndex: 200,
+                backgroundColor: transparencyEnabled ? '#2196F3' : '#4CAF50',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '8px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'background-color 0.2s'
+              }}
+              title={transparencyEnabled ? 'Click to show solid bones' : 'Click to show transparent bones'}
+            >
+              <i className={`fas ${transparencyEnabled ? 'fa-cube' : 'fa-eye'}`} />
+              {transparencyEnabled ? 'Solid' : 'Transparent'}
+            </button>
+          )}
         </SingleViewerContainer>
         <SingleToolbar
                 userRole={userRole || ''}
@@ -1972,12 +2544,14 @@ const createAutomaticSegmentation = async () => {
                 rotationMode2={rotationMode2}
                 rotationMode3={rotationMode3}
                 implantMoveMode={implantMoveMode}
+                inertialRotationMode={inertialRotationMode}
                 onToggleRotation={() => {
                   setRotationMode(!rotationMode);
                   setRotationMode1(false);
                   setRotationMode2(false);
                   setRotationMode3(false);
                   setImplantMoveMode(false);
+                  setInertialRotationMode(false);
                 }}
                 onToggleRotation1={() => {
                   setRotationMode1(!rotationMode1);
@@ -1985,6 +2559,7 @@ const createAutomaticSegmentation = async () => {
                   setRotationMode2(false);
                   setRotationMode3(false);
                   setImplantMoveMode(false);
+                  setInertialRotationMode(false);
                 }}
                 onToggleRotation2={() => {
                   setRotationMode2(!rotationMode2);
@@ -1992,6 +2567,7 @@ const createAutomaticSegmentation = async () => {
                   setRotationMode1(false);
                   setRotationMode3(false);
                   setImplantMoveMode(false);
+                  setInertialRotationMode(false);
                 }}
                 onToggleRotation3={() => {
                   setRotationMode3(!rotationMode3);
@@ -1999,6 +2575,7 @@ const createAutomaticSegmentation = async () => {
                   setRotationMode1(false);
                   setRotationMode2(false);
                   setImplantMoveMode(false);
+                  setInertialRotationMode(false);
                 }}
                 onToggleImplantMove={() => {
                   setImplantMoveMode(!implantMoveMode);
@@ -2006,6 +2583,18 @@ const createAutomaticSegmentation = async () => {
                   setRotationMode1(false);
                   setRotationMode2(false);
                   setRotationMode3(false);
+                  setInertialRotationMode(false);
+                }}
+                onToggleInertialRotation={() => {
+                  setInertialRotationMode(!inertialRotationMode);
+                  setRotationMode(false);
+                  setRotationMode1(false);
+                  setRotationMode2(false);
+                  setRotationMode3(false);
+                  setImplantMoveMode(false);
+                  setPivotPoint(null);
+                  setPivotBoneIndex(null);
+                  setCurrentRotationAngle(0);
                 }}
                 onFileSelect={() => document.getElementById('stl-file-input')?.click()}
                 onRefresh={handleRefresh}

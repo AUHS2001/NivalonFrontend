@@ -25,6 +25,7 @@ interface MeasurementContextType extends MeasurementState {
     meshRefs: React.MutableRefObject<MeshRefs>;
   }) => void;
   cleanupMeasurementMode: () => void;
+  updateMeasurementsOnBoneMove: () => void;
 }
 
 // Initial state
@@ -112,12 +113,20 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
   const leftSceneRef = useRef<THREE.Scene>();
   const cameraRef = useRef<THREE.PerspectiveCamera>();
   const meshRefs = useRef<MeshRefs>();
-  const tempVisualsRef = useRef<{ points: THREE.Mesh[]; lines: THREE.Line[] }>({ points: [], lines: [] });
+  const tempVisualsRef = useRef<{ points: THREE.Mesh[]; lines: THREE.Line[]; textLabel?: THREE.Sprite }>({ points: [], lines: [], textLabel: undefined });
   const measurementIdCounter = useRef<number>(0);
   const clickHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
 
   // Add this ref to track tempPoints without stale closures
   const tempPointsRef = useRef<THREE.Vector3[]>([]);
+
+  // Track bone attachments for each measurement point
+  const measurementBoneAttachments = useRef<Map<string, {
+    point1BoneIndex: number | null;
+    point1LocalOffset: THREE.Vector3 | null;
+    point2BoneIndex: number | null;
+    point2LocalOffset: THREE.Vector3 | null;
+  }>>(new Map());
 
   // Sync the ref with state
   React.useEffect(() => {
@@ -155,6 +164,127 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     return line;
   }, []);
 
+  // Create distance text label to show on the measurement line
+  const createDistanceTextLabel = useCallback((position: THREE.Vector3, distance: number): THREE.Sprite => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+
+    canvas.width = 512;
+    canvas.height = 256;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    const distanceText = `${distance.toFixed(2)} mm`;
+    const fontSize = 48;
+    const padding = 40;
+
+    // Set font first to measure text correctly
+    context.font = `bold ${fontSize}px Arial`;
+    const textMetrics = context.measureText(distanceText);
+    const textWidth = textMetrics.width;
+
+    // Calculate rectangle dimensions based on text size
+    const rectWidth = textWidth + padding * 2;
+    const rectHeight = fontSize + padding;
+    const rectX = (canvas.width - rectWidth) / 2;
+    const rectY = (canvas.height - rectHeight) / 2;
+
+    // Draw rounded rectangle background
+    context.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    context.beginPath();
+    context.roundRect(rectX, rectY, rectWidth, rectHeight, 15);
+    context.fill();
+
+    // Glow effect border
+    context.shadowColor = '#00ff00';
+    context.shadowBlur = 20;
+    context.strokeStyle = '#00ff00';
+    context.lineWidth = 3;
+    context.beginPath();
+    context.roundRect(rectX, rectY, rectWidth, rectHeight, 15);
+    context.stroke();
+    context.shadowBlur = 0;
+
+    // Draw text centered in the rectangle
+    context.fillStyle = '#ffffff';
+    context.font = `bold ${fontSize}px Arial`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(distanceText, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false
+    });
+
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.position.copy(position);
+    sprite.position.y += 1.5; // Offset slightly above the line
+    sprite.scale.set(10, 5, 1); // Scale for visibility
+    sprite.userData = {
+      isDistanceTextLabel: true,
+      distance: distance,
+      text: distanceText
+    };
+
+    return sprite;
+  }, []);
+
+  // Store the last intersected mesh for bone attachment tracking
+  const lastIntersectedMeshRef = useRef<THREE.Mesh | null>(null);
+
+  // Track initial bone positions AND original point positions when measurement was created
+  const measurementOriginalDataRef = useRef<Map<string, {
+    originalPoint1: THREE.Vector3;
+    originalPoint2: THREE.Vector3;
+    point1BonePos: THREE.Vector3 | null;
+    point2BonePos: THREE.Vector3 | null;
+  }>>(new Map());
+
+  // Find bone attachment using the actual intersected mesh from raycasting
+  const findBoneAttachmentFromMesh = useCallback((worldPoint: THREE.Vector3, intersectedMesh: THREE.Mesh | null): {
+    boneIndex: number | null;
+    localOffset: THREE.Vector3 | null;
+    initialBonePos: THREE.Vector3 | null;
+  } => {
+    if (!meshRefs.current || !intersectedMesh) return { boneIndex: null, localOffset: null, initialBonePos: null };
+
+    const meshes = meshRefs.current.left;
+
+    // Find the index of the intersected mesh
+    const boneIndex = meshes.findIndex(mesh => mesh === intersectedMesh);
+
+    if (boneIndex === -1) {
+      // Try to find in right meshes and map to left
+      const rightIndex = meshRefs.current.right.findIndex(mesh => mesh === intersectedMesh);
+      if (rightIndex !== -1 && meshes[rightIndex]) {
+        const bone = meshes[rightIndex];
+        const localOffset = worldPoint.clone().sub(bone.position);
+        return {
+          boneIndex: rightIndex,
+          localOffset,
+          initialBonePos: bone.position.clone()
+        };
+      }
+      return { boneIndex: null, localOffset: null, initialBonePos: null };
+    }
+
+    const bone = meshes[boneIndex];
+    // Calculate local offset (point position relative to bone position)
+    const localOffset = worldPoint.clone().sub(bone.position);
+
+    return {
+      boneIndex,
+      localOffset,
+      initialBonePos: bone.position.clone()
+    };
+  }, []);
+
   const getSurfaceIntersection = useCallback((mouse: THREE.Vector2): THREE.Vector3 | null => {
     if (!leftRendererRef.current || !cameraRef.current || !meshRefs.current) {
       return null;
@@ -173,7 +303,14 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     }
 
     const intersects = raycaster.intersectObjects(meshes, false);
-    return intersects.length > 0 ? intersects[0].point : null;
+    if (intersects.length > 0) {
+      // Store the intersected mesh for bone attachment tracking
+      lastIntersectedMeshRef.current = intersects[0].object as THREE.Mesh;
+      return intersects[0].point;
+    }
+
+    lastIntersectedMeshRef.current = null;
+    return null;
   }, []);
 
   const calculate3DDistance = useCallback((point1: THREE.Vector3, point2: THREE.Vector3) => {
@@ -210,10 +347,16 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
       line.material.dispose();
     });
 
-    tempVisualsRef.current = { points: [], lines: [] };
+    if (tempVisualsRef.current.textLabel) {
+      leftSceneRef.current!.remove(tempVisualsRef.current.textLabel);
+      tempVisualsRef.current.textLabel.material.dispose();
+      (tempVisualsRef.current.textLabel.material as THREE.SpriteMaterial).map?.dispose();
+    }
+
+    tempVisualsRef.current = { points: [], lines: [], textLabel: undefined };
   }, []);
 
-  const removeMeasurementVisuals = useCallback((visualElements: { points: THREE.Mesh[]; lines: THREE.Line[] }) => {
+  const removeMeasurementVisuals = useCallback((visualElements: { points: THREE.Mesh[]; lines: THREE.Line[]; textLabel?: THREE.Sprite }) => {
     visualElements.points.forEach(point => {
       if (point.parent) {
         point.parent.remove(point);
@@ -229,6 +372,14 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
       line.geometry.dispose();
       line.material.dispose();
     });
+
+    if (visualElements.textLabel) {
+      if (visualElements.textLabel.parent) {
+        visualElements.textLabel.parent.remove(visualElements.textLabel);
+      }
+      visualElements.textLabel.material.dispose();
+      (visualElements.textLabel.material as THREE.SpriteMaterial).map?.dispose();
+    }
   }, []);
 
   // Public API methods
@@ -264,6 +415,9 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     dispatch({ type: 'REMOVE_MEASUREMENT', payload: id });
   }, [state.measurements, removeMeasurementVisuals]);
 
+  // Store the first point's intersected mesh
+  const firstPointMeshRef = useRef<THREE.Mesh | null>(null);
+
   // FIXED: Use ref to avoid stale closure
   const addMeasurementPoint = useCallback((position: THREE.Vector3) => {
     if (!leftSceneRef.current) return;
@@ -291,12 +445,16 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
       const line = createMeasurementLine(currentTempPoints[0], currentTempPoints[1]);
       leftSceneRef.current.add(line);
 
+      // Create distance text label at the midpoint of the line
+      const textLabel = createDistanceTextLabel(measurementData.midpoint, measurementData.distance);
+      leftSceneRef.current.add(textLabel);
+
       // Create measurement object
       const measurementId = generateMeasurementId();
       const measurement: Measurement = {
         id: measurementId,
-        point1: currentTempPoints[0],
-        point2: currentTempPoints[1],
+        point1: currentTempPoints[0].clone(),
+        point2: currentTempPoints[1].clone(),
         distance: measurementData.distance,
         vector: measurementData.vector,
         midpoint: measurementData.midpoint,
@@ -305,20 +463,46 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
         timestamp: new Date(),
         visualElements: {
           points: [...tempVisualsRef.current.points], // Keep all points
-          lines: [line]
+          lines: [line],
+          textLabel: textLabel
         }
       };
 
-      // Clear temporary visuals for next measurement
-      tempVisualsRef.current = { points: [], lines: [] };
+      // Store bone attachments using the actual intersected meshes
+      const point1Attachment = findBoneAttachmentFromMesh(currentTempPoints[0], firstPointMeshRef.current);
+      const point2Attachment = findBoneAttachmentFromMesh(currentTempPoints[1], lastIntersectedMeshRef.current);
+
+      console.log('Point 1 attachment:', point1Attachment);
+      console.log('Point 2 attachment:', point2Attachment);
+
+      measurementBoneAttachments.current.set(measurementId, {
+        point1BoneIndex: point1Attachment.boneIndex,
+        point1LocalOffset: point1Attachment.localOffset,
+        point2BoneIndex: point2Attachment.boneIndex,
+        point2LocalOffset: point2Attachment.localOffset
+      });
+
+      // Store original point positions and initial bone positions
+      measurementOriginalDataRef.current.set(measurementId, {
+        originalPoint1: currentTempPoints[0].clone(),
+        originalPoint2: currentTempPoints[1].clone(),
+        point1BonePos: point1Attachment.initialBonePos,
+        point2BonePos: point2Attachment.initialBonePos
+      });
+
+      // Clear temporary visuals and refs for next measurement
+      tempVisualsRef.current = { points: [], lines: [], textLabel: undefined };
+      firstPointMeshRef.current = null;
 
       dispatch({ type: 'ADD_MEASUREMENT', payload: measurement });
-      console.log('Measurement created:', measurement);
+      console.log('Measurement created with bone attachments:', measurementId);
     } else {
+      // Store the first point's intersected mesh for later
+      firstPointMeshRef.current = lastIntersectedMeshRef.current;
       // Just add the point to tempPoints
       dispatch({ type: 'ADD_TEMP_POINT', payload: position });
     }
-  }, [createMeasurementPoint, createMeasurementLine, calculate3DDistance, generateMeasurementId]);
+  }, [createMeasurementPoint, createMeasurementLine, createDistanceTextLabel, calculate3DDistance, generateMeasurementId, findBoneAttachmentFromMesh]);
 
   const handleMeasurementClick = useCallback((event: MouseEvent) => {
     if (!state.measurementEnabled || !leftRendererRef.current) return;
@@ -363,17 +547,22 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
       // Recreate line
       const line = createMeasurementLine(measurement.point1, measurement.point2);
 
+      // Recreate text label
+      const textLabel = createDistanceTextLabel(measurement.midpoint, measurement.distance);
+
       // Add to scene
       leftSceneRef.current!.add(point1Mesh);
       leftSceneRef.current!.add(point2Mesh);
       leftSceneRef.current!.add(line);
+      leftSceneRef.current!.add(textLabel);
 
       // Return new measurement object with updated visualElements
       return {
         ...measurement,
         visualElements: {
           points: [point1Mesh, point2Mesh],
-          lines: [line]
+          lines: [line],
+          textLabel: textLabel
         }
       };
     });
@@ -386,7 +575,7 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     });
 
     console.log('Measurement visuals recreated');
-  }, [createMeasurementPoint, createMeasurementLine, state.measurements, removeMeasurementVisuals]);
+  }, [createMeasurementPoint, createMeasurementLine, createDistanceTextLabel, state.measurements, removeMeasurementVisuals]);
 
 const setupMeasurementMode = useCallback((config: {
   leftRendererRef: React.MutableRefObject<THREE.WebGLRenderer | undefined>;
@@ -418,7 +607,7 @@ const setupMeasurementMode = useCallback((config: {
     if (!clickHandlerRef.current) {
       clickHandlerRef.current = handleMeasurementClick;
       canvas.addEventListener('click', handleMeasurementClick);
-      canvas.style.cursor = 'crosshair';
+      canvas.style.cursor = 'pointer';
       console.log('Measurement click handler added');
     }
   }
@@ -435,6 +624,154 @@ const setupMeasurementMode = useCallback((config: {
     cleanupTempVisuals();
     dispatch({ type: 'CLEAR_TEMP_POINTS' });
   }, [cleanupTempVisuals]);
+
+  // Update all measurements when bones move
+  const updateMeasurementsOnBoneMove = useCallback(() => {
+    if (!meshRefs.current || state.measurements.length === 0) return;
+
+    const meshes = meshRefs.current.left;
+
+    state.measurements.forEach(measurement => {
+      const attachment = measurementBoneAttachments.current.get(measurement.id);
+      const originalData = measurementOriginalDataRef.current.get(measurement.id);
+
+      if (!attachment || !originalData) {
+        console.log('No attachment or original data found for measurement:', measurement.id);
+        return;
+      }
+
+      // Start with original point positions
+      let newPoint1 = originalData.originalPoint1.clone();
+      let newPoint2 = originalData.originalPoint2.clone();
+      let hasUpdate = false;
+
+      // Update point1 if attached to a bone
+      if (attachment.point1BoneIndex !== null && originalData.point1BonePos) {
+        const bone = meshes[attachment.point1BoneIndex];
+        if (bone) {
+          // Calculate how much the bone has moved from its initial position
+          const boneMovement = bone.position.clone().sub(originalData.point1BonePos);
+          // Invert Y because the group has scale.y = -1
+          boneMovement.y = -boneMovement.y;
+          // Apply that movement to the ORIGINAL point position
+          newPoint1 = originalData.originalPoint1.clone().add(boneMovement);
+          hasUpdate = true;
+        }
+      }
+
+      // Update point2 if attached to a bone
+      if (attachment.point2BoneIndex !== null && originalData.point2BonePos) {
+        const bone = meshes[attachment.point2BoneIndex];
+        if (bone) {
+          // Calculate how much the bone has moved from its initial position
+          const boneMovement = bone.position.clone().sub(originalData.point2BonePos);
+          // Invert Y because the group has scale.y = -1
+          boneMovement.y = -boneMovement.y;
+          // Apply that movement to the ORIGINAL point position
+          newPoint2 = originalData.originalPoint2.clone().add(boneMovement);
+          hasUpdate = true;
+        }
+      }
+
+      // If any point was updated, recalculate and update visuals
+      if (hasUpdate) {
+        // Calculate new distance
+        const newDistance = newPoint1.distanceTo(newPoint2);
+        const newMidpoint = new THREE.Vector3().addVectors(newPoint1, newPoint2).multiplyScalar(0.5);
+
+        // Update visual elements FIRST (before updating measurement data)
+        if (measurement.visualElements) {
+          // Update point meshes positions
+          if (measurement.visualElements.points[0]) {
+            measurement.visualElements.points[0].position.copy(newPoint1);
+          }
+          if (measurement.visualElements.points[1]) {
+            measurement.visualElements.points[1].position.copy(newPoint2);
+          }
+
+          // Update line geometry
+          if (measurement.visualElements.lines[0]) {
+            const lineGeometry = measurement.visualElements.lines[0].geometry;
+            const positions = new Float32Array([
+              newPoint1.x, newPoint1.y, newPoint1.z,
+              newPoint2.x, newPoint2.y, newPoint2.z
+            ]);
+            lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            lineGeometry.attributes.position.needsUpdate = true;
+            lineGeometry.computeBoundingSphere();
+          }
+
+          // Update text label
+          if (measurement.visualElements.textLabel && leftSceneRef.current) {
+            // Update label position and text
+            measurement.visualElements.textLabel.position.copy(newMidpoint);
+            measurement.visualElements.textLabel.position.y += 1.5;
+
+            // Update the texture with new distance
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d')!;
+            canvas.width = 512;
+            canvas.height = 256;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            const distanceText = `${newDistance.toFixed(2)} mm`;
+            const fontSize = 48;
+            const padding = 40;
+
+            context.font = `bold ${fontSize}px Arial`;
+            const textMetrics = context.measureText(distanceText);
+            const textWidth = textMetrics.width;
+
+            const rectWidth = textWidth + padding * 2;
+            const rectHeight = fontSize + padding;
+            const rectX = (canvas.width - rectWidth) / 2;
+            const rectY = (canvas.height - rectHeight) / 2;
+
+            context.fillStyle = 'rgba(0, 0, 0, 0.9)';
+            context.beginPath();
+            context.roundRect(rectX, rectY, rectWidth, rectHeight, 15);
+            context.fill();
+
+            context.shadowColor = '#00ff00';
+            context.shadowBlur = 20;
+            context.strokeStyle = '#00ff00';
+            context.lineWidth = 3;
+            context.beginPath();
+            context.roundRect(rectX, rectY, rectWidth, rectHeight, 15);
+            context.stroke();
+            context.shadowBlur = 0;
+
+            context.fillStyle = '#ffffff';
+            context.font = `bold ${fontSize}px Arial`;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(distanceText, canvas.width / 2, canvas.height / 2);
+
+            // Update the texture
+            const material = measurement.visualElements.textLabel.material as THREE.SpriteMaterial;
+            if (material.map) {
+              material.map.dispose();
+            }
+            material.map = new THREE.CanvasTexture(canvas);
+            material.map.needsUpdate = true;
+            material.needsUpdate = true;
+          }
+        }
+
+        // Update measurement data (for panel display)
+        // Note: We update point1/point2 for display but use originalData for calculations
+        measurement.point1.copy(newPoint1);
+        measurement.point2.copy(newPoint2);
+        measurement.distance = newDistance;
+        measurement.midpoint.copy(newMidpoint);
+        measurement.vector = new THREE.Vector3().subVectors(newPoint2, newPoint1);
+        measurement.direction = measurement.vector.clone().normalize();
+      }
+    });
+
+    // Force re-render the measurement panel
+    dispatch({ type: 'SET_IS_MEASURING', payload: state.isMeasuring });
+  }, [state.measurements, state.isMeasuring]);
 
   const calculateBoneDimensions = useCallback((): BoneDimension[] => {
     return state.measurements.map(meas => ({
@@ -511,7 +848,7 @@ const setupMeasurementMode = useCallback((config: {
       if (!clickHandlerRef.current) {
         clickHandlerRef.current = handleMeasurementClick;
         canvas.addEventListener('click', handleMeasurementClick);
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = 'pointer';
       }
     } else {
       cleanupMeasurementMode();
@@ -529,6 +866,7 @@ const setupMeasurementMode = useCallback((config: {
     calculateBoneDimensions,
     setupMeasurementMode,
     cleanupMeasurementMode,
+    updateMeasurementsOnBoneMove,
   };
 
   return (

@@ -33,7 +33,6 @@ import { handleScreenshot as handleScreenshotUtil } from './utils/fileHandlers';
 import cornerstoneTools from '../../../platform/core/src/__mocks__/cornerstone-tools';
 import { useVersionHistoryContext } from './context/VersionHistoryContext';
 import { useImplantContext } from './context/ImplantContext';
-import { SeriesSelectionPopup } from './components/SeriesSelectionPopup';
 import { useAngleMeasurementContext } from './context/AngleMeasurementContext';
 import { AngleMeasurementPanel } from './components/AngleMeasurementPanel';
 
@@ -123,8 +122,6 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   const [hasSegmentationService, setHasSegmentationService] = useState(false);
   const { versionHistoryEnabled, versions, setVersions } = useVersionHistoryContext();
   const { showImplantView } = useImplantContext();
-  const [comparisonMode, setComparisonMode] = useState(false);
-  const [showComparisonPopup, setShowComparisonPopup] = useState(false);
 
   const {
     angleMeasurementEnabled,
@@ -132,98 +129,6 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     setupAngleMeasurementMode,
     cleanupAngleMeasurementMode
   } = useAngleMeasurementContext();
-
-
-
-  const handleComparisonClick = useCallback(() => {
-    console.log('Opening comparison series selection popup');
-    setShowComparisonPopup(true);
-  }, []);
-
-
-  // Comparison button handler
-const handleComparisonConfirm = useCallback(() => {
-  if (!propServicesManager) {
-    console.error('Services manager not available');
-    return;
-  }
-
-  const { viewportGridService } = propServicesManager.services;
-
-  console.log('Activating comparison mode ==> ',viewportGridService);
-  setComparisonMode(true);
-
-  try {
-    // Create findOrCreateViewport function for comparison layout
-    const findOrCreateViewport = (index: number) => {
-      return {
-        displaySetInstanceUIDs: [],
-        displaySetOptions: [],
-        viewportOptions: {
-          viewportId: `comparisonViewport-${index}`,
-          customLayout: 'comparison'
-        },
-        customProps: {
-          seriesLabel: index === 0 ? 'series1' : 'series2'
-        }
-      };
-    };
-
-    // Set comparison layout with 2 columns
-    viewportGridService.setLayout({
-      numRows: 1,
-      numCols: 1,
-      layoutType: 'grid',
-      layoutOptions: [],
-      findOrCreateViewport: findOrCreateViewport,
-      activeViewportId: 'comparisonViewport-0',
-      isHangingProtocolLayout: false,
-    });
-
-    console.log('Comparison layout applied successfully');
-
-  } catch (error) {
-    console.error('Error applying comparison layout:', error);
-    setComparisonMode(false);
-  }
-}, [propServicesManager]);
-
-// Exit comparison handler
-const handleExitComparison = useCallback(() => {
-  if (!propServicesManager) return;
-
-  const { viewportGridService } = propServicesManager.services;
-
-  try {
-    // Return to single view layout
-    const findOrCreateViewport = (index: number) => {
-      return {
-        displaySetInstanceUIDs: [],
-        displaySetOptions: [],
-        viewportOptions: {
-          viewportId: `singleImageViewport-${index}`, // Changed from karachiViewport
-          customLayout: 'singleImageViewport' // Changed from karachi
-        }
-      };
-    };
-
-    viewportGridService.setLayout({
-      numRows: 1,
-      numCols: 1,
-      layoutType: 'grid',
-      layoutOptions: [],
-      findOrCreateViewport: findOrCreateViewport,
-      activeViewportId: 'singleImageViewport-0', // Changed from karachiViewport
-      isHangingProtocolLayout: false,
-    });
-
-    setComparisonMode(false);
-    console.log('Exited comparison mode');
-
-  } catch (error) {
-    console.error('Error exiting comparison mode:', error);
-  }
-}, [propServicesManager]);
 
 
   const [restoredStlUrls, setRestoredStlUrls] = useState<string[]>([]);
@@ -929,122 +834,67 @@ const handleExitComparison = useCallback(() => {
         </div>
       )}
 
-         {!comparisonMode ? (
-            <button
-              onClick={handleComparisonClick}
-              style={{
-                marginTop: '10px',
-                marginBottom: '10px',
-                fontSize: "11px",
-                  padding: "2px 4px",
-                  borderRadius: "4px",
-                  backgroundColor: 'rgba(77, 255, 77, 0.2)',
-                  border: '1px solid rgba(77, 255, 77, 0.5)',
-                  color: '#4dff4d',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  flex: 1,
-                  height: "50px",
-                  justifyContent: 'center'
-              }}
-              title="Compare views side by side"
-            >
-              Comparison
-            </button>
-          ) : (
-        <button
-          onClick={handleExitComparison}
-          style={{
-                 marginTop: '10px',
-                 marginBottom: '10px',
-                 fontSize: "11px",
-                  padding: "2px 4px",
-                  borderRadius: "4px",
-                  backgroundColor: 'rgba(255, 100, 100, 0.2)',
-                  border: '1px solid rgba(255, 100, 100, 0.5)',
-                  color: '#ff4d4d',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  flex: 1,
-                  height: "50px",
-                  justifyContent: 'center'
-          }}
-        >
-          Exit Comparison
-        </button>
-      )}
-
-      <SeriesSelectionPopup
-        isOpen={showComparisonPopup}
-        onClose={() => setShowComparisonPopup(false)}
-        onConfirm={handleComparisonConfirm}
-        seriesList={seriesList}
-      />
-
-     { angleMeasurementEnabled === true ? <></> : (comparisonMode === false ? (versionHistoryEnabled ? <>
-      <ControlPanel
-                loading={loading}
-                error={error}
-                approveSuccess={approveSuccess}
-              >
-                <ImplantViewer
-                  showImplantView={showImplantView}
-                  onClose={() => {}}
-                />
-
-                <VersionHistory
-                  versions={versions}
-                  selectedVersion={versionHistory.selectedVersion}
-                  loadingVersions={versionHistory.loadingVersions}
-                  versionHistoryEnabled={versionHistory.versionHistoryEnabled}
-                  onSelectVersion={versionHistory.setSelectedVersion}
-                  onRestoreVersion={versionHistory.restoreVersion}
-                />
-              </ControlPanel>
-
-            <ViewerContainer
-              startMountRef={startMountRef}
-              leftMountRef={leftMountRef}
-              rightMountRef={rightMountRef}
-              removalCanvasRef={removalCanvasRef}
-              showRightView={showRightView}
-              show={versionHistoryEnabled}
-            >
-            </ViewerContainer>
-      </>
-      :<ViewerContainer
-      startMountRef={startMountRef}
-      leftMountRef={leftMountRef}
-      rightMountRef={rightMountRef}
-      removalCanvasRef={removalCanvasRef}
-      showRightView={showRightView}
-      show={versionHistoryEnabled}
-    >
-      <ControlPanel
-      loading={loading}
-      error={error}
-      approveSuccess={approveSuccess}
-    >
-      <ImplantViewer
-        implantMountRef={implantMountRefFromHook}
-        showImplantView={showImplantView}
-        onClose={() => {}}
-      />
-
-      <VersionHistory
-        versions={versions}
-        selectedVersion={versionHistory.selectedVersion}
-        loadingVersions={versionHistory.loadingVersions}
-        versionHistoryEnabled={versionHistory.versionHistoryEnabled}
-        onSelectVersion={versionHistory.setSelectedVersion}
-        onRestoreVersion={versionHistory.restoreVersion}
-      />
-    </ControlPanel>
-    </ViewerContainer>) : <></>) }
+     { angleMeasurementEnabled === true ? <></> : (
+       versionHistoryEnabled ? (
+         <>
+           <ControlPanel
+             loading={loading}
+             error={error}
+             approveSuccess={approveSuccess}
+           >
+             <ImplantViewer
+               showImplantView={showImplantView}
+               onClose={() => {}}
+             />
+             <VersionHistory
+               versions={versions}
+               selectedVersion={versionHistory.selectedVersion}
+               loadingVersions={versionHistory.loadingVersions}
+               versionHistoryEnabled={versionHistory.versionHistoryEnabled}
+               onSelectVersion={versionHistory.setSelectedVersion}
+               onRestoreVersion={versionHistory.restoreVersion}
+             />
+           </ControlPanel>
+           <ViewerContainer
+             startMountRef={startMountRef}
+             leftMountRef={leftMountRef}
+             rightMountRef={rightMountRef}
+             removalCanvasRef={removalCanvasRef}
+             showRightView={showRightView}
+             show={versionHistoryEnabled}
+           />
+         </>
+       ) : (
+         <ViewerContainer
+           startMountRef={startMountRef}
+           leftMountRef={leftMountRef}
+           rightMountRef={rightMountRef}
+           removalCanvasRef={removalCanvasRef}
+           showRightView={showRightView}
+           show={versionHistoryEnabled}
+         >
+           <ControlPanel
+             loading={loading}
+             error={error}
+             approveSuccess={approveSuccess}
+           >
+             <ImplantViewer
+               implantMountRef={implantMountRefFromHook}
+               showImplantView={showImplantView}
+               onClose={() => {}}
+             />
+             <VersionHistory
+               versions={versions}
+               selectedVersion={versionHistory.selectedVersion}
+               loadingVersions={versionHistory.loadingVersions}
+               versionHistoryEnabled={versionHistory.versionHistoryEnabled}
+               onSelectVersion={versionHistory.setSelectedVersion}
+               onRestoreVersion={versionHistory.restoreVersion}
+             />
+           </ControlPanel>
+         </ViewerContainer>
+       )
+     )}
 
 
       {/* Hidden file inputs */}

@@ -16,12 +16,14 @@ import { useAppConfig } from '@state';
 import { history } from '../utils/history';
 import StudyWorkList from "../pages/StudyWorkList";
 import LoginPage from "../pages/Login";
+import DicomUploadPage from "../pages/DicomUploadPage"
 import SpinalCordViewer from "../pages/Stl3DModel"
 import MainPage from "../pages/Main"
 import Dashboard from "../pages/Dashboard"
 import PatientList from '../components/PatientList';
 import PatientFormData from '../components/CreatePatient'
 import AddUser from '../components/CreateUser'
+import ComparisonPage from '../pages/ComparisonPage'
 
 const NotFoundServer = ({
   message = 'Unable to query for studies at this time. Check your data source configuration or network connection',
@@ -90,6 +92,10 @@ const bakedInRoutes = [
     children: StudyWorkList,
   },
   {
+    path: `/localWorklistUpload`,
+    children: DicomUploadPage,
+  },
+  {
     path: `/localStls`,
     children:  SpinalCordViewer,
   },
@@ -112,6 +118,10 @@ const bakedInRoutes = [
   {
     path: `/addUser`,
     children: AddUser
+  },
+  {
+    path: `/comparison`,
+    children: ComparisonPage
   }
 ];
 

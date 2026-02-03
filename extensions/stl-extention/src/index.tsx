@@ -25,7 +25,7 @@ export default {
    * is the StudyBrowserPanel that is provided by the default extension in OHIF.
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const ExtendedSpinalCordViewer = props => {
+    const WrappedSpinalCordViewer = props => {
       return (
         <SpinalCordViewer
           servicesManager={servicesManager}
@@ -41,17 +41,9 @@ export default {
         name: 'stl',
         iconName: "layout-advanced-3d-primary",
         iconLabel: '3D',
-        component: ExtendedSpinalCordViewer,
+        component: WrappedSpinalCordViewer,
       },
     ];
-    // return [
-    //   {
-    //     name: 'stl',
-    //     iconName: "layout-advanced-3d-primary",
-    //     iconLabel: '3D',
-    //     component: SpinalCordViewer,
-    //   },
-    // ]
   },
   /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
@@ -60,7 +52,7 @@ export default {
    * that is provided by the Cornerstone extension in OHIF.
    */
   getViewportModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const ExtendedSpinalCordViewer = props => {
+    const WrappedSpinalCordViewer = props => {
       return (
         <SpinalCordViewer
           servicesManager={servicesManager}
@@ -74,15 +66,9 @@ export default {
     return [
       {
         name: 'stlViewport',
-        component: ExtendedSpinalCordViewer,
+        component: WrappedSpinalCordViewer,
       },
     ];
-    // return [
-    //   {
-    //     name: 'stlViewport',
-    //     component: SpinalCordViewer,
-    //   },
-    // ];
   },
   /**
    * ToolbarModule should provide a list of tool buttons that will be available in OHIF
@@ -123,7 +109,7 @@ export default {
    * options, and defaultContext is the default context for the command to run against.
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const ExtendedSpinalCordViewer = props => {
+    const WrappedSpinalCordViewer = props => {
       return (
         <SpinalCordViewer
           servicesManager={servicesManager}
@@ -137,7 +123,7 @@ export default {
     return [
       {
         name: 'stlViewport',
-        component: ExtendedSpinalCordViewer,
+        component: WrappedSpinalCordViewer,
       },
     ];
   },

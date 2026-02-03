@@ -9,13 +9,32 @@ export interface VertebraInfo {
 }
 
 export interface Measurement {
-  id: number;
+  id: string;
   point1: THREE.Vector3;
   point2: THREE.Vector3;
   distance: number;
-  labelObj: THREE.Sprite;
-  lineObj: THREE.Line;
-  pointObjs: THREE.Mesh[];
+  vector: THREE.Vector3;
+  midpoint: THREE.Vector3;
+  direction: THREE.Vector3;
+  angles: { xy: number; xz: number; yz: number };
+  timestamp: Date;
+  visualElements: {
+    points: THREE.Mesh[];
+    lines: THREE.Line[];
+    textLabel?: THREE.Sprite;
+  };
+}
+
+export interface BoneDimension {
+  measurementId: string;
+  length: number;
+  vector: THREE.Vector3;
+  midpoint: THREE.Vector3;
+  direction: THREE.Vector3;
+  angles: { xy: number; xz: number; yz: number };
+  crossSectionalArea: number;
+  volume: number;
+  timestamp: Date;
 }
 
 export interface Version {
@@ -133,4 +152,5 @@ export interface AngleMeasurementConfig {
   leftSceneRef: React.MutableRefObject<THREE.Scene>;
   cameraRef: React.MutableRefObject<THREE.PerspectiveCamera | undefined>;
   meshRefs: React.MutableRefObject<MeshRefs>;
+  leftControlsRef?: React.MutableRefObject<any>;
 }

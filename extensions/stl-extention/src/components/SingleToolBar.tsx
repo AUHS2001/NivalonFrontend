@@ -31,8 +31,10 @@ interface SingleToolbarProps {
   rotationMode2?: boolean;
   rotationMode3?: boolean;
   implantMoveMode?: boolean;
+  inertialRotationMode?: boolean;
   spineLabelingMode?: boolean;
   onToggleSpineLabeling?: () => void;
+  onToggleInertialRotation?: () => void;
   onToggleRotation1?: () => void;
   onToggleRotation2?: () => void;
   onToggleRotation3?: () => void;
@@ -70,6 +72,7 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   rotationMode2,
   rotationMode3,
   implantMoveMode,
+  inertialRotationMode,
   spineLabelingMode,
   onFileSelect,
   onRefresh,
@@ -87,6 +90,7 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   onToggleRotation2,
   onToggleRotation3,
   onToggleImplantMove,
+  onToggleInertialRotation,
   onToggleSpineLabeling
 }) => {
   // Add this CSS to your global styles or component
@@ -378,6 +382,17 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             style={{ minWidth: '45px', minHeight: '45px' }}
           >
             <i className="fas fa-hand-rock" />
+          </button>
+
+          {/* Interactive Rotation Mode */}
+          <button
+            className={`icon-button${inertialRotationMode === true ? " selected" : ""}`}
+            type="button"
+            data-tooltip={inertialRotationMode ? "Interactive Rotation (ON)" : "Interactive Rotation"}
+            onClick={onToggleInertialRotation}
+            style={{ minWidth: '45px', minHeight: '45px' }}
+          >
+            <i className="fas fa-cube" />
           </button>
 
           {/* Screenshot */}
