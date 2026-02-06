@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import { SERVER_URL } from '../../../../config/server';
 
 interface PointCloudData {
   points: THREE.Vector3[];
@@ -168,11 +169,11 @@ const ComparisonPage: React.FC = () => {
       try {
         const timestamp = Date.now();
         const url1 = study1Uid
-          ? `http://localhost:8000/analyst/get-3d?series_instance_uid=${series1Uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
-          : `http://localhost:8000/analyst/get-3d?series_instance_uid=${series1Uid}&_t=${timestamp}`;
+          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1Uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
+          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1Uid}&_t=${timestamp}`;
         const url2 = study2Uid
-          ? `http://localhost:8000/analyst/get-3d?series_instance_uid=${series2Uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
-          : `http://localhost:8000/analyst/get-3d?series_instance_uid=${series2Uid}&_t=${timestamp + 1}`;
+          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2Uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
+          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2Uid}&_t=${timestamp + 1}`;
 
         const [response1, response2] = await Promise.all([
           fetch(url1, { headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" }, cache: 'no-store' }),

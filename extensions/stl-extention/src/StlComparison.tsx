@@ -7,6 +7,7 @@ import "./styles/style.css";
 
 // Context
 import { StlInstanceContext } from './../../../platform/app/src/context/StlInstanceContext';
+import { SERVER_URL } from '../../../config/server';
 
 // Hooks
 import { useSTLLoader } from './hooks/useSTLLoader';
@@ -800,7 +801,7 @@ const createAutomaticSegmentation = async () => {
       setError(null);
       try {
         const response = await fetch(
-          `http://localhost:8000/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,
@@ -1178,7 +1179,7 @@ const createAutomaticSegmentation = async () => {
     try {
       setIsDownloading(true);
       const response = await fetch(
-        `http://localhost:8000/analyst/download-generated-3d?series_instance_uid=${stlInstanceId}`,
+        `${SERVER_URL}/analyst/download-generated-3d?series_instance_uid=${stlInstanceId}`,
         {
           method: 'GET',
           headers: {
@@ -1246,7 +1247,7 @@ const createAutomaticSegmentation = async () => {
         formData.append('files', blob, fileName);
       }
 
-      const response = await fetch('http://localhost:8000/analyst/approve-final-3d', {
+      const response = await fetch('${SERVER_URL}/analyst/approve-final-3d', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${userToken}`,

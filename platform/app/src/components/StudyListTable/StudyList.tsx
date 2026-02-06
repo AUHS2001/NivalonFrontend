@@ -8,6 +8,7 @@ import { extensionManager } from '../../App';
 import { StlInstanceContext } from '../../context/StlInstanceContext';
 import { StlInstanceListDataContext } from '../../../../app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from '../../../../app/src/context/parentStudyIdContext';
+import { SERVER_URL } from '../../../../../config/server';
 
 interface Series {
   series_instance_uid: string;
@@ -76,7 +77,7 @@ export default function StudyList() {
         console.log("role => ",userRole);
         const fetchData = async () => {
             try {
-                const response = await axios.get<{ data: { series: { series_instance_uid: string }[] }[] }>('http://127.0.0.1:8000/imaging/studies',{
+                const response = await axios.get<{ data: { series: { series_instance_uid: string }[] }[] }>(`${SERVER_URL}/imaging/studies`,{
                     headers: {
                         Authorization: `Bearer ${userToken}`,
                         "Content-Type": "application/json"

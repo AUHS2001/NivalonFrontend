@@ -9,6 +9,7 @@ import "./styles/style.css";
 import { StlInstanceContext } from './../../../platform/app/src/context/StlInstanceContext';
 import { StlInstanceListDataContext } from './../../../platform/app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from './../../../platform/app/src/context/parentStudyIdContext';
+import { SERVER_URL } from '../../../config/server';
 
 // Hooks
 import { useSTLLoader } from './hooks/useSTLLoader';
@@ -275,7 +276,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       setError(null);
       try {
         const response = await fetch(
-          `http://localhost:8000/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,

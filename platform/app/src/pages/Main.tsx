@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import logo from '../../assets/logo.png';
 import { useNavigate } from 'react-router-dom';
 import loginImage from '../../assets/login-image1.jpg'; // You'll need to add this image
+import { SERVER_URL } from '../../../../config/server';
 
 const MainPage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ const MainPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/auth/login', {
+      const response = await fetch(`${SERVER_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

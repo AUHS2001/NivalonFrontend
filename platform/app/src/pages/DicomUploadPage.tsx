@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import logo from '../../assets/logo.png';
 import { useNavigate } from 'react-router-dom';
+import { SERVER_URL } from '../../../../config/server';
 
 const DicomUploadPage: React.FC = () => {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ const DicomUploadPage: React.FC = () => {
   const [error, setError] = useState<string>('');
 
   const MAX_FILES_PER_REQUEST = 999;
-  const API_URL = 'http://127.0.0.1:8000/patient/upload-images';
+  const API_URL = `${SERVER_URL}/patient/upload-images`;
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {

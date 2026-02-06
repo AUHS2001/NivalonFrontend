@@ -3,6 +3,7 @@ import { Version } from '../types/three.types';
 import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
 import { useSTLLoader } from './useSTLLoader';
+import { SERVER_URL } from '../../../../config/server';
 
 interface UseVersionHistoryProps {
   setLoading: (loading: boolean) => void;
@@ -29,7 +30,7 @@ export const useVersionHistory = ({
       setLoadingVersions(true);
       try {
         const response = await fetch(
-          `http://localhost:8000/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,

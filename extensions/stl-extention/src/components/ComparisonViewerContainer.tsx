@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
+import { SERVER_URL } from '../../../../config/server';
 
 interface Series {
   series_instance_uid: string;
@@ -79,12 +80,12 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
         const study2Uid = study2?.study_instance_uid || '';
 
         const url1 = study1Uid
-          ? `http://localhost:8000/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
-          : `http://localhost:8000/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&_t=${timestamp}`;
+          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
+          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&_t=${timestamp}`;
 
         const url2 = study2Uid
-          ? `http://localhost:8000/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
-          : `http://localhost:8000/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&_t=${timestamp + 1}`;
+          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
+          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&_t=${timestamp + 1}`;
 
         const [response1, response2] = await Promise.all([
           fetch(url1, {

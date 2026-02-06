@@ -2,6 +2,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
+import { SERVER_URL } from '../../../../config/server';
 
 interface Series {
   series_instance_uid: string;
@@ -67,7 +68,7 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
   const fetchStudies = async () => {
     setLoadingStudies(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/imaging/studies', {
+      const response = await fetch(`${SERVER_URL}/imaging/studies`, {
         headers: {
           Authorization: `Bearer ${userToken}`,
           'Content-Type': 'application/json'
