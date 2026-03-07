@@ -152,23 +152,20 @@ export const useImplantHighlight = ({
     ];
 
     // Calculate ratios: where is the point within the STL bounds (0 to 1)
-    // Note: In STL world space with scale.y=-1, max.y is at the bottom, min.y is at the top
+    // Note: STL geometries are now in LPS coordinates (transformed during loading)
     const ratioX = (stlPoint.x - stlBounds.min.x) / stlSize.x;
-    const ratioY = (stlPoint.y - stlBounds.min.y) / stlSize.y; // 0=top, 1=bottom in visual
+    const ratioY = (stlPoint.y - stlBounds.min.y) / stlSize.y;
     const ratioZ = (stlPoint.z - stlBounds.min.z) / stlSize.z;
 
-    // Map to DICOM coordinates
-    // X: left-right (direct mapping)
+    // Map to DICOM coordinates (LPS to LPS - direct mapping)
+    // X: left-right
     const dicomX = volumeBounds.origin[0] + ratioX * volumeSize[0];
 
-    // Y: anterior-posterior (Z in STL maps to Y in DICOM)
-    const dicomY = volumeBounds.origin[1] + ratioZ * volumeSize[1];
+    // Y: anterior-posterior
+    const dicomY = volumeBounds.origin[1] + ratioY * volumeSize[1];
 
-    // Z: superior-inferior (Y in STL maps to Z in DICOM)
-    // With scale.y=-1: high world Y = bottom of spine visually
-    // In DICOM: depends on scan direction, but typically origin is at superior
-    // Use direct ratio mapping
-    const dicomZ = volumeBounds.origin[2] + ratioY * volumeSize[2];
+    // Z: superior-inferior
+    const dicomZ = volumeBounds.origin[2] + ratioZ * volumeSize[2];
 
     console.log('📍 Transform:', {
       stlPoint: { x: stlPoint.x.toFixed(2), y: stlPoint.y.toFixed(2), z: stlPoint.z.toFixed(2) },

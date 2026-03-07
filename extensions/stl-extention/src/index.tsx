@@ -1,6 +1,9 @@
 import { id } from './id';
 import SpinalCordViewer from './SpinalCordViewer';
+import SingleSpinalCord from './SingleSpinalCord';
+import SignonStlPanel from './SignonStlPanel';
 import React from 'react';
+import { toggleSpineLabelOverlay, hasVertebraData } from './utils/spineLabelOverlayManager';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -36,12 +39,29 @@ export default {
       );
     };
 
+    const WrappedSignonStlPanel = props => {
+      return (
+        <SignonStlPanel
+          servicesManager={servicesManager}
+          commandsManager={commandsManager}
+          extensionManager={extensionManager}
+          {...props}
+        />
+      );
+    };
+
     return [
       {
         name: 'stl',
         iconName: "layout-advanced-3d-primary",
         iconLabel: '3D',
         component: WrappedSpinalCordViewer,
+      },
+      {
+        name: 'signonStl',
+        iconName: "layout-advanced-3d-primary",
+        iconLabel: '3D',
+        component: WrappedSignonStlPanel,
       },
     ];
   },
@@ -63,10 +83,24 @@ export default {
       );
     };
 
+    const WrappedSingleSpinalCord = props => {
+      return (
+        <SingleSpinalCord
+          servicesManager={servicesManager}
+          extensionManager={extensionManager}
+          {...props}
+        />
+      );
+    };
+
     return [
       {
         name: 'stlViewport',
         component: WrappedSpinalCordViewer,
+      },
+      {
+        name: 'singleStlViewport',
+        component: WrappedSingleSpinalCord,
       },
     ];
   },
@@ -109,23 +143,22 @@ export default {
    * options, and defaultContext is the default context for the command to run against.
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const WrappedSpinalCordViewer = props => {
-      return (
-        <SpinalCordViewer
-          servicesManager={servicesManager}
-          commandsManager={commandsManager}
-          extensionManager={extensionManager}
-          {...props}
-        />
-      );
-    };
-
-    return [
-      {
-        name: 'stlViewport',
-        component: WrappedSpinalCordViewer,
+    const actions = {
+      toggleSpineLabelOverlayAction: () => {
+        console.log('toggleSpineLabelOverlay command fired');
+        if (!hasVertebraData()) {
+          console.warn('No STL vertebra data loaded - open STL panel and load files first');
+          return;
+        }
+        toggleSpineLabelOverlay(servicesManager);
       },
-    ];
+    };
+    const definitions = {
+      toggleSpineLabelOverlay: {
+        commandFn: actions.toggleSpineLabelOverlayAction,
+      },
+    };
+    return { actions, definitions, defaultContext: 'CORNERSTONE' };
   },
   /**
    * ContextModule should provide a list of context that will be available in OHIF

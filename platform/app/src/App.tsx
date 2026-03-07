@@ -50,6 +50,7 @@ import { ImplantProvider } from '../../../extensions/stl-extention/src/context/I
 import { StlVisibilityProvider } from '../../../extensions/stl-extention/src/context/StlVisibilityContext';
 import { AngleMeasurementProvider } from '../../../extensions/stl-extention/src/context/AngleMeasurementContext';
 import { SpineLabelingProvider } from '../../../extensions/stl-extention/src/context/SpineLabelingContext';
+import { SpineLabelOverlayProvider } from '../../../extensions/stl-extention/src/context/SpineLabelOverlayContext';
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -178,6 +179,7 @@ function App({
 
   return (
     <CombinedProviders>
+      <SpineLabelOverlayProvider>
       <SpineLabelingProvider>
       <AngleMeasurementProvider>
       <StlVisibilityProvider>
@@ -208,6 +210,7 @@ function App({
       </StlVisibilityProvider>
       </AngleMeasurementProvider>
       </SpineLabelingProvider>
+      </SpineLabelOverlayProvider>
     </CombinedProviders>
   );
 }

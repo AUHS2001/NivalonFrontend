@@ -1053,6 +1053,17 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: 'SpineLabel',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'tool-annotate',
+      label: 'Spine Labels',
+      tooltip: 'Toggle spine labeling overlay on DICOM viewports',
+      commands: 'toggleSpineLabelOverlay',
+      evaluate: 'evaluate.action',
+    },
+  },
+  {
     id: 'Shapes',
     uiType: 'ohif.toolBoxButton',
     props: {

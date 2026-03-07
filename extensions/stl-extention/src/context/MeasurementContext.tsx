@@ -651,8 +651,7 @@ const setupMeasurementMode = useCallback((config: {
         if (bone) {
           // Calculate how much the bone has moved from its initial position
           const boneMovement = bone.position.clone().sub(originalData.point1BonePos);
-          // Invert Y because the group has scale.y = -1
-          boneMovement.y = -boneMovement.y;
+          // Note: Geometries are now transformed to LPS during loading, no inversion needed
           // Apply that movement to the ORIGINAL point position
           newPoint1 = originalData.originalPoint1.clone().add(boneMovement);
           hasUpdate = true;
@@ -665,8 +664,7 @@ const setupMeasurementMode = useCallback((config: {
         if (bone) {
           // Calculate how much the bone has moved from its initial position
           const boneMovement = bone.position.clone().sub(originalData.point2BonePos);
-          // Invert Y because the group has scale.y = -1
-          boneMovement.y = -boneMovement.y;
+          // Note: Geometries are now transformed to LPS during loading, no inversion needed
           // Apply that movement to the ORIGINAL point position
           newPoint2 = originalData.originalPoint2.clone().add(boneMovement);
           hasUpdate = true;

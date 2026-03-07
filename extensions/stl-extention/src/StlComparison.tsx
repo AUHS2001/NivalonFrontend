@@ -8,6 +8,7 @@ import "./styles/style.css";
 // Context
 import { StlInstanceContext } from './../../../platform/app/src/context/StlInstanceContext';
 import { SERVER_URL } from '../../../config/server';
+import { LPS_UP } from './utils/coordinateSystem';
 
 // Hooks
 import { useSTLLoader } from './hooks/useSTLLoader';
@@ -113,7 +114,7 @@ const StlComparison: React.FC<StlComparisonProps> = ({
   const { stlInstanceId, updateStlInstanceId, seriesName } = context;
 
   const userRole = localStorage.getItem('userRole');
-  const userToken = localStorage.getItem('token');
+  const userToken = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y';
 
   const [isCreatingSegmentation, setIsCreatingSegmentation] = useState(false);
   const [segmentationCreated, setSegmentationCreated] = useState(false);
@@ -329,6 +330,7 @@ const StlComparison: React.FC<StlComparisonProps> = ({
           try {
             const arrayBuffer = await file.arrayBuffer();
             const geometry = loader.parse(arrayBuffer);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
 
             const fileName = file.name;
@@ -404,34 +406,29 @@ const StlComparison: React.FC<StlComparisonProps> = ({
 
           const color = new THREE.Color(colorMap[v.type] || 0x9b59b6);
 
-          // Left mesh = Latest View (White)
+          // Left mesh = Latest View (White) - no emissive glow
           const matLeft = new THREE.MeshPhongMaterial({
             color: 0xffffff, // White for left view
-            specular: 0xffffff,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0xffffff),
-            emissiveIntensity: 0.2
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(v.geometry, matLeft);
-          mesh.position.y = currentY - center.y * compression;
-          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = currentY - center.z * compression; // LPS: Z is vertical
+          // LPS coordinate system - no rotation needed
           mesh.userData = v;
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Colored)
+          // Right mesh = Labelling View (Colored) - no emissive
           const matRight = new THREE.MeshPhongMaterial({
             color: color.getHex(),
-            specular: 0x00000000,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const meshClone = new THREE.Mesh(v.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroupRef.current.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -484,34 +481,29 @@ const StlComparison: React.FC<StlComparisonProps> = ({
 
           const color = new THREE.Color(colorMap[organType] || 0x9b59b6);
 
-          // Left mesh = Latest View (Blue for aorta, Red for heart)
+          // Left mesh = Latest View (Blue for aorta, Red for heart) - no emissive
           const matLeft = new THREE.MeshPhongMaterial({
             color: organType === 'A' ? 0x3498db : 0xe74c3c, // Blue for aorta, Red for heart
-            specular: 0xffffff,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(organ.geometry, matLeft);
           mesh.position.set(organX, organY, organZ);
-          mesh.rotation.x = Math.PI / 2;
+          // LPS coordinate system - no rotation needed
           mesh.userData = { ...organ, organType };
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Pink for aorta, Purple for heart)
+          // Right mesh = Labelling View (Pink for aorta, Purple for heart) - no emissive
           const matRight = new THREE.MeshPhongMaterial({
             color: organType === 'A' ? 0xe91e63 : 0x9c27b0, // Pink for aorta, Purple for heart
-            specular: 0x00000000,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const meshClone = new THREE.Mesh(organ.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroupRef.current.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -528,9 +520,7 @@ const StlComparison: React.FC<StlComparisonProps> = ({
           addStlFiles(allNewStlFiles);
         }
 
-        // Apply transformations to left and right views only
-        leftGroupRef.current.scale.y = -1;
-        rightGroupRef.current.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         // Center camera on main view
         const bbox = new THREE.Box3().setFromObject(leftGroupRef.current);
@@ -894,10 +884,27 @@ const createAutomaticSegmentation = async () => {
     rightControlsRef.current = rightControls;
 
     function setupLighting(scene: THREE.Scene) {
-      scene.add(new THREE.AmbientLight(0x404040, 0.5));
-      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-      dir.position.set(0, 1, 1).normalize();
-      scene.add(dir);
+      // Ambient light
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+      // Key light (main light)
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      keyLight.position.set(1, 1, 1).normalize();
+      scene.add(keyLight);
+
+      // Fill light
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      fillLight.position.set(-1, 0.5, -0.5).normalize();
+      scene.add(fillLight);
+
+      // Back light
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+      backLight.position.set(0, 0, -1).normalize();
+      scene.add(backLight);
+
+      // Hemisphere light
+      const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+      scene.add(hemisphereLight);
     }
 
     setupLighting(leftScene);
@@ -967,10 +974,13 @@ const createAutomaticSegmentation = async () => {
     startScene.background = new THREE.Color(0x000000);
 
     // Set up lighting
-    startScene.add(new THREE.AmbientLight(0x404040, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
     dirLight.position.set(0, 1, 1).normalize();
     startScene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-1, 0.5, -0.5).normalize();
+    startScene.add(fillLight);
 
     // Add the start group to the scene
     startScene.add(startGroupRef.current);

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import logo from '../../assets/logo.png';
+import { LPS_UP } from '../../../../extensions/stl-extention/src/utils/coordinateSystem';
 
 const SpinalCordViewer: React.FC = () => {
   const [files, setFiles] = useState([]);
@@ -69,10 +70,27 @@ const SpinalCordViewer: React.FC = () => {
     rightControlsRef.current = rightControls;
 
     const setupLighting = (scene) => {
-      scene.add(new THREE.AmbientLight(0x404040, 0.5));
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(0, 1, 1).normalize();
-      scene.add(directionalLight);
+      // Bright ambient light
+      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+
+      // Key light (main light)
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      keyLight.position.set(1, 1, 1).normalize();
+      scene.add(keyLight);
+
+      // Fill light
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      fillLight.position.set(-1, 0.5, -0.5).normalize();
+      scene.add(fillLight);
+
+      // Back light
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      backLight.position.set(0, 0, -1).normalize();
+      scene.add(backLight);
+
+      // Hemisphere light
+      const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
+      scene.add(hemisphereLight);
     };
 
     setupLighting(leftScene);
@@ -140,6 +158,7 @@ const SpinalCordViewer: React.FC = () => {
         reader.onload = (e) => {
           try {
             const geometry = loader.parse(e.target.result);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
             resolve({
               geometry,
@@ -186,22 +205,22 @@ const SpinalCordViewer: React.FC = () => {
 
           const materialLeft = new THREE.MeshPhongMaterial({
             color,
-            specular: 0x00000000,
-            shininess: 0,
+            specular: 0x111111,
+            shininess: 10,
             side: THREE.DoubleSide,
           });
 
           const mesh = new THREE.Mesh(v.geometry, materialLeft);
-          mesh.position.y = currentY - center.y * compression;
-          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = currentY - center.z * compression; // LPS: Z is vertical
+          // LPS coordinate system - no rotation needed
           mesh.userData = v;
           leftGroup.add(mesh);
           meshRefs.current.left.push(mesh);
 
           const materialRight = new THREE.MeshPhongMaterial({
             color: 0xffffff,
-            specular: 0xffffff,
-            shininess: 0,
+            specular: 0x111111,
+            shininess: 10,
             side: THREE.DoubleSide,
           });
 
@@ -214,9 +233,7 @@ const SpinalCordViewer: React.FC = () => {
           currentY -= size.y * compression + gap;
         });
 
-        // Flip left group
-        leftGroup.scale.y = -1;
-        rightGroup.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         // Center camera
         const bbox = new THREE.Box3().setFromObject(leftGroup);

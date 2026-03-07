@@ -5,6 +5,8 @@ import { VertebraInfo, MeshRefs } from '../types/three.types';
 import { useLabelingViewContext } from '../context/LabelingViewContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useMeshVisibility } from '../hooks/useMeshVisibility';
+import { LPS_UP } from '../utils/coordinateSystem';
+import { storeVertebraData } from '../utils/spineLabelOverlayManager';
 
 interface UseSTLLoaderProps {
   stlUrls: string[];
@@ -173,21 +175,17 @@ export const useSTLLoader = ({
         // Aorta - Pink for Labelling view
         return new THREE.MeshPhongMaterial({
           color: 0xe91e63, // Pink
-          specular: 0x00000000,
-          shininess: 0,
-          side: THREE.DoubleSide,
-          emissive: new THREE.Color(0x222222),
-          emissiveIntensity: 0.2
+          specular: 0x111111,
+          shininess: 10,
+          side: THREE.DoubleSide
         });
       } else if (organType === 'H') {
         // Heart - Purple for Labelling view
         return new THREE.MeshPhongMaterial({
           color: 0x9c27b0, // Purple
-          specular: 0x00000000,
-          shininess: 0,
-          side: THREE.DoubleSide,
-          emissive: new THREE.Color(0x222222),
-          emissiveIntensity: 0.2
+          specular: 0x111111,
+          shininess: 10,
+          side: THREE.DoubleSide
         });
       }
     }
@@ -198,21 +196,17 @@ export const useSTLLoader = ({
         // Aorta - Blue for Latest and Start views
         return new THREE.MeshPhongMaterial({
           color: 0x3498db, // Blue
-          specular: 0x00000000,
-          shininess: 0,
-          side: THREE.DoubleSide,
-          emissive: new THREE.Color(0x222222),
-          emissiveIntensity: 0.2
+          specular: 0x111111,
+          shininess: 10,
+          side: THREE.DoubleSide
         });
       } else if (organType === 'H') {
         // Heart - Red for Latest and Start views
         return new THREE.MeshPhongMaterial({
           color: 0xe74c3c, // Red
-          specular: 0x00000000,
-          shininess: 0,
-          side: THREE.DoubleSide,
-          emissive: new THREE.Color(0x222222),
-          emissiveIntensity: 0.2
+          specular: 0x111111,
+          shininess: 10,
+          side: THREE.DoubleSide
         });
       }
     }
@@ -221,21 +215,17 @@ export const useSTLLoader = ({
       // Right view (Labelling View): Colored materials for vertebrae
       return new THREE.MeshPhongMaterial({
         color: color,
-        specular: 0x00000000,
-        shininess: 0,
-        side: THREE.DoubleSide,
-        emissive: new THREE.Color(0x000000),
-        emissiveIntensity: 0.2
+        specular: 0x111111,
+        shininess: 10,
+        side: THREE.DoubleSide
       });
     } else {
-      // Left view (Latest View): White materials for vertebrae
+      // Left view (Latest View): White materials for vertebrae (no emissive glow)
       return new THREE.MeshPhongMaterial({
         color: 0xffffff,
-        specular: 0xffffff,
-        shininess: 0,
-        side: THREE.DoubleSide,
-        emissive: new THREE.Color(0xffffff),
-        emissiveIntensity: 0.2
+        specular: 0x111111,
+        shininess: 10,
+        side: THREE.DoubleSide
       });
     }
   }, []);
@@ -259,6 +249,7 @@ export const useSTLLoader = ({
       }
       const arrayBuffer = await response.arrayBuffer();
       const geometry = loader.parse(arrayBuffer);
+      // STLs are already in LPS - no transformation needed
       geometry.computeBoundingBox();
       return geometry;
     } catch (error) {
@@ -301,6 +292,7 @@ export const useSTLLoader = ({
         console.log(`✅ Downloaded ${arrayBuffer.byteLength} bytes from ${url}`);
 
         const geometry = loader.parse(arrayBuffer);
+        // STLs are already in LPS - no transformation needed
         geometry.computeBoundingBox();
 
         const fileName = url.substring(url.lastIndexOf('/') + 1);
@@ -399,8 +391,8 @@ export const useSTLLoader = ({
           // Left mesh = Latest View (White for vertebrae) - Use generated
           const matLeft = createMeshMaterial(color.getHex(), showRightView, false, v.type);
           const mesh = new THREE.Mesh(v.geometry, matLeft);
-          mesh.position.y = currentY - center.y * compression;
-          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = currentY - center.z * compression;
+          // LPS coordinate system - no rotation needed
           mesh.userData = v;
           leftGroup.add(mesh);
           meshRefs.current.left.push(mesh);
@@ -413,7 +405,7 @@ export const useSTLLoader = ({
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
-          currentY -= size.y * compression + gap;
+          currentY -= size.z * compression + gap;
 
           allCreatedMeshes.push({
             fileName: v.fileName,
@@ -422,8 +414,8 @@ export const useSTLLoader = ({
           });
         });
 
-        // Calculate center of all vertebrae for implant positioning
-        let vertebraeCenterY = 0;
+        // Calculate center of all vertebrae for implant positioning (LPS: Z is vertical)
+        let vertebraeCenterZ = 0;
         if (meshRefs.current.left.length > 0) {
           const vertebraeBbox = new THREE.Box3();
           meshRefs.current.left.forEach(mesh => {
@@ -431,7 +423,7 @@ export const useSTLLoader = ({
           });
           const vertebraeCenter = new THREE.Vector3();
           vertebraeBbox.getCenter(vertebraeCenter);
-          vertebraeCenterY = vertebraeCenter.y;
+          vertebraeCenterZ = vertebraeCenter.z;
         }
 
         // Now create IMPLANTS with GREEN color
@@ -453,17 +445,17 @@ export const useSTLLoader = ({
           // Implant color is always BRIGHT GREEN (0x00ff00)
           const implantColor = 0x00ff00;
 
-          // Position implant at the center of vertebrae
+          // Position implant at the center of vertebrae (LPS: Z is vertical)
           // Since geometry is now centered, we just position the mesh directly
           let implantX = 0;
-          let implantY = vertebraeCenterY;
-          let implantZ = 0;
+          let implantY = 0;
+          let implantZ = vertebraeCenterZ;
 
           // Left mesh = Latest View - Use GREEN material
           const matLeft = createMeshMaterial(implantColor, showRightView, false, 'I');
           const mesh = new THREE.Mesh(implant.geometry.clone(), matLeft);
           mesh.position.set(implantX, implantY, implantZ);
-          mesh.rotation.x = Math.PI / 2;
+          // LPS coordinate system - no rotation needed
           mesh.userData = { ...implant, isImplant: true };
           leftGroup.add(mesh);
           meshRefs.current.left.push(mesh);
@@ -472,11 +464,10 @@ export const useSTLLoader = ({
           const matRight = createMeshMaterial(implantColor, true, false, 'I');
           const meshClone = new THREE.Mesh(implant.geometry.clone(), matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
-          console.log(`✅ Created GREEN implant mesh: ${implant.fileName} at center Y: ${vertebraeCenterY}`);
+          console.log(`✅ Created GREEN implant mesh: ${implant.fileName} at center Z: ${vertebraeCenterZ}`);
           allCreatedMeshes.push({
             fileName: implant.fileName,
             originalUrl: implant.originalUrl,
@@ -499,9 +490,9 @@ export const useSTLLoader = ({
             const matStart = createMeshMaterial(color.getHex(), false, true, 'I');
             const startMesh = new THREE.Mesh(obj.geometry.clone(), matStart);
 
-            // Position implant at center of vertebrae (geometry is already centered)
-            startMesh.position.set(0, vertebraeCenterY, 0);
-            startMesh.rotation.x = Math.PI / 2;
+            // Position implant at center of vertebrae (LPS: Z is vertical)
+            startMesh.position.set(0, 0, vertebraeCenterZ);
+            // LPS coordinate system - no rotation needed
             startMesh.userData = { ...obj, isApproved: false };
             startGroup.add(startMesh);
             startMeshRefs.current.push(startMesh);
@@ -549,11 +540,11 @@ export const useSTLLoader = ({
               }
               startMesh.position.set(organX, organY, organZ);
             } else {
-              // For vertebrae, use the stacking position
-              startMesh.position.y = currentY - center.y * compression;
+              // For vertebrae, use the stacking position (LPS: Z is vertical)
+              startMesh.position.z = currentY - center.z * compression;
             }
 
-            startMesh.rotation.x = Math.PI / 2;
+            // LPS coordinate system - no rotation needed
             startMesh.userData = { ...obj, isApproved: true };
             startGroup.add(startMesh);
             startMeshRefs.current.push(startMesh);
@@ -594,11 +585,11 @@ export const useSTLLoader = ({
               }
               startMesh.position.set(organX, organY, organZ);
             } else {
-              // For vertebrae, use the stacking position
-              startMesh.position.y = currentY - center.y * compression;
+              // For vertebrae, use the stacking position (LPS: Z is vertical)
+              startMesh.position.z = currentY - center.z * compression;
             }
 
-            startMesh.rotation.x = Math.PI / 2;
+            // LPS coordinate system - no rotation needed
             startMesh.userData = obj;
             startGroup.add(startMesh);
             startMeshRefs.current.push(startMesh);
@@ -661,7 +652,7 @@ export const useSTLLoader = ({
           const matLeft = createMeshMaterial(vertebraeColor.getHex(), showRightView, false, organType);
           const mesh = new THREE.Mesh(organ.geometry, matLeft);
           mesh.position.set(organX, organY, organZ);
-          mesh.rotation.x = Math.PI / 2;
+          // LPS coordinate system - no rotation needed
           mesh.userData = { ...organ, organType };
           leftGroup.add(mesh);
           meshRefs.current.left.push(mesh);
@@ -670,7 +661,6 @@ export const useSTLLoader = ({
           const matRight = createMeshMaterial(vertebraeColor.getHex(), true, false, organType);
           const meshClone = new THREE.Mesh(organ.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -686,9 +676,7 @@ export const useSTLLoader = ({
         return Promise.all(startViewPromises);
       })
       .then(() => {
-        leftGroup.scale.y = -1;
-        rightGroup.scale.y = -1;
-        startGroup.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         console.log('🎯 Final mesh counts:', {
           left: meshRefs.current.left.length,
@@ -736,6 +724,11 @@ export const useSTLLoader = ({
           }
         }
 
+        // Store vertebra data globally for spine label overlay (works even when STL panel unmounts)
+        if (meshRefs.current.left.length > 0) {
+          storeVertebraData(meshRefs.current.left);
+        }
+
         console.log('✅ STL loading completed successfully');
         console.log('📊 Summary:');
         console.log('   - Left/Right views: Generated STLs');
@@ -750,5 +743,6 @@ export const useSTLLoader = ({
         console.log('🏁 STL loading process finished');
         setLoading(false);
       });
-  }, [stlUrls, showRightView]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stlUrls]); // Only reload when stlUrls change, not on showRightView change
 };

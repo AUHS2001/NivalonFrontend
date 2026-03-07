@@ -309,7 +309,7 @@ const LoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div style={{ textAlign: 'center' }}>
+        {/* <div style={{ textAlign: 'center' }}>
           <p style={{ color: '#bdc3c7', margin: 0 }}>
             Don't have an account?{' '}
             <a href="#" style={{
@@ -318,7 +318,7 @@ const LoginPage: React.FC = () => {
               fontWeight: '500'
             }}>Sign up</a>
           </p>
-        </div>
+        </div> */}
       </div>
 
       {/* Animation styles */}

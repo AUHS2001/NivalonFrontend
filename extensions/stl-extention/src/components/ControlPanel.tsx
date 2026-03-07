@@ -44,6 +44,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
   const type = localStorage.getItem('myLayout');
 
+  // Show content if layout type matches or if no layout is set yet (default behavior)
+  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'karachi-layout' || type === 'primary3D';
+
   return (
     <div style={{
       flex: 2,
@@ -53,9 +56,37 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       borderRight: '1.5px solid #fff',
     }}>
       {
-        (type === 'fourUp' || type === 'main3D' || type === 'karachi-layout' || type === 'primary3D')  ?
-          <div style={{ backgroundColor: '#000', borderRight: '1.5px solid #fff' }}>
-            {!showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
+        shouldShowContent ?
+          <div style={{ backgroundColor: '#000', borderRight: '1.5px solid #fff', padding: '10px' }}>
+            {/* Loading state */}
+            {loading && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px',
+                color: '#888'
+              }}>
+                <span className="spinner-border spinner-border-sm" style={{ marginRight: '10px' }} />
+                Loading STL files...
+              </div>
+            )}
+
+            {/* Error state */}
+            {error && (
+              <div style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                padding: '10px',
+                borderRadius: '6px',
+                marginBottom: '10px',
+                fontSize: '12px'
+              }}>
+                {error}
+              </div>
+            )}
+
+            {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
             !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length > 0 && (
               <div style={{ marginBottom: '20px', padding: '10px' }}>
                 <div style={{
@@ -179,12 +210,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             )}
 
 
-          {stlFiles.length < 0 && (<div style={{
-              color: '#fff', zIndex: 100, width: "100px",
-              backgroundColor: '#17202a', borderRadius: '4px',
-              border: '1px solid #000', fontSize: '12px', padding: "5px",
-              marginLeft: '10px', marginTop: '10px'
-            }}> Selected Tools</div>)}
 
 
             {showImplantView && (
@@ -334,8 +359,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             )}
 
-            {!showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
-            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length < 0 && (
+            {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length === 0 && (
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
@@ -344,7 +369,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 color: '#888',
                 fontSize: '14px',
                 marginTop: '40%'
-              }}>No 3D Tool Selected Yet</div>
+              }}>No STL files loaded</div>
             )}
 
             {approveSuccess && (

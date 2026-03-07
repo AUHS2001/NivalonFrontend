@@ -306,6 +306,23 @@ const MainPage: React.FC = () => {
                 )}
               </button>
             </form>
+
+            <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+              <span
+                onClick={() => navigate('/sso')}
+                style={{
+                  color: '#3498db',
+                  textDecoration: 'none',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem'
+                }}
+                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+              >
+                Single Sign-On
+              </span>
+            </div>
           </div>
         </div>
 

@@ -10,6 +10,7 @@ import { StlInstanceContext } from './../../../platform/app/src/context/StlInsta
 import { StlInstanceListDataContext } from './../../../platform/app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from './../../../platform/app/src/context/parentStudyIdContext';
 import { SERVER_URL } from '../../../config/server';
+import { LPS_UP } from './utils/coordinateSystem';
 
 // Hooks
 import { useSTLLoader } from './hooks/useSTLLoader';
@@ -115,7 +116,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   const { parentStudyId, updateParentStudyId } = context3;
 
   const userRole = localStorage.getItem('userRole');
-  const userToken = localStorage.getItem('token');
+  const userToken = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y';
 
   const [isCreatingSegmentation, setIsCreatingSegmentation] = useState(false);
   const [segmentationCreated, setSegmentationCreated] = useState(false);
@@ -130,7 +131,6 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     setupAngleMeasurementMode,
     cleanupAngleMeasurementMode
   } = useAngleMeasurementContext();
-
 
   const [restoredStlUrls, setRestoredStlUrls] = useState<string[]>([]);
 
@@ -314,11 +314,13 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     leftScene.background = new THREE.Color(0x000000);
     rightScene.background = new THREE.Color(0x000000);
 
+    // LPS coordinate system: Z is Superior (up)
     const camera = new THREE.PerspectiveCamera(
       45, leftMount.clientWidth / leftMount.clientHeight, 0.1, 10000
     );
-    camera.position.set(300, 200, 350);
-    camera.lookAt(300, 300, 250);
+    camera.up.copy(LPS_UP); // Set Z as up for LPS
+    camera.position.set(0, -500, 100); // Anterior view (looking from front)
+    camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
     const leftRenderer = new THREE.WebGLRenderer({ antialias: true });
@@ -346,10 +348,27 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     rightControlsRef.current = rightControls;
 
     function setupLighting(scene: THREE.Scene) {
-      scene.add(new THREE.AmbientLight(0x404040, 0.5));
-      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-      dir.position.set(0, 1, 1).normalize();
-      scene.add(dir);
+      // Ambient light
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+      // Key light (main light)
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      keyLight.position.set(1, 1, 1).normalize();
+      scene.add(keyLight);
+
+      // Fill light (softer, from opposite side)
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      fillLight.position.set(-1, 0.5, -0.5).normalize();
+      scene.add(fillLight);
+
+      // Back light
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+      backLight.position.set(0, 0, -1).normalize();
+      scene.add(backLight);
+
+      // Hemisphere light for even illumination
+      const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+      scene.add(hemisphereLight);
     }
 
     setupLighting(leftScene);
@@ -410,10 +429,13 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     startScene.background = new THREE.Color(0x000000);
 
     // Set up lighting
-    startScene.add(new THREE.AmbientLight(0x404040, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
     dirLight.position.set(0, 1, 1).normalize();
     startScene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-1, 0.5, -0.5).normalize();
+    startScene.add(fillLight);
 
     // Add the start group to the scene
     startScene.add(startGroupRef.current);
@@ -553,21 +575,21 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     meshRefs.current.left.forEach(mesh => {
       if (mesh.material) {
         mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
-        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
         mesh.material.needsUpdate = true;
       }
     });
     meshRefs.current.right.forEach(mesh => {
       if (mesh.material) {
         mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
-        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
         mesh.material.needsUpdate = true;
       }
     });
     startMeshRefs.current.forEach(mesh => {
       if (mesh.material) {
         mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
-        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0.2;
+        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
         mesh.material.needsUpdate = true;
       }
     });
@@ -621,6 +643,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
           try {
             const arrayBuffer = await file.arrayBuffer();
             const geometry = loader.parse(arrayBuffer);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
 
             const fileName = file.name;
@@ -669,43 +692,36 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
 
           const color = new THREE.Color(colorMap[v.type] || 0x9b59b6);
 
-          // Left mesh = Latest View (White)
+          // Left mesh = Latest View (White) - no emissive
           const matLeft = new THREE.MeshPhongMaterial({
             color: 0xffffff, // White for left view
-            specular: 0xffffff,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(v.geometry, matLeft);
-          mesh.position.y = currentY - center.y * compression;
-          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = currentY - center.z * compression; // LPS: Z is vertical
+          // LPS coordinate system - no rotation needed
           mesh.userData = v;
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Colored)
+          // Right mesh = Labelling View (Colored) - no emissive
           const matRight = new THREE.MeshPhongMaterial({
             color: color.getHex(),
-            specular: 0x00000000,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const meshClone = new THREE.Mesh(v.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroupRef.current.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
-          currentY -= size.y * compression + gap;
+          currentY -= size.z * compression + gap; // LPS: Z is vertical
         });
 
-        // Apply transformations to left and right views only
-        leftGroupRef.current.scale.y = -1;
-        rightGroupRef.current.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         // Center camera on main view
         const bbox = new THREE.Box3().setFromObject(leftGroupRef.current);

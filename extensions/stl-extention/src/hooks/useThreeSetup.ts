@@ -25,10 +25,18 @@ export const useThreeSetup = (
     scene.background = new THREE.Color(0x000000);
 
     // Set up lighting
-    scene.add(new THREE.AmbientLight(0x404040, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(0, 1, 1).normalize();
-    scene.add(dirLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    keyLight.position.set(1, 1, 1).normalize();
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-1, 0.5, -0.5).normalize();
+    scene.add(fillLight);
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+    backLight.position.set(0, 0, -1).normalize();
+    scene.add(backLight);
+    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+    scene.add(hemisphereLight);
 
     // Add the group to the scene
     scene.add(groupRef.current);

@@ -22,6 +22,7 @@ import { MeshRefs, RemovalUndoItem } from './types/three.types';
 
 // Utils
 import { handleScreenshot as handleScreenshotUtil } from './utils/fileHandlers';
+// coordinateSystem import removed - STLs are already in LPS
 // import cornerstoneTools from 'platform/core/src/__mocks__/cornerstone-tools';
 import cornerstoneTools from '../../../platform/core/src/__mocks__/cornerstone-tools';
 import { SingleViewerContainer } from './components/SingleViewerContainer';
@@ -31,6 +32,7 @@ import { useBrightnessContext } from './context/BrightnessContext';
 import { useBoneRemovalContext } from './context/BoneRemovalContext';
 import { useClickRemoveContext } from './context/ClickRemoveContext';
 import { useStlVisibilityContext } from './context/StlVisibilityContext';
+import { useLabelingViewContext } from './context/LabelingViewContext';
 import { useSTLToDICOMLinking } from './hooks/useSTLToDICOMLinking';
 import { STLToDICOMConfig } from './types/three.types';
 import { useVersionHistoryContext } from './context/VersionHistoryContext'
@@ -47,6 +49,7 @@ import { useImplantContext } from './context/ImplantContext';
 import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineLabelingContext';
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
+import { LPS_UP } from './utils/coordinateSystem';
 
 interface SingleSpinalCordProps {
   servicesManager?: any;
@@ -118,7 +121,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const { stlInstanceId, updateStlInstanceId, seriesList } = context;
 
   const userRole = localStorage.getItem('userRole');
-  const userToken = localStorage.getItem('token');
+  const userToken = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y';
 
   const [isCreatingSegmentation, setIsCreatingSegmentation] = useState(false);
   const [segmentationCreated, setSegmentationCreated] = useState(false);
@@ -127,6 +130,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
   const { addStlFiles, clearStlFiles } = useStlVisibilityContext();
+  const { showRightView: labelViewEnabled } = useLabelingViewContext();
   const {
     isLinkingActive,
     toggleLinking,
@@ -181,7 +185,159 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     isLabelingPopupOpen,
     closeLabelingPopup
   } = useSpineLabelingContext();
-  
+
+  // Color mode state
+  const [colorModeEnabled, setColorModeEnabled] = useState(false);
+  const colorModeRef = useRef(false);
+  const originalColorsRef = useRef<Map<THREE.Mesh, { color: number; emissive: number; emissiveIntensity: number }>>(new Map());
+
+  // Vertebra color palette
+  const VERTEBRA_COLORS = useRef<{ [key: string]: number }>({
+    C1: 0x4169E1, C2: 0x4682B4, C3: 0x5F9EA0, C4: 0x6495ED, C5: 0x00CED1, C6: 0x20B2AA, C7: 0x48D1CC,
+    T1: 0xCD5C5C, T2: 0xDC143C, T3: 0xB22222, T4: 0xC71585, T5: 0xDB7093, T6: 0xFF69B4,
+    T7: 0xFFB6C1, T8: 0xFFA07A, T9: 0xFA8072, T10: 0xE9967A, T11: 0xF08080, T12: 0xCD5C5C,
+    L1: 0xADFF2F, L2: 0xBDB76B, L3: 0xFF00FF, L4: 0x9932CC, L5: 0x32CD32,
+    S1: 0x00FFFF, S2: 0xFF00FF, S3: 0xDA70D6, S4: 0xBA55D3, S5: 0x9400D3,
+  }).current;
+  const DEFAULT_COLORS = useRef([0xCD5C5C, 0xADFF2F, 0xBDB76B, 0xFF00FF, 0x9932CC, 0x32CD32, 0x00FFFF, 0xDA70D6, 0xFFD700, 0xFF6347]).current;
+
+  // Label colors by vertebra type (C=blue, T=green, L=red, S=yellow) - defined before toggleColorMode
+  const LABEL_COLORS = useRef<{ [key: string]: number }>({
+    C: 0x3498db,    // Cervical - Blue
+    T: 0x2ecc71,    // Thoracic - Green
+    L: 0xe74c3c,    // Lumbar - Red
+    S: 0xf1c40f,    // Sacral - Yellow
+  }).current;
+
+  const toggleColorMode = useCallback(() => {
+    const newState = !colorModeRef.current;
+    colorModeRef.current = newState;
+    setColorModeEnabled(newState);
+
+    console.log('🎨 Color mode toggled:', newState);
+    console.log('🎨 Left meshes count:', meshRefs.current.left.length);
+    console.log('🎨 Right meshes count:', meshRefs.current.right.length);
+
+    const applyColorToMesh = (mesh: THREE.Mesh, index: number) => {
+      const material = mesh.material as THREE.MeshPhongMaterial;
+
+      if (!material) {
+        console.log('🎨 No material for mesh', index);
+        return;
+      }
+
+      // Store original color
+      if (!originalColorsRef.current.has(mesh)) {
+        const origColor = material.color ? material.color.getHex() : 0xffffff;
+        const origEmissive = material.emissive ? material.emissive.getHex() : 0x000000;
+        originalColorsRef.current.set(mesh, {
+          color: origColor,
+          emissive: origEmissive,
+          emissiveIntensity: material.emissiveIntensity || 0.2
+        });
+      }
+
+      if (newState) {
+        // Apply color
+        const userData = mesh.userData;
+        let color = DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+
+        if (userData?.fullName && VERTEBRA_COLORS[userData.fullName]) {
+          color = VERTEBRA_COLORS[userData.fullName];
+        } else if (userData?.type && userData?.number) {
+          const key = `${userData.type}${userData.number}`;
+          if (VERTEBRA_COLORS[key]) color = VERTEBRA_COLORS[key];
+        }
+
+        console.log('🎨 Applying color to mesh', index, ':', color.toString(16), 'userData:', userData);
+
+        if (material.color) material.color.setHex(color);
+        // Don't set emissive to avoid white shadow/glow effect
+        material.needsUpdate = true;
+      } else {
+        // When disabling color mode, check if label view is enabled
+        // If so, apply label colors instead of restoring original white
+        const userData = mesh.userData;
+        const vertebraType = userData?.type;
+
+        if (labelViewEnabled && LABEL_COLORS[vertebraType]) {
+          // Apply label color since label view is still enabled
+          const labelColor = LABEL_COLORS[vertebraType];
+          console.log('🎨 Restoring to label color:', vertebraType, '-> Color:', labelColor.toString(16));
+          if (material.color) material.color.setHex(labelColor);
+          material.needsUpdate = true;
+        } else {
+          // Restore original white color
+          const original = originalColorsRef.current.get(mesh);
+          if (original) {
+            if (material.color) material.color.setHex(original.color);
+            material.needsUpdate = true;
+          }
+        }
+      }
+    };
+
+    // Apply to all meshes in all views
+    console.log('🎨 Applying to LEFT meshes:', meshRefs.current.left.length);
+    meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
+
+    console.log('🎨 Applying to RIGHT meshes:', meshRefs.current.right.length);
+    meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
+
+    // Also apply to start view meshes (label view)
+    console.log('🎨 Applying to START meshes:', startMeshRefs.current.length);
+    startMeshRefs.current.forEach((mesh, i) => applyColorToMesh(mesh, i));
+  }, [labelViewEnabled, LABEL_COLORS]);
+
+  // Effect to apply/remove label colors when label view is toggled
+  useEffect(() => {
+    // Skip if color mode is enabled (color mode takes priority)
+    if (colorModeRef.current) return;
+
+    console.log('🏷️ Label view toggled:', labelViewEnabled);
+    console.log('🏷️ Left meshes count:', meshRefs.current.left.length);
+
+    const applyLabelColorToMesh = (mesh: THREE.Mesh) => {
+      const material = mesh.material as THREE.MeshPhongMaterial;
+      if (!material || !material.color) return;
+
+      const userData = mesh.userData;
+      const vertebraType = userData?.type;
+
+      // Store original color if not already stored
+      if (!originalColorsRef.current.has(mesh)) {
+        const origColor = material.color.getHex();
+        const origEmissive = material.emissive ? material.emissive.getHex() : 0x000000;
+        originalColorsRef.current.set(mesh, {
+          color: origColor,
+          emissive: origEmissive,
+          emissiveIntensity: material.emissiveIntensity || 0.2
+        });
+      }
+
+      if (labelViewEnabled) {
+        // Apply label color based on vertebra type
+        const color = LABEL_COLORS[vertebraType] || 0x9b59b6; // Purple as default
+        console.log('🏷️ Applying label color to mesh:', vertebraType, '-> Color:', color.toString(16));
+        material.color.setHex(color);
+        material.needsUpdate = true;
+      } else {
+        // Restore original white color
+        const original = originalColorsRef.current.get(mesh);
+        if (original) {
+          material.color.setHex(original.color);
+          material.needsUpdate = true;
+        }
+      }
+    };
+
+    // Apply to left meshes (visible view)
+    meshRefs.current.left.forEach((mesh) => applyLabelColorToMesh(mesh));
+    // Also apply to right meshes for consistency
+    meshRefs.current.right.forEach((mesh) => applyLabelColorToMesh(mesh));
+
+  }, [labelViewEnabled, LABEL_COLORS]);
+
   // Initialize spine labeling hook
   const spineLabeling = useSpineLabeling({
     leftSceneRef,
@@ -254,7 +410,10 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const deltaX = event.clientX - initialMousePos.current.x;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
 
-      const horizontalAmount = deltaX * 0.5; // Controls left/right movement speed
+      // Cursor right → bone moves right (screen coordinates)
+      // Cursor left → bone moves left (screen coordinates)
+      // Negate because screen X is opposite to world X in this view
+      const horizontalAmount = -deltaX * 0.5;
 
       const clickedIndex = selectedMeshIndex.current;
 
@@ -267,13 +426,11 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
 
         if (leftMesh) {
-          // Move left bone left/right on X-axis based on mouse X movement
           leftMesh.position.x += horizontalAmount;
         }
 
         if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-          // Move right bone in opposite direction for symmetry
-          rightMesh.position.x -= horizontalAmount;
+          rightMesh.position.x += horizontalAmount;
         }
       }
 
@@ -298,7 +455,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     };
   }, [rotationMode, updateMeasurementsOnBoneMove]);
 
-  // UP - DOWN (Motion)
+  // VERTICAL - UP/DOWN (Motion)
   useEffect(() => {
     const leftMount = leftMountRef.current;
     if (!leftMount || !rotationMode1) return;
@@ -334,8 +491,10 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const deltaY = event.clientY - initialMousePos.current.y;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
 
-      const verticalAmount = deltaY * 0.5; // Controls up/down movement speed
-      const rotationAmount = deltaY * 0.01; // Controls rotation speed
+      // Cursor down → bone moves down (negative Y in 3D world)
+      // Cursor up → bone moves up (positive Y in 3D world)
+      // In LPS, Z is up (Superior), so we use Z for vertical movement
+      const verticalAmount = -deltaY * 0.5;
 
       const clickedIndex = selectedMeshIndex.current;
 
@@ -348,12 +507,11 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
 
         if (leftMesh) {
-          leftMesh.position.y += verticalAmount; // Negative because Three.js Y-axis is up
+          leftMesh.position.z += verticalAmount; // Z is up in LPS
         }
 
         if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-          rightMesh.rotation.x += rotationAmount;
-          rightMesh.position.y -= verticalAmount;
+          rightMesh.position.z += verticalAmount;
         }
       }
 
@@ -412,11 +570,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
 
-      const deltaX = event.clientX - initialMousePos.current.x;
-      initialMousePos.current.x = event.clientX;
+      const deltaY = event.clientY - initialMousePos.current.y;
+      initialMousePos.current = { x: event.clientX, y: event.clientY };
 
-      const spinSensitivity = 0.001;
-      const angle = deltaX * spinSensitivity;
+      // Vertical rotation only (top to down):
+      // Cursor up → tilt backward (around X-axis)
+      // Cursor down → tilt forward (around X-axis)
+      const rotationSpeed = 0.005;
 
       const clickedIndex = selectedMeshIndex.current;
 
@@ -424,12 +584,16 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         const leftMesh = meshRefs.current.left[i];
         const rightMesh = meshRefs.current.right[i];
 
-        if (!leftMesh || !rightMesh) continue;
+        if (!leftMesh) continue;
         // Skip implants
         if (leftMesh.userData?.isImplant || leftMesh.userData?.type === 'I') continue;
 
-        // Top-down rotation (Y-axis) - LEFT bone clockwise
-        leftMesh.rotation.x -= -angle;
+        // Rotation around X-axis only (vertical cursor movement)
+        leftMesh.rotation.x += deltaY * rotationSpeed;
+
+        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
+          rightMesh.rotation.x += deltaY * rotationSpeed;
+        }
       }
 
       // Update measurements when bones move
@@ -489,7 +653,10 @@ useEffect(() => {
     const deltaY = event.clientY - initialMousePos.current.y;
     initialMousePos.current = { x: event.clientX, y: event.clientY };
 
-    const depthAmount = deltaY * 0.5; // Controls forward/backward movement speed
+    // Cursor up → bone moves forward (away from camera, positive Y in LPS)
+    // Cursor down → bone moves backward (toward camera, negative Y in LPS)
+    // In LPS, Y is posterior (back), so positive Y = backward from viewer's perspective
+    const depthAmount = deltaY * 0.5;
 
     const clickedIndex = selectedMeshIndex.current;
 
@@ -502,11 +669,11 @@ useEffect(() => {
       if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
 
       if (leftMesh) {
-        leftMesh.position.z += depthAmount; // Forward/backward on Z-axis
+        leftMesh.position.y += depthAmount; // Forward/backward on Y-axis in LPS
       }
 
       if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-        rightMesh.position.z += depthAmount; // Both move together
+        rightMesh.position.y += depthAmount;
       }
     }
 
@@ -613,15 +780,17 @@ useEffect(() => {
         rightImplant.rotateX(-deltaY * rotateSpeed);
       }
     } else {
-      // Move - increased speed for better responsiveness
-      const moveSpeed = 1.5;
+      // Move - screen coordinates to world coordinates
+      // deltaX positive = mouse right = move right in world (positive X)
+      // deltaY positive = mouse down = move down in world (negative Y in Y-up coordinate system)
+      const moveSpeed = 0.5;
       if (leftImplant) {
-        leftImplant.position.x += deltaX * moveSpeed;  // Right = right
-        leftImplant.position.y += deltaY * moveSpeed;  // Up = up (adjusted for scale.y=-1)
+        leftImplant.position.x += deltaX * moveSpeed;
+        leftImplant.position.y -= deltaY * moveSpeed;  // Negate: mouse down = world down (negative Y)
       }
       if (rightImplant) {
         rightImplant.position.x += deltaX * moveSpeed;
-        rightImplant.position.y += deltaY * moveSpeed;
+        rightImplant.position.y -= deltaY * moveSpeed;
       }
     }
   };
@@ -1394,6 +1563,7 @@ useEffect(() => {
           try {
             const arrayBuffer = await file.arrayBuffer();
             const geometry = loader.parse(arrayBuffer);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
 
             const fileName = file.name;
@@ -1469,34 +1639,29 @@ useEffect(() => {
 
           const color = new THREE.Color(colorMap[v.type] || 0x9b59b6);
 
-          // Left mesh = Latest View (White)
+          // Left mesh = Latest View (White) - no emissive glow
           const matLeft = new THREE.MeshPhongMaterial({
             color: 0xffffff, // White for left view
-            specular: 0xffffff,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0xffffff),
-            emissiveIntensity: 0.2
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(v.geometry, matLeft);
-          mesh.position.y = currentY - center.y * compression;
-          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = currentY - center.z * compression; // LPS: Z is vertical
+          // LPS coordinate system - no rotation needed
           mesh.userData = v;
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Colored)
+          // Right mesh = Labelling View (Colored) - no emissive
           const matRight = new THREE.MeshPhongMaterial({
             color: color.getHex(),
-            specular: 0x00000000,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const meshClone = new THREE.Mesh(v.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroupRef.current.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -1549,34 +1714,29 @@ useEffect(() => {
 
           const color = new THREE.Color(colorMap[organType] || 0x9b59b6);
 
-          // Left mesh = Latest View (Blue for aorta, Red for heart)
+          // Left mesh = Latest View (Blue for aorta, Red for heart) - no emissive
           const matLeft = new THREE.MeshPhongMaterial({
             color: organType === 'A' ? 0x3498db : 0xe74c3c, // Blue for aorta, Red for heart
-            specular: 0xffffff,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(organ.geometry, matLeft);
           mesh.position.set(organX, organY, organZ);
-          mesh.rotation.x = Math.PI / 2;
+          // LPS coordinate system - no rotation needed
           mesh.userData = { ...organ, organType };
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Pink for aorta, Purple for heart)
+          // Right mesh = Labelling View (Pink for aorta, Purple for heart) - no emissive
           const matRight = new THREE.MeshPhongMaterial({
             color: organType === 'A' ? 0xe91e63 : 0x9c27b0, // Pink for aorta, Purple for heart
-            specular: 0x00000000,
-            shininess: 0,
-            side: THREE.DoubleSide,
-            emissive: new THREE.Color(0x000000),
-            emissiveIntensity: 0
+            specular: 0x111111,
+            shininess: 10,
+            side: THREE.DoubleSide
           });
           const meshClone = new THREE.Mesh(organ.geometry, matRight);
           meshClone.position.copy(mesh.position);
-          meshClone.rotation.copy(mesh.rotation);
           rightGroupRef.current.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -1593,9 +1753,7 @@ useEffect(() => {
           addStlFiles(allNewStlFiles);
         }
 
-        // Apply transformations to left and right views only
-        leftGroupRef.current.scale.y = -1;
-        rightGroupRef.current.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         // Center camera on main view
         const bbox = new THREE.Box3().setFromObject(leftGroupRef.current);
@@ -1903,19 +2061,20 @@ const createAutomaticSegmentation = async () => {
     rightScene.background = new THREE.Color(0x000000);
 
     // Create SEPARATE cameras for left and right views
+    // LPS coordinate system: Z is Superior (up)
     const leftCamera = new THREE.PerspectiveCamera(
       45, leftMount.clientWidth / leftMount.clientHeight, 0.1, 10000
     );
-    // leftCamera.position.set(0, 0, 350);
-    leftCamera.position.set(300, 200, 350);
-    leftCamera.lookAt(300, 300, 250);
+    leftCamera.up.copy(LPS_UP); // Set Z as up for LPS
+    leftCamera.position.set(0, -500, 100); // Anterior view (looking from front)
+    leftCamera.lookAt(0, 0, 0);
 
     const rightCamera = new THREE.PerspectiveCamera(
       45, rightMount.clientWidth / rightMount.clientHeight, 0.1, 10000
     );
-    // rightCamera.position.set(0, 0, 350);
-    rightCamera.position.set(300, 200, 350);
-    rightCamera.lookAt(300, 300, 250);
+    rightCamera.up.copy(LPS_UP); // Set Z as up for LPS
+    rightCamera.position.set(0, -500, 100); // Anterior view (looking from front)
+    rightCamera.lookAt(0, 0, 0);
 
     cameraRef.current = leftCamera; // Keep ref for backward compatibility
 
@@ -1958,26 +2117,26 @@ const createAutomaticSegmentation = async () => {
     rightControlsRef.current = rightControls;
 
     function setupLighting(scene: THREE.Scene) {
-      // Ambient light for overall illumination
-      scene.add(new THREE.AmbientLight(0x404040, 0.8));
-      
+      // Ambient light for base illumination
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
       // Key light (main directional light)
-      const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
       keyLight.position.set(1, 1, 1).normalize();
       keyLight.castShadow = false;
       scene.add(keyLight);
-      
+
       // Fill light (from opposite direction)
       const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
       fillLight.position.set(-1, 0.5, -0.5).normalize();
       scene.add(fillLight);
-      
+
       // Back light (to illuminate from behind)
-      const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
       backLight.position.set(0, 0, -1).normalize();
       scene.add(backLight);
-      
-      // Optional: Hemisphere light for more natural lighting
+
+      // Hemisphere light for even lighting
       const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
       scene.add(hemisphereLight);
     }
@@ -2049,10 +2208,17 @@ const createAutomaticSegmentation = async () => {
     startScene.background = new THREE.Color(0x000000);
 
     // Set up lighting
-    startScene.add(new THREE.AmbientLight(0x404040, 0.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(0, 1, 1).normalize();
-    startScene.add(dirLight);
+    startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    keyLight.position.set(1, 1, 1).normalize();
+    startScene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-1, 0.5, -0.5).normalize();
+    startScene.add(fillLight);
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+    backLight.position.set(0, 0, -1).normalize();
+    startScene.add(backLight);
+    startScene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.3));
 
     // Add the start group to the scene
     startScene.add(startGroupRef.current);
@@ -2065,15 +2231,16 @@ const createAutomaticSegmentation = async () => {
     startMount.appendChild(renderer.domElement);
 
     // Create independent camera for start view
+    // LPS coordinate system: Z is Superior (up)
     const camera = new THREE.PerspectiveCamera(
       45,
       startMount.clientWidth / startMount.clientHeight,
       0.1,
       10000
     );
-    // camera.position.set(0, 0, 350);
-    camera.position.set(300, 200, 350);
-    camera.lookAt(300, 300, 250);
+    camera.up.copy(LPS_UP); // Set Z as up for LPS
+    camera.position.set(0, -500, 100); // Anterior view (looking from front)
+    camera.lookAt(0, 0, 0);
 
     // Set up independent controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -2608,6 +2775,8 @@ const createAutomaticSegmentation = async () => {
                 onToggleLinking={toggleLinking}
                 onMergeWithDicom={applyBoneAndRainbowToAllViewports}
                 onUnMergeWithDicom={removeBoneAndRainbowFromAllViewports}
+                colorModeEnabled={colorModeEnabled}
+                onToggleColorMode={toggleColorMode}
               />
       </div>
     </CenterLineProvider>

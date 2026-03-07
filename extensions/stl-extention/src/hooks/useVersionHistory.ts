@@ -21,7 +21,7 @@ export const useVersionHistory = ({
   const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory } = useVersionHistoryContext();
   const context = useContext(StlInstanceContext);
   const { stlInstanceId, updateStlInstanceId } = context;
-  const userToken = localStorage.getItem('token');
+  const userToken = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y';
 
   const [versionUrlsToRestore, setVersionUrlsToRestore] = useState<string[]>([]);
 

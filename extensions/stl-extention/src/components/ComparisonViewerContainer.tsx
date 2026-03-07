@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
 import { SERVER_URL } from '../../../../config/server';
+import { LPS_UP } from '../utils/coordinateSystem';
 
 interface Series {
   series_instance_uid: string;
@@ -154,10 +155,18 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 
       // Add lighting
       const addLighting = (scene: THREE.Scene) => {
-        scene.add(new THREE.AmbientLight(0x404040, 0.5));
-        const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-        dir.position.set(0, 1, 1).normalize();
-        scene.add(dir);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        keyLight.position.set(1, 1, 1).normalize();
+        scene.add(keyLight);
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        fillLight.position.set(-1, 0.5, -0.5).normalize();
+        scene.add(fillLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+        backLight.position.set(0, 0, -1).normalize();
+        scene.add(backLight);
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+        scene.add(hemisphereLight);
       };
       addLighting(scene1);
       addLighting(scene2);
@@ -282,26 +291,25 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 
             const arrayBuffer = await response.arrayBuffer();
             const geometry = loader.parse(arrayBuffer);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
 
             const material = new THREE.MeshPhongMaterial({
               color: baseColor,
-              specular: 0xffffff,
-              shininess: 0,
-              side: THREE.DoubleSide,
-              emissive: new THREE.Color(baseColor),
-              emissiveIntensity: 0.2
+              specular: 0x111111,
+              shininess: 10,
+              side: THREE.DoubleSide
             });
 
             const mesh = new THREE.Mesh(geometry.clone(), material);
-            mesh.rotation.x = Math.PI / 2;
+            // LPS coordinate system - no rotation needed
             group.add(mesh);
           } catch (error) {
             console.error('Failed to load STL:', url, error);
           }
         }
 
-        group.scale.y = -1;
+        // Note: STLs are already in LPS - no transformation needed
 
         if (group.children.length > 0) {
           const bbox = new THREE.Box3().setFromObject(group);

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { SERVER_URL } from '../../../../config/server';
+import { LPS_UP } from '../../../../extensions/stl-extention/src/utils/coordinateSystem';
 
 interface PointCloudData {
   points: THREE.Vector3[];
@@ -222,17 +223,17 @@ const ComparisonPage: React.FC = () => {
       scene2.background = new THREE.Color(0x0a0a0a);
 
       const addLighting = (scene: THREE.Scene) => {
-        scene.add(new THREE.AmbientLight(0x404040, 0.8));
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
         keyLight.position.set(1, 1, 1).normalize();
         scene.add(keyLight);
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
         fillLight.position.set(-1, 0.5, -0.5).normalize();
         scene.add(fillLight);
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
         backLight.position.set(0, 0, -1).normalize();
         scene.add(backLight);
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.3));
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.5));
       };
       addLighting(scene1);
       addLighting(scene2);
@@ -256,12 +257,15 @@ const ComparisonPage: React.FC = () => {
       mount2.appendChild(renderer2.domElement);
       renderer2Ref.current = renderer2;
 
+      // LPS coordinate system: Z is Superior (up)
       const camera1 = new THREE.PerspectiveCamera(45, width1 / height1, 0.1, 10000);
-      camera1.position.set(0, 0, 500);
+      camera1.up.copy(LPS_UP); // Set Z as up for LPS
+      camera1.position.set(0, -500, 100); // Anterior view
       camera1Ref.current = camera1;
 
       const camera2 = new THREE.PerspectiveCamera(45, width2 / height2, 0.1, 10000);
-      camera2.position.set(0, 0, 500);
+      camera2.up.copy(LPS_UP); // Set Z as up for LPS
+      camera2.position.set(0, -500, 100); // Anterior view
       camera2Ref.current = camera2;
 
       const controls1 = new OrbitControls(camera1, renderer1.domElement);
@@ -345,22 +349,23 @@ const ComparisonPage: React.FC = () => {
 
             const arrayBuffer = await response.arrayBuffer();
             const geometry = loader.parse(arrayBuffer);
+            // STLs are already in LPS - no transformation needed
             geometry.computeBoundingBox();
 
             const material = new THREE.MeshPhongMaterial({
-              color: baseColor, specular: 0xffffff, shininess: 0,
-              side: THREE.DoubleSide, emissive: new THREE.Color(baseColor), emissiveIntensity: 0.2
+              color: baseColor, specular: 0x111111, shininess: 10,
+              side: THREE.DoubleSide
             });
 
             const mesh = new THREE.Mesh(geometry.clone(), material);
-            mesh.rotation.x = Math.PI / 2;
+            // LPS coordinate system - no rotation needed
             group.add(mesh);
           } catch (error) {
             console.error('Failed to load STL:', url, error);
           }
         }
 
-        group.scale.y = -1;
+        // Note: Geometry transformation applied during loading for posterior view
 
         if (group.children.length > 0) {
           const bbox = new THREE.Box3().setFromObject(group);

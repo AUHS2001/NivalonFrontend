@@ -1,6 +1,7 @@
 import { hotkeys } from '@ohif/core';
-import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
+import { toolbarButtons } from '@ohif/mode-longitudinal';
 import { id } from './id';
+import initToolGroups from './initToolGroups';
 
 const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
@@ -12,15 +13,28 @@ const ohif = {
 
 const cornerstone = {
   viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
+  panelTool: '@ohif/extension-cornerstone.panelModule.panelSegmentationWithTools',
+  measurements: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
+};
+
+const tracked = {
+  viewport: '@ohif/extension-measurement-tracking.viewportModule.cornerstone-tracked',
+  measurements: '@ohif/extension-measurement-tracking.panelModule.trackedMeasurements',
+  thumbnailList: '@ohif/extension-measurement-tracking.panelModule.seriesList',
 };
 
 /**
  * Just two dependencies to be able to render a viewport with panels in order
  * to make sure that the mode is working.
  */
+const stl = {
+  viewport: 'stl-extention.viewportModule.singleStlViewport',
+};
+
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
+  '@ohif/extension-measurement-tracking': '^3.0.0',
   'stl-extention': '^0.0.1'
 };
 
@@ -46,7 +60,7 @@ function modeFactory({ modeConfiguration }) {
 
       measurementService.clearMeasurements();
 
-      // Init Default and SR ToolGroups
+      // Init Default, MPR and Volume3D ToolGroups
       initToolGroups(extensionManager, toolGroupService, commandsManager);
 
       toolbarService.register([...toolbarButtons]);
@@ -143,15 +157,23 @@ function modeFactory({ modeConfiguration }) {
           return {
             id: ohif.layout,
             props: {
-              leftPanels: [ohif.leftPanel],
+              leftPanels: [ohif.leftPanel, tracked.thumbnailList],
               leftPanelResizable: true,
-              rightPanels: ["stl-extention.panelModule.stl"],
+              rightPanels: ["stl-extention.panelModule.signonStl"],
               rightPanelResizable: true,
-              rightPanelClosed: true,
+              rightPanelClosed: false,
               viewports: [
+                {
+                  namespace: tracked.viewport,
+                  displaySetsToDisplay: [ohif.sopClassHandler],
+                },
                 {
                   namespace: cornerstone.viewport,
                   displaySetsToDisplay: [ohif.sopClassHandler],
+                },
+                {
+                  namespace: stl.viewport,
+                  displaySetsToDisplay: [],
                 },
               ],
             },
@@ -162,7 +184,7 @@ function modeFactory({ modeConfiguration }) {
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
-    // hangingProtocol: [''],
+    hangingProtocol: ['fourUp'],
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */

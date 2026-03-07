@@ -166,18 +166,23 @@ export const useImplantViewer = ({
     const implantMount = implantMountRef.current;
     implantScene.background = new THREE.Color(0x000000);
 
-    // Set up lighting - use green tinted light for implants
-    implantScene.add(new THREE.AmbientLight(0x404040, 0.5));
-    
-    // Green directional light to enhance the green color
-    const dirLight = new THREE.DirectionalLight(0x00ff00, 0.8);
-    dirLight.position.set(0, 1, 1).normalize();
-    implantScene.add(dirLight);
-    
-    // Add some white light for better visibility
-    const whiteLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    whiteLight.position.set(1, 1, 0).normalize();
-    implantScene.add(whiteLight);
+    // Set up lighting for implants
+    implantScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+    // Key light with green tint for implants
+    const keyLight = new THREE.DirectionalLight(0x00ff00, 0.7);
+    keyLight.position.set(1, 1, 1).normalize();
+    implantScene.add(keyLight);
+
+    // Fill light (white for better visibility)
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    fillLight.position.set(-1, 0.5, -0.5).normalize();
+    implantScene.add(fillLight);
+
+    // Back light
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+    backLight.position.set(0, 0, -1).normalize();
+    implantScene.add(backLight);
 
     implantScene.add(implantGroupRef.current);
 

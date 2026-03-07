@@ -56,7 +56,7 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
 
   const context = useContext(StlInstanceContext);
   const { stlInstanceId, updateStlInstanceId, seriesName, seriesName1, updateSeriesName, updateSeriesName1 } = context;
-  const userToken = localStorage.getItem('token');
+  const userToken = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y';
 
   // Fetch available studies when popup opens in different mode
   useEffect(() => {

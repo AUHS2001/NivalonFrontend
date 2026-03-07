@@ -16,6 +16,7 @@ import { useAppConfig } from '@state';
 import { history } from '../utils/history';
 import StudyWorkList from "../pages/StudyWorkList";
 import LoginPage from "../pages/Login";
+import SingleSignOnPage from "../pages/SingleSignOn";
 import DicomUploadPage from "../pages/DicomUploadPage"
 import SpinalCordViewer from "../pages/Stl3DModel"
 import MainPage from "../pages/Main"
@@ -102,6 +103,10 @@ const bakedInRoutes = [
   {
     path: `/login`,
     children:  LoginPage,
+  },
+  {
+    path: `/sso`,
+    children:  SingleSignOnPage,
   },
   {
     path: `/admin`,

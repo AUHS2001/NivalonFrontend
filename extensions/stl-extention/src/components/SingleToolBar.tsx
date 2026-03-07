@@ -51,6 +51,8 @@ interface SingleToolbarProps {
   onMergeWithDicom?: () => void;
   onCreateSegmentation?: () => void;
   onUnMergeWithDicom?: () => void;
+  colorModeEnabled?: boolean;
+  onToggleColorMode?: () => void;
 }
 
 export const SingleToolbar: React.FC<SingleToolbarProps> = ({
@@ -91,7 +93,9 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   onToggleRotation3,
   onToggleImplantMove,
   onToggleInertialRotation,
-  onToggleSpineLabeling
+  onToggleSpineLabeling,
+  colorModeEnabled,
+  onToggleColorMode
 }) => {
   // Add this CSS to your global styles or component
   const scrollbarStyles = `
@@ -143,9 +147,9 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
       setApproveSuccess
     });
 
-  const { 
-      spineLabelingMode: spineLabelMode, 
-      toggleSpineLabelingMode 
+  const {
+      spineLabelingMode: spineLabelMode,
+      toggleSpineLabelingMode
   } = useSpineLabelingContext();
 
   useEffect(() => {
@@ -460,6 +464,17 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             <i className="fas fa-tag" />
           </button>
 
+          {/* Color Mode */}
+          <button
+            className={`icon-button${colorModeEnabled ? " selected" : ""}`}
+            type="button"
+            data-tooltip={colorModeEnabled ? "Color Mode (ON)" : "Color Mode"}
+            onClick={onToggleColorMode}
+            style={{ minWidth: '45px', minHeight: '45px' }}
+          >
+            <i className="fas fa-palette" />
+          </button>
+
           {/* Approve */}
           <button
             className={`icon-button${isApproving ? " loading" : ""}`}
@@ -502,7 +517,7 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             <i className="fas fa-plus-square" />
           </button>
 
-          <div style={{ marginTop: '70px'}}></div>
+          <div style={{ marginTop: '500px'}}></div>
         </div>
         }
       </>
@@ -517,7 +532,7 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
         className="scrollable-toolbar"
         style={{
           position: 'relative',
-          marginTop: "10px",
+          marginTop: "30px",
           height: "300px",
           display: "flex",
           flexDirection: "column",
@@ -526,26 +541,10 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
           gap: "8px",
           overflowY: "auto",
           overflowX: "hidden",
-          backgroundColor: '#2c3e50',
           borderRadius: '8px'
         }}
       >
-        {/* Toolbar Label */}
-        <div style={{
-          color: '#fff',
-          width: "70px",
-          height: "30px",
-          backgroundColor: '#17202a',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          border: '1px solid #000',
-          fontSize: '12px',
-          textAlign: 'center',
-          marginBottom: '5px'
-        }}>
-          3D Tools
-        </div>
-
+        
         {/* File Selection */}
         <button
           className="icon-button"
@@ -556,17 +555,6 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
           style={{ minWidth: '45px', minHeight: '45px' }}
         >
           <i className="fas fa-folder-open" />
-        </button>
-
-        {/* Refresh */}
-        <button
-          className="icon-button"
-          type="button"
-          data-tooltip="Refresh viewer"
-          onClick={onRefresh}
-          style={{ minWidth: '45px', minHeight: '45px' }}
-        >
-          <i className="fas fa-sync-alt" />
         </button>
 
         {/* Brightness */}
@@ -589,6 +577,17 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
           style={{ minWidth: '45px', minHeight: '45px' }}
         >
           <i className="fas fa-camera" />
+        </button>
+
+        {/* Color Mode */}
+        <button
+            className={`icon-button${colorModeEnabled ? " selected" : ""}`}
+            type="button"
+            data-tooltip={colorModeEnabled ? "Color Mode (ON)" : "Color Mode"}
+            onClick={onToggleColorMode}
+            style={{ minWidth: '45px', minHeight: '45px' }}
+          >
+            <i className="fas fa-palette" />
         </button>
       </div>
     </>

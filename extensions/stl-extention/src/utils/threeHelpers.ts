@@ -36,13 +36,12 @@ export const createMeshMaterial = (
   brightnessEnabled: boolean = false,
   brightness: number = 1.0
 ): THREE.MeshPhongMaterial => {
+  // No emissive to avoid shadow/glow effects
   return new THREE.MeshPhongMaterial({
     color: isLeft ? 0xffffff : color,
-    specular: 0x000000,
-    shininess: 0,
-    side: THREE.DoubleSide,
-    emissive: brightnessEnabled ? (isLeft ? new THREE.Color(color) : 0xffffff) : 0x000000,
-    emissiveIntensity: brightnessEnabled ? brightness * 0.5 : 0,
+    specular: 0x111111,
+    shininess: 10,
+    side: THREE.DoubleSide
   });
 };
 

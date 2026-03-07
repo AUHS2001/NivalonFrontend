@@ -38,6 +38,7 @@ export const useCenterLine = ({
 
   // Store centerline points in both coordinate systems
   const centerLineWorldPointsRef = useRef<Array<[number, number, number]>>([]);
+  const vertebraNamesRef = useRef<string[]>([]);
   const stlBoundsRef = useRef<{ min: THREE.Vector3; max: THREE.Vector3 } | null>(null);
   const volumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[] } | null>(null);
 
@@ -51,7 +52,7 @@ export const useCenterLine = ({
     const { cornerstoneViewportService, viewportGridService } = servicesManager?.services || {};
 
     if (!cornerstoneViewportService || !viewportGridService) {
-      console.log('⚠️ Cornerstone services not available');
+      console.log('Cornerstone services not available');
       return { viewports: [], volumeBounds: null };
     }
 
@@ -103,7 +104,6 @@ export const useCenterLine = ({
                   spacing: imageData.spacing || [1, 1, 1],
                   direction: imageData.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1]
                 };
-                console.log('📊 Got volume bounds:', volumeBounds);
               }
             } catch (e) {
               console.warn('Could not get image data from viewport');
@@ -115,13 +115,15 @@ export const useCenterLine = ({
       }
     });
 
-    console.log(`📺 Found ${result.length} Cornerstone viewports`);
     return { viewports: result, volumeBounds };
   }, [servicesManager]);
 
   /**
    * Transform STL coordinates to DICOM world coordinates
-   * Preserves the actual shape/curvature of the centerline
+   * Both STL and DICOM use LPS coordinate system:
+   * - L (Left): +X direction
+   * - P (Posterior): +Y direction
+   * - S (Superior): +Z direction
    */
   const transformSTLToDICOMWorld = useCallback((
     stlPoint: THREE.Vector3,
@@ -150,31 +152,20 @@ export const useCenterLine = ({
     const offsetFromCenter = new THREE.Vector3().subVectors(stlPoint, stlCenter);
 
     // Calculate uniform scale factor based on the Z axis (superior-inferior)
-    // This preserves the shape/curvature of the centerline
-    const stlHeight = stlSize.y; // STL Y is the vertical axis
-    const volumeHeight = volumeSize[2]; // DICOM Z is superior-inferior
-    // Use 1:1 scale ratio to match actual DICOM coordinates
+    // Both STL and DICOM use Z for superior-inferior in LPS
+    const stlHeight = stlSize.z; // STL Z is superior-inferior (LPS)
+    const volumeHeight = volumeSize[2]; // DICOM Z is superior-inferior (LPS)
     const uniformScale = volumeHeight / stlHeight;
 
     // Apply uniform scaling to preserve shape
     const scaledOffsetX = offsetFromCenter.x * uniformScale;
-    const scaledOffsetY = offsetFromCenter.y * uniformScale; // This becomes Z in DICOM
-    const scaledOffsetZ = offsetFromCenter.z * uniformScale; // This becomes Y in DICOM
+    const scaledOffsetY = offsetFromCenter.y * uniformScale;
+    const scaledOffsetZ = offsetFromCenter.z * uniformScale;
 
-    // Map to DICOM world coordinates with axis transformation
-    // STL (after Three.js rotation): X=left/right, Y=up/down, Z=front/back
-    // DICOM LPS: X=Left/Right, Y=Posterior/Anterior, Z=Superior/Inferior
-
+    // Direct LPS to LPS mapping - no axis transformation needed
     const dicomX = volumeCenter[0] + scaledOffsetX;
-
-    // Y (anterior-posterior): STL Z maps here
-    // Invert both the offset and position to flip the line horizontally in sagittal view
-    const posteriorOffset = volumeSize[1] * 0.05;
-    const dicomY = volumeCenter[1] - scaledOffsetZ - posteriorOffset;
-
-    // Z (superior-inferior): STL Y maps here
-    const superiorOffset = volumeSize[2] * 0.18;
-    const dicomZ = volumeCenter[2] - scaledOffsetY + superiorOffset;
+    const dicomY = volumeCenter[1] + scaledOffsetY;
+    const dicomZ = volumeCenter[2] + scaledOffsetZ;
 
     return [dicomX, dicomY, dicomZ];
   }, []);
@@ -185,7 +176,8 @@ export const useCenterLine = ({
   const drawCenterlineOnViewport = useCallback((
     viewportId: string,
     viewport: any,
-    worldPoints: Array<[number, number, number]>
+    worldPoints: Array<[number, number, number]>,
+    vertebraNames: string[] = []
   ) => {
     if (!viewport || worldPoints.length < 2) return;
 
@@ -226,10 +218,7 @@ export const useCenterLine = ({
 
     // Get camera info to determine view type
     const camera = viewport.getCamera?.();
-    if (!camera) {
-      console.log(`⚠️ No camera for viewport ${viewportId}`);
-      return;
-    }
+    if (!camera) return;
 
     // Determine view orientation from camera
     const { viewPlaneNormal, focalPoint } = camera;
@@ -242,7 +231,7 @@ export const useCenterLine = ({
     else viewType = 'axial';
 
     // Convert world points to canvas coordinates
-    const canvasPoints: Array<{ x: number; y: number; distance: number }> = [];
+    const canvasPoints: Array<{ x: number; y: number; distance: number; originalIndex: number }> = [];
 
     // Get volume info for calculating world-space offsets
     const imageData = viewport.getImageData?.();
@@ -261,7 +250,7 @@ export const useCenterLine = ({
     // Calculate volume Y size for axial adjustment
     const volumeYSize = volumeDimensions[1] * volumeSpacing[1]; // Y extent in mm (anterior-posterior)
 
-    worldPoints.forEach((worldPoint) => {
+    worldPoints.forEach((worldPoint, idx) => {
       try {
         // Apply view-specific world coordinate adjustments
         let adjustedWorldPoint = [...worldPoint] as [number, number, number];
@@ -277,7 +266,6 @@ export const useCenterLine = ({
           adjustedWorldPoint[2] = worldPoint[2] - volumeHeight * 0.02;
         } else if (viewType === 'axial') {
           // For axial: move posterior (increase Y) to position in spinal canal
-          // The centerline should be in the spinal canal, not at the vertebral body
           adjustedWorldPoint[1] = worldPoint[1] + volumeYSize * 0.15;
         }
 
@@ -296,7 +284,8 @@ export const useCenterLine = ({
           canvasPoints.push({
             x: canvasPoint[0],
             y: canvasPoint[1],
-            distance
+            distance,
+            originalIndex: idx
           });
         }
       } catch (e) {
@@ -304,14 +293,11 @@ export const useCenterLine = ({
       }
     });
 
-    if (canvasPoints.length === 0) {
-      console.log(`⚠️ No points could be projected for ${viewportId}`);
-      return;
-    }
+    if (canvasPoints.length === 0) return;
 
-    // Draw the centerline
-    const color = '#ff0000';
-    const glowColor = 'rgba(255, 68, 68, 0.5)';
+    // Cyan color scheme (like Canon Vitrea)
+    const color = '#00e5ff';
+    const glowColor = 'rgba(0, 229, 255, 0.4)';
 
     ctx.save();
 
@@ -322,7 +308,7 @@ export const useCenterLine = ({
       );
 
       // Only draw if the point is close to the current slice (within a threshold)
-      const sliceThickness = 10; // mm threshold - increased for visibility
+      const sliceThickness = 10; // mm threshold
       if (closestPoint.distance < sliceThickness) {
         const size = 20;
         const { x, y } = closestPoint;
@@ -365,19 +351,24 @@ export const useCenterLine = ({
           ctx.fillStyle = color;
           ctx.arc(x, y, 5, 0, Math.PI * 2);
           ctx.fill();
+
+          // Draw label for closest vertebra
+          const name = vertebraNames[closestPoint.originalIndex];
+          if (name) {
+            ctx.shadowBlur = 0;
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = color;
+            ctx.fillText(name, x + size + 6, y + 5);
+          }
         }
       }
     } else {
       // For sagittal and coronal views, draw the full centerline
-      // Filter to points that are reasonably close to the view plane
       const threshold = 500; // mm - large threshold to show all points
       const visiblePoints = canvasPoints.filter(p => p.distance < threshold);
 
-      // No canvas-space adjustments - all handled in world coordinates now
-      const adjustedPoints = visiblePoints;
-
       // Sort by canvas Y to draw a smooth line
-      const sortedPoints = [...adjustedPoints].sort((a, b) => a.y - b.y);
+      const sortedPoints = [...visiblePoints].sort((a, b) => a.y - b.y);
 
       if (sortedPoints.length >= 2) {
         // Filter to points within canvas bounds
@@ -387,6 +378,21 @@ export const useCenterLine = ({
         );
 
         if (validPoints.length >= 2) {
+          // Draw cross-section lines first (behind everything else)
+          validPoints.forEach(point => {
+            const name = vertebraNames[point.originalIndex];
+            if (name) {
+              ctx.beginPath();
+              ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+              ctx.lineWidth = 1;
+              ctx.setLineDash([4, 4]);
+              ctx.moveTo(0, point.y);
+              ctx.lineTo(canvas.width, point.y);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+          });
+
           // Draw glow path
           ctx.beginPath();
           ctx.strokeStyle = glowColor;
@@ -423,6 +429,40 @@ export const useCenterLine = ({
             ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
             ctx.fill();
           });
+
+          // Draw vertebra text labels
+          ctx.shadowBlur = 0;
+          validPoints.forEach(point => {
+            const name = vertebraNames[point.originalIndex];
+            if (!name) return;
+
+            const labelX = point.x - 55;
+            const labelY = point.y;
+
+            // Draw connecting line from dot to label
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(point.x - 5, point.y);
+            ctx.lineTo(labelX + 30, labelY);
+            ctx.stroke();
+
+            // Draw label background
+            ctx.font = 'bold 14px Arial';
+            const textWidth = ctx.measureText(name).width;
+            const bgPadding = 4;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(
+              labelX - bgPadding,
+              labelY - 10 - bgPadding,
+              textWidth + bgPadding * 2,
+              14 + bgPadding * 2
+            );
+
+            // Draw label text
+            ctx.fillStyle = color;
+            ctx.fillText(name, labelX, labelY + 4);
+          });
         }
       }
     }
@@ -435,11 +475,12 @@ export const useCenterLine = ({
    */
   const redrawAllCenterlines = useCallback(() => {
     const worldPoints = centerLineWorldPointsRef.current;
+    const names = vertebraNamesRef.current;
     if (worldPoints.length < 2) return;
 
     const { viewports } = getCornerstoneViewportsAndBounds();
     viewports.forEach(({ viewportId, viewport }) => {
-      drawCenterlineOnViewport(viewportId, viewport, worldPoints);
+      drawCenterlineOnViewport(viewportId, viewport, worldPoints, names);
     });
   }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport]);
 
@@ -462,7 +503,7 @@ export const useCenterLine = ({
         if (timeout) clearTimeout(timeout);
         timeout = setTimeout(() => {
           if (centerLineWorldPointsRef.current.length > 0) {
-            drawCenterlineOnViewport(viewportId, viewport, centerLineWorldPointsRef.current);
+            drawCenterlineOnViewport(viewportId, viewport, centerLineWorldPointsRef.current, vertebraNamesRef.current);
           }
         }, 16);
       };
@@ -486,8 +527,6 @@ export const useCenterLine = ({
       element.addEventListener('wheel', handleChange);
       eventListenersRef.current.push({ element, event: 'wheel', handler: handleChange });
     });
-
-    console.log(`🎧 Setup ${eventListenersRef.current.length} event listeners`);
   }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport]);
 
   /**
@@ -508,6 +547,7 @@ export const useCenterLine = ({
 
     // Clear points
     centerLineWorldPointsRef.current = [];
+    vertebraNamesRef.current = [];
     stlBoundsRef.current = null;
     volumeBoundsRef.current = null;
   }, []);
@@ -518,19 +558,15 @@ export const useCenterLine = ({
   const calculateSpinalCenterline = useCallback(() => {
     const meshes = meshRefs.current?.left || [];
     if (meshes.length === 0) {
-      console.warn('⚠️ No meshes found');
+      console.warn('No meshes found for centerline');
       return null;
     }
-
-    console.log(`📦 Processing ${meshes.length} meshes`);
 
     // Filter only vertebrae meshes (C, T, L, S types)
     const vertebrae = meshes.filter(mesh => {
       const userData = mesh.userData;
       return userData && ['C', 'T', 'L', 'S'].includes(userData.type);
     });
-
-    console.log(`🦴 Found ${vertebrae.length} vertebrae`);
 
     // Sort vertebrae in anatomical order (C1-C7, T1-T12, L1-L5, S1-S5)
     const anatomicalOrder = ['C', 'T', 'L', 'S'];
@@ -549,6 +585,7 @@ export const useCenterLine = ({
 
     // Calculate center points for each vertebra in world coordinates (in anatomical order)
     const centerPoints: THREE.Vector3[] = [];
+    const vertebraNames: string[] = [];
 
     // Calculate overall STL bounds
     const overallBounds = {
@@ -570,22 +607,19 @@ export const useCenterLine = ({
         center.applyMatrix4(mesh.matrixWorld);
         centerPoints.push(center);
 
+        // Get vertebra name from mesh userData
+        const name = mesh.userData?.fullName || 'Unknown';
+        vertebraNames.push(name);
+
         // Update overall bounds
         const min = boundingBox.min.clone().applyMatrix4(mesh.matrixWorld);
         const max = boundingBox.max.clone().applyMatrix4(mesh.matrixWorld);
         overallBounds.min.min(min);
         overallBounds.max.max(max);
-
-        console.log(`  📍 ${mesh.userData?.fullName || 'Unknown'}: center = (${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)})`);
       }
     });
 
     if (centerPoints.length < 2) return null;
-
-    console.log(`✅ Calculated ${centerPoints.length} centerline points`);
-    const stlSize = new THREE.Vector3().subVectors(overallBounds.max, overallBounds.min);
-    console.log('📏 STL bounds:', overallBounds);
-    console.log('📏 STL size:', { x: stlSize.x.toFixed(1), y: stlSize.y.toFixed(1), z: stlSize.z.toFixed(1) });
 
     stlBoundsRef.current = overallBounds;
 
@@ -593,8 +627,6 @@ export const useCenterLine = ({
     const { volumeBounds } = getCornerstoneViewportsAndBounds();
 
     if (!volumeBounds) {
-      console.warn('⚠️ Could not get volume bounds from viewports');
-      // Use default bounds based on typical CT dimensions
       volumeBoundsRef.current = {
         origin: [-250, -250, -500],
         dimensions: [512, 512, 200],
@@ -604,43 +636,26 @@ export const useCenterLine = ({
       volumeBoundsRef.current = volumeBounds;
     }
 
-    console.log('📊 Volume bounds:', volumeBoundsRef.current);
-
-    // Calculate volume size for logging
-    const volSize = [
-      volumeBoundsRef.current!.dimensions[0] * volumeBoundsRef.current!.spacing[0],
-      volumeBoundsRef.current!.dimensions[1] * volumeBoundsRef.current!.spacing[1],
-      volumeBoundsRef.current!.dimensions[2] * volumeBoundsRef.current!.spacing[2]
-    ];
-    console.log('📐 Volume size (mm):', volSize);
-    console.log('📐 Scale factor:', (volSize[2] / stlSize.y).toFixed(3));
-
     // Transform center points to DICOM world coordinates
     const worldPoints: Array<[number, number, number]> = centerPoints.map(p =>
       transformSTLToDICOMWorld(p, stlBoundsRef.current!, volumeBoundsRef.current!)
     );
 
-    console.log('📍 First world point:', worldPoints[0]);
-    console.log('📍 Last world point:', worldPoints[worldPoints.length - 1]);
-    console.log('📍 Middle world point:', worldPoints[Math.floor(worldPoints.length / 2)]);
-
-    return { threePoints: centerPoints, worldPoints };
+    return { threePoints: centerPoints, worldPoints, vertebraNames };
   }, [meshRefs, getCornerstoneViewportsAndBounds, transformSTLToDICOMWorld]);
 
   /**
    * Create DICOM centerlines on all viewports
    */
-  const createDICOMCenterlines = useCallback((centerData: { threePoints: THREE.Vector3[], worldPoints: Array<[number, number, number]> }) => {
-    console.log('🚀 Creating DICOM centerlines...');
-
+  const createDICOMCenterlines = useCallback((centerData: { threePoints: THREE.Vector3[], worldPoints: Array<[number, number, number]>, vertebraNames: string[] }) => {
     centerLineWorldPointsRef.current = centerData.worldPoints;
+    vertebraNamesRef.current = centerData.vertebraNames;
 
     // Wait for viewports to be ready
     setTimeout(() => {
       const { viewports } = getCornerstoneViewportsAndBounds();
 
       if (viewports.length === 0) {
-        console.log('⚠️ No viewports found, retrying...');
         setTimeout(() => {
           redrawAllCenterlines();
           setupEventListeners();
@@ -649,11 +664,10 @@ export const useCenterLine = ({
       }
 
       viewports.forEach(({ viewportId, viewport }) => {
-        drawCenterlineOnViewport(viewportId, viewport, centerData.worldPoints);
+        drawCenterlineOnViewport(viewportId, viewport, centerData.worldPoints, centerData.vertebraNames);
       });
 
       setupEventListeners();
-      console.log('✅ DICOM centerlines created');
     }, 500);
   }, [getCornerstoneViewportsAndBounds, drawCenterlineOnViewport, setupEventListeners, redrawAllCenterlines]);
 
@@ -794,34 +808,30 @@ export const useCenterLine = ({
     restoreOriginalMaterials();
     setCenterLineEnabled(false);
     setTransparencyEnabled(true);
-
-    console.log('🗑️ Centerline removed');
   }, [leftSceneRef, rightSceneRef, restoreOriginalMaterials, removeDICOMCenterlines]);
 
   const showCenterLine = useCallback(() => {
-    console.log('🎯 showCenterLine called');
-
     removeCenterLine();
 
     const centerData = calculateSpinalCenterline();
     if (!centerData || centerData.threePoints.length < 2) {
-      console.warn('⚠️ Not enough points for centerline');
+      console.warn('Not enough points for centerline');
       return;
     }
 
     const { threePoints } = centerData;
 
-    // Create 3D tube
+    // Create 3D tube (cyan color)
     const curve = new THREE.CatmullRomCurve3(threePoints);
 
     const tubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 1.5, 8, false);
-    const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 1.0 });
+    const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 1.0 });
 
     const leftTube = new THREE.Mesh(tubeGeometry, tubeMaterial);
     const rightTube = new THREE.Mesh(tubeGeometry.clone(), tubeMaterial);
 
     const glowTubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 2.5, 8, false);
-    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.6 });
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x00b8cc, transparent: true, opacity: 0.6 });
 
     const leftGlowTube = new THREE.Mesh(glowTubeGeometry, glowMaterial);
     const rightGlowTube = new THREE.Mesh(glowTubeGeometry.clone(), glowMaterial);
@@ -839,20 +849,17 @@ export const useCenterLine = ({
       rightGlow: rightGlowTube
     };
 
-    // Create DICOM centerlines
-    createDICOMCenterlines(centerData);
+    // DICOM centerlines are handled by the Spine Label button (spineLabelOverlayManager)
+    // so we only create the 3D tube here
 
     makeMeshesTransparent();
     setCenterLineEnabled(true);
     setTransparencyEnabled(true);
-
-    console.log('✅ Centerline enabled');
   }, [
     calculateSpinalCenterline,
     leftSceneRef,
     rightSceneRef,
     makeMeshesTransparent,
-    createDICOMCenterlines,
     removeCenterLine
   ]);
 
