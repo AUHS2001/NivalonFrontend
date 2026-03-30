@@ -579,7 +579,7 @@ export default function StudyList() {
                     zIndex: 10000,
                 }}>
                     <div style={{
-                        backgroundColor: '#0a0b29',
+                        backgroundColor: '#0a0e17',
                         padding: '24px',
                         borderRadius: '12px',
                         width: '950px',
@@ -700,7 +700,7 @@ export default function StudyList() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            backgroundColor: '#1a1a2e',
+                                            backgroundColor: '#0f1420',
                                             border: '1px solid #444',
                                             borderRadius: '4px',
                                             color: '#fff',
@@ -723,7 +723,7 @@ export default function StudyList() {
                                     border: '1px solid #444',
                                     borderRadius: '6px',
                                     padding: '8px',
-                                    backgroundColor: '#0a0b29',
+                                    backgroundColor: '#0a0e17',
                                 }}>
                                     {!selectedStudy1 ? (
                                         <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>
@@ -790,7 +790,7 @@ export default function StudyList() {
                                             style={{
                                                 width: '100%',
                                                 padding: '8px',
-                                                backgroundColor: '#1a1a2e',
+                                                backgroundColor: '#0f1420',
                                                 border: '1px solid #444',
                                                 borderRadius: '4px',
                                                 color: '#fff',
@@ -818,7 +818,7 @@ export default function StudyList() {
                                     border: '1px solid #444',
                                     borderRadius: '6px',
                                     padding: '8px',
-                                    backgroundColor: '#0a0b29',
+                                    backgroundColor: '#0a0e17',
                                 }}>
                                     {(comparisonMode === 'same' && !selectedStudy1) || (comparisonMode === 'different' && !selectedStudy2) ? (
                                         <div style={{ color: '#666', textAlign: 'center', paddingTop: '80px' }}>

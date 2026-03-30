@@ -45,7 +45,7 @@ const SignonStlPanel: React.FC<SignonStlPanelProps> = ({
 
       try {
         const response = await fetch(
-          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${SIGNON_TOKEN}`,
@@ -59,7 +59,7 @@ const SignonStlPanel: React.FC<SignonStlPanelProps> = ({
         }
 
         const data = await response.json();
-        const urls = data?.data?.generated?.urls || [];
+        const urls = data?.data?.processed?.urls || [];
 
         console.log('SignonStlPanel - Fetched STL URLs:', urls);
 

@@ -791,7 +791,7 @@ const createAutomaticSegmentation = async () => {
       setError(null);
       try {
         const response = await fetch(
-          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,
@@ -805,8 +805,8 @@ const createAutomaticSegmentation = async () => {
         }
 
         const data = await response.json();
-        console.log('Fetched segmentation URLs:', data?.data?.generated?.urls);
-        setTestStls(data?.data?.generated?.urls || []);
+        console.log('Fetched segmentation URLs:', data?.data?.processed?.urls);
+        setTestStls(data?.data?.processed?.urls || []);
         setVersions(data?.data?.versions || []);
       } catch (err: any) {
         setError(err.message);
@@ -1189,7 +1189,7 @@ const createAutomaticSegmentation = async () => {
     try {
       setIsDownloading(true);
       const response = await fetch(
-        `${SERVER_URL}/analyst/download-generated-3d?series_instance_uid=${stlInstanceId}`,
+        `${SERVER_URL}/analyst/meshes/processed/download?series_instance_uid=${stlInstanceId}`,
         {
           method: 'GET',
           headers: {
@@ -1257,11 +1257,10 @@ const createAutomaticSegmentation = async () => {
         formData.append('files', blob, fileName);
       }
 
-      const response = await fetch('${SERVER_URL}/analyst/approve-final-3d', {
+      const response = await fetch(`${SERVER_URL}/analyst/meshes/approved`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${userToken}`,
-          "Content-Type": "application/json"
         },
         body: formData,
       });

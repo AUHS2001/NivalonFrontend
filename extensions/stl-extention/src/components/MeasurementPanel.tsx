@@ -33,7 +33,7 @@ export const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
       <div style={{
         maxHeight: "330px",
         overflowY: "auto",
-        border: "1px solid #333",
+        border: "1px solid #1a2030",
         borderRadius: "4px",
       }}>
         {measurements.map((meas) => (
@@ -41,7 +41,7 @@ export const MeasurementPanel: React.FC<MeasurementPanelProps> = ({
             key={meas.id}
             style={{
               padding: "6px",
-              borderBottom: "1px solid #363c48",
+              borderBottom: "1px solid #1a2030",
               fontSize: "12px",
               marginBottom: "12px",
             }}

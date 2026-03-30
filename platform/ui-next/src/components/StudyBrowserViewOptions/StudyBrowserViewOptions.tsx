@@ -18,13 +18,13 @@ export function StudyBrowserViewOptions({ tabs, onSelectTab, activeTabName }: wi
     <DropdownMenu>
       <Tooltip>
         <TooltipTrigger className="w-full w-[50%] overflow-hidden">
-          <DropdownMenuTrigger className="border-inputfield-main focus:border-inputfield-main flex h-[26px] w-full items-center justify-start rounded border bg-black p-2 text-base text-white">
+          <DropdownMenuTrigger className="border-inputfield-main focus:border-inputfield-main flex h-[26px] w-full items-center justify-start rounded border bg-[#0a0e17] p-2 text-base text-white">
             {activeTab?.label}
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent>{activeTab?.label}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent className="bg-black">
+      <DropdownMenuContent className="bg-[#0a0e17]">
         {tabs.map(tab => {
           const { name, label, studies } = tab;
           const isActive = activeTabName === name;

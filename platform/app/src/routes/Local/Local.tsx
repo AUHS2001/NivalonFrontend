@@ -120,9 +120,9 @@ function Local({ modePath }: LocalProps) {
 
   // Set body style
   useEffect(() => {
-    document.body.classList.add('bg-black');
+    document.body.style.backgroundColor = '#0a0e17';
     return () => {
-      document.body.classList.remove('bg-black');
+      document.body.style.backgroundColor = '';
     };
   }, []);
 
@@ -148,7 +148,7 @@ function Local({ modePath }: LocalProps) {
               <div className="space-y-2 py-6 text-center">
                 {dropInitiated ? (
                   <div className="flex flex-col items-center justify-center pt-12">
-                    <LoadingIndicatorProgress className={'h-full w-full bg-black'} />
+                    <LoadingIndicatorProgress className={'h-full w-full bg-[#0a0e17]'} />
                   </div>
                 ) : (
                   <div className="space-y-2">

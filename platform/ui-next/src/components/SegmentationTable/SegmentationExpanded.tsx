@@ -105,7 +105,7 @@ const SegmentationExpandedRoot = ({ children }) => {
 
   return (
     <ScrollArea
-      className={`bg-bkg-low space-y-px`}
+      className={`bg-[#0a0e17] space-y-px`}
       showArrows={true}
     >
       <div

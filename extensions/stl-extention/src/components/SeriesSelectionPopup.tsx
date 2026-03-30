@@ -191,8 +191,8 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
           style={{
             width: '100%',
             padding: '8px',
-            backgroundColor: '#1a1a2e',
-            border: '1px solid #444',
+            backgroundColor: '#0a0e17',
+            border: '1px solid #1a2030',
             borderRadius: '4px',
             color: '#fff',
             fontSize: '12px',
@@ -249,10 +249,10 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
       <div style={{
         height: comparisonMode === 'different' ? '220px' : '300px',
         overflowY: 'auto',
-        border: '1px solid #444',
+        border: '1px solid #1a2030',
         borderRadius: '6px',
         padding: '10px',
-        backgroundColor: '#0a0b29',
+        backgroundColor: '#0a0e17',
       }}>
         {currentList.map((series) => (
           <div
@@ -312,14 +312,14 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
       zIndex: 10000,
     }}>
       <div style={{
-        backgroundColor: '#0a0b29',
+        backgroundColor: '#0a0e17',
         padding: '24px',
         borderRadius: '12px',
         width: '900px',
         maxWidth: '90%',
         maxHeight: '85%',
         overflow: 'auto',
-        border: '1px solid #333',
+        border: '1px solid #1a2030',
       }}>
         <div style={{
           display: 'flex',
@@ -327,7 +327,7 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
           alignItems: 'center',
           marginBottom: '20px',
           paddingBottom: '10px',
-          borderBottom: '1px solid #333',
+          borderBottom: '1px solid #1a2030',
         }}>
           <h3 style={{ margin: 0, color: '#fff' }}>Select Series for 3D Comparison</h3>
           <button
@@ -426,7 +426,7 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
                 borderRadius: '50%',
                 backgroundColor: '#ffffff',
                 display: 'inline-block',
-                border: '1px solid #444'
+                border: '1px solid #1a2030'
               }}></span>
               Series 1 {selectedSeries1 && <span style={{ color: '#4dff4d', fontSize: '12px' }}>({selectedSeries1.description})</span>}
             </h4>
@@ -457,14 +457,14 @@ export const SeriesSelectionPopup: React.FC<SeriesSelectionPopupProps> = ({
           gap: '12px',
           marginTop: '20px',
           paddingTop: '20px',
-          borderTop: '1px solid #333',
+          borderTop: '1px solid #1a2030',
         }}>
           <button
             onClick={handleClose}
             style={{
               padding: '10px 20px',
               backgroundColor: 'transparent',
-              border: '1px solid #555',
+              border: '1px solid #1a2030',
               borderRadius: '6px',
               color: '#aaa',
               cursor: 'pointer',

@@ -34,7 +34,7 @@ const ThumbnailList = ({
         {thumbnailItems.length > 0 && (
           <div
             id="ohif-thumbnail-list"
-            className="bg-bkg-low grid grid-cols-[repeat(auto-fit,_minmax(0,135px))] place-items-start gap-[4px]"
+            className="bg-[#0a0e17] grid grid-cols-[repeat(auto-fit,_minmax(0,135px))] place-items-start gap-[4px]"
           >
             {thumbnailItems.map((item,index) => {
               // console.log(`my thubnail ${index}`, item.StudyInstanceUID              )
@@ -65,7 +65,7 @@ const ThumbnailList = ({
         {listItems.length > 0 && (
           <div
             id="ohif-thumbnail-list"
-            className="bg-bkg-low grid grid-cols-[repeat(auto-fit,_minmax(0,275px))] place-items-start gap-[2px]"
+            className="bg-[#0a0e17] grid grid-cols-[repeat(auto-fit,_minmax(0,275px))] place-items-start gap-[2px]"
           >
             {listItems.map((item,index) => {
               // console.log(`my thubnail ${index}`, item)

@@ -78,7 +78,7 @@ function ToolboxUI(props: ToolboxProps) {
             })}
           </div>
         </div>
-        <div className="bg-primary-dark h-auto px-2">
+        <div className="bg-[#0a0e17] h-auto px-2">
           {activeToolOptions && <ToolSettings options={activeToolOptions} />}
         </div>
       </>

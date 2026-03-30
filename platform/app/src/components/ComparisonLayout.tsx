@@ -7,7 +7,7 @@ const ComparisonLayout = ({ servicesManager, commandsManager, extensionManager, 
   const seriesLabel = viewportOptions?.customProps?.seriesLabel;
 
   return (
-    <div className="flex flex-col w-full h-full bg-gray-900">
+    <div className="flex flex-col w-full h-full bg-[#0a0e17]">
       <div className="flex-1 overflow-hidden">
         <StlComparison
           servicesManager={servicesManager}

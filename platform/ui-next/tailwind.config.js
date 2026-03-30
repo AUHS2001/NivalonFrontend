@@ -101,9 +101,9 @@ module.exports = {
         'accordion-up': 'accordion-up 0.2s ease-out',
       },
       bkg: {
-        low: '#050615',
-        med: '#090C29',
-        full: '#041C4A',
+        low: '#0a0e17',
+        med: '#0f1420',
+        full: '#141a2a',
       },
       info: {
         primary: '#FFFFFF',

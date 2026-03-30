@@ -27,7 +27,7 @@ export const AngleMeasurementPanel: React.FC<AngleMeasurementPanelProps> = () =>
 
   if (angleMeasurements.length === 0 && tempAnglePoints.length === 0) {
     return (
-      <div style={{ marginTop: "18px", padding: "10px", backgroundColor: "#1a1a2e", borderRadius: "8px" }}>
+      <div style={{ marginTop: "18px", padding: "10px", backgroundColor: "#0a0e17", borderRadius: "8px" }}>
         <h4 style={{ fontSize: "14px", margin: 0, color: "#9fcfff" }}>Angle Measurements</h4>
         <div style={{ marginTop: "10px", fontSize: "12px", color: "#aaa" }}>
           <div>No measurements yet.</div>
@@ -75,7 +75,7 @@ export const AngleMeasurementPanel: React.FC<AngleMeasurementPanelProps> = () =>
       {tempAnglePoints.length > 0 && (
         <div style={{
           padding: "8px",
-          backgroundColor: "#2a2a4a",
+          backgroundColor: "#0f1420",
           borderRadius: "4px",
           marginBottom: "10px",
           fontSize: "12px",
@@ -92,7 +92,7 @@ export const AngleMeasurementPanel: React.FC<AngleMeasurementPanelProps> = () =>
       <div style={{
         maxHeight: "330px",
         overflowY: "auto",
-        border: "1px solid #333",
+        border: "1px solid #1a2030",
         borderRadius: "4px",
       }}>
         {angleMeasurements.map((meas, index) => (
@@ -100,7 +100,7 @@ export const AngleMeasurementPanel: React.FC<AngleMeasurementPanelProps> = () =>
             key={meas.id}
             style={{
               padding: "10px",
-              borderBottom: "1px solid #363c48",
+              borderBottom: "1px solid #1a2030",
               fontSize: "12px",
               backgroundColor: index % 2 === 0 ? "rgba(0, 0, 0, 0.1)" : "transparent",
               borderLeft: activeDrag ? "4px solid #ffff00" : "4px solid transparent",
@@ -168,7 +168,7 @@ export const AngleMeasurementPanel: React.FC<AngleMeasurementPanelProps> = () =>
       <div style={{ 
         marginTop: "10px", 
         padding: "8px", 
-        backgroundColor: activeDrag ? "#2a2a00" : "#1a1a2a", 
+        backgroundColor: activeDrag ? "#2a2a00" : "#0f1420", 
         borderRadius: "4px",
         border: activeDrag ? "2px solid #ffff00" : "1px solid #333",
         transition: "all 0.3s"

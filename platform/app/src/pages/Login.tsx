@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import logo from '../../assets/logo.png';
 import { useNavigate } from 'react-router-dom';
+import { SERVER_URL } from '../../../../config/server';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,33 +29,45 @@ const LoginPage: React.FC = () => {
 
     setLoading(true);
 
-    // Simulate API call
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Authenticate via backend API
+      const response = await fetch(`${SERVER_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Hardcoded users
+      if (!response.ok) {
+        throw new Error('Invalid email or password');
+      }
+
+      const data = await response.json();
+
+      // Save token in local storage
+      localStorage.setItem('token', data.access_token || data.token);
+
+      // Role-based routing using known users
       const validUsers = [
-        { email: 'analyst@nivalon.com', password: '@Dmin123', role: 'analyst' },
-        { email: 'signon@nivalon.com', password: '@Dmin123', role: 'signs' },
-        { email: 'admin@nivalon.com', password: '@Dmin123', role: 'admin' }
+        { email: 'hassanafnan20@gmail.com', role: 'analyst' },
+        { email: 'ateeb@gmail.com', role: 'signs' },
+        { email: 'admin@nivalon.com', role: 'admin' }
       ];
 
-      const user = validUsers.find(u => u.email === email && u.password === password);
+      const user = validUsers.find(u => u.email === email);
+      const role = user?.role || data.role || 'analyst';
+      localStorage.setItem('userRole', role);
 
-      if (user) {
-        // Save user role to local storage
-        if(user.role === 'admin'){
-          localStorage.setItem('userRole', user.role);
-          navigate('/admin');
-        } else {
-          localStorage.setItem('userRole', user.role);
-          navigate('/localWorklist'); 
-        }
+      if (role === 'admin') {
+        navigate('/admin');
+      } else if(role === 'analyst') {
+        navigate('/localWorklist');
       } else {
-        setError('Invalid email or password');
+        navigate('/sso')
       }
-    } catch (err) {
-      setError('An error occurred during login');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during login');
     } finally {
       setLoading(false);
     }
@@ -308,17 +321,6 @@ const LoginPage: React.FC = () => {
             )}
           </button>
         </form>
-
-        {/* <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#bdc3c7', margin: 0 }}>
-            Don't have an account?{' '}
-            <a href="#" style={{
-              color: '#3498db',
-              textDecoration: 'none',
-              fontWeight: '500'
-            }}>Sign up</a>
-          </p>
-        </div> */}
       </div>
 
       {/* Animation styles */}

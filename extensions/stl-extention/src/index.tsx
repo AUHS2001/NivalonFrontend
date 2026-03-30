@@ -3,7 +3,7 @@ import SpinalCordViewer from './SpinalCordViewer';
 import SingleSpinalCord from './SingleSpinalCord';
 import SignonStlPanel from './SignonStlPanel';
 import React from 'react';
-import { toggleSpineLabelOverlay, hasVertebraData } from './utils/spineLabelOverlayManager';
+import { toggleSpineLabelOverlay } from './utils/spineLabelOverlayManager';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -146,10 +146,7 @@ export default {
     const actions = {
       toggleSpineLabelOverlayAction: () => {
         console.log('toggleSpineLabelOverlay command fired');
-        if (!hasVertebraData()) {
-          console.warn('No STL vertebra data loaded - open STL panel and load files first');
-          return;
-        }
+        // Allow toggle even without STL data — showSpineLabelOverlay will restore from cache if available
         toggleSpineLabelOverlay(servicesManager);
       },
     };

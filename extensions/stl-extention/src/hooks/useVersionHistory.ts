@@ -30,7 +30,7 @@ export const useVersionHistory = ({
       setLoadingVersions(true);
       try {
         const response = await fetch(
-          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,

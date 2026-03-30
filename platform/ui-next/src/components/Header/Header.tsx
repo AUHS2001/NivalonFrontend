@@ -61,7 +61,7 @@ function Header({
         isSticky={isSticky}
         {...props}
       >
-        <div className="relative h-[70px] items-center" style={{ backgroundColor: "#17202a"}}>
+        <div className="relative h-[70px] items-center" style={{ backgroundColor: "#0a0e17"}}>
           <div className="absolute left-1 top-1/2 flex -translate-y-1/2 items-center">
             <div
               className={classNames(
@@ -90,7 +90,7 @@ function Header({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="text-white hover:bg-primary-dark mt-2 h-full w-full"
+                    className="text-white hover:bg-[#0A6FFD]/20 mt-2 h-full w-full"
                   >
                     <Icons.GearSettings />
                   </Button>

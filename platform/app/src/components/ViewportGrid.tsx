@@ -373,7 +373,7 @@ function ViewerViewportGrid(props: withAppTypes) {
               data-cy="viewport-pane"
               className="flex h-full w-full min-w-[5px] flex-col"
             >
-              <KarachiLayout />
+              <KarachiLayout servicesManager={servicesManager} commandsManager={commandsManager} />
             </div>
           </ViewportPane>
         );

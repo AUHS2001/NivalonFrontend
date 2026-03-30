@@ -80,7 +80,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <span style={{ width: "10px" }}></span>
           <div style={{
             color: '#fff', width: "70px", height: "30px",
-            backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
             border: '1px solid #000', fontSize: '12px', marginTop: "5px"
           }}>3D Tools</div>
           <span style={{ width: "10px" }}></span>
@@ -278,7 +278,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <span style={{ width: "10px" }}></span>
         <div style={{
           color: '#fff', width: "70px", height: "30px",
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           border: '1px solid #000', fontSize: '12px', marginTop: "5px"
         }}>3D Tools</div>
         <span style={{ width: "10px" }}></span>

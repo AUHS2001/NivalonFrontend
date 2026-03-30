@@ -81,12 +81,12 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
         const study2Uid = study2?.study_instance_uid || '';
 
         const url1 = study1Uid
-          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
-          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series1.series_instance_uid}&_t=${timestamp}`;
+          ? `${SERVER_URL}/analyst/meshes?series_instance_uid=${series1.series_instance_uid}&study_instance_uid=${study1Uid}&_t=${timestamp}`
+          : `${SERVER_URL}/analyst/meshes?series_instance_uid=${series1.series_instance_uid}&_t=${timestamp}`;
 
         const url2 = study2Uid
-          ? `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
-          : `${SERVER_URL}/analyst/get-3d?series_instance_uid=${series2.series_instance_uid}&_t=${timestamp + 1}`;
+          ? `${SERVER_URL}/analyst/meshes?series_instance_uid=${series2.series_instance_uid}&study_instance_uid=${study2Uid}&_t=${timestamp + 1}`
+          : `${SERVER_URL}/analyst/meshes?series_instance_uid=${series2.series_instance_uid}&_t=${timestamp + 1}`;
 
         const [response1, response2] = await Promise.all([
           fetch(url1, {
@@ -105,8 +105,8 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 
         const [data1, data2] = await Promise.all([response1.json(), response2.json()]);
 
-        const urls1 = data1?.data?.generated?.urls || [];
-        const urls2 = data2?.data?.generated?.urls || [];
+        const urls1 = data1?.data?.processed?.urls || [];
+        const urls2 = data2?.data?.processed?.urls || [];
 
         setStlUrls1(urls1);
         setStlUrls2(urls2);
@@ -359,7 +359,7 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
       width: '100%',
       height: '100%',
       minHeight: '500px',
-      backgroundColor: '#000',
+      backgroundColor: '#0a0e17',
       position: 'relative'
     }}>
       {/* Exit Comparison Button */}
@@ -411,13 +411,13 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
       )}
 
       {/* Series 1 View (WHITE model) - Left side */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #444', minWidth: '200px' }}>
+      <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #1a2030', minWidth: '200px' }}>
         <div style={{
           position: 'absolute', top: 10, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px'
         }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block', border: '1px solid #444' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block', border: '1px solid #1a2030' }}></span>
           Series 1: {seriesName || series1?.description || '(No name)'}
         </div>
         <div ref={mount1Ref} style={{ width: '100%', height: '100%', position: 'relative' }} />
@@ -427,7 +427,7 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
       <div style={{ flex: 1, position: 'relative', minWidth: '200px' }}>
         <div style={{
           position: 'absolute', top: 10, left: 10, color: '#00ffff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px'
         }}>
           <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#00ffff', display: 'inline-block' }}></span>

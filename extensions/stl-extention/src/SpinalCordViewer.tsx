@@ -276,7 +276,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       setError(null);
       try {
         const response = await fetch(
-          `${SERVER_URL}/analyst/get-3d?series_instance_uid=${stlInstanceId}`,
+          `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
           {
             headers: {
               Authorization: `Bearer ${userToken}`,
@@ -290,8 +290,8 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         }
 
         const data = await response.json();
-        console.log('Fetched segmentation URLs:', data?.data?.generated?.urls);
-        setTestStls(data?.data?.generated?.urls || []);
+        console.log('Fetched segmentation URLs:', data?.data?.processed?.urls);
+        setTestStls(data?.data?.processed?.urls || []);
         setVersions(data?.data?.versions || []);
         versionHistory.getVersionHistory();
       } catch (err: any) {

@@ -27,7 +27,7 @@ export const AddSegmentationRow: React.FC<{ children?: React.ReactNode }> = ({
       onClick={() => !disabled && onSegmentationAdd('')}
     >
       {children}
-      <div className="text-primary group-hover:bg-secondary-dark flex items-center rounded-[4px] pl-1 group-hover:cursor-pointer">
+      <div className="text-primary group-hover:bg-[#0a0e17] flex items-center rounded-[4px] pl-1 group-hover:cursor-pointer">
         <div className="grid h-[28px] w-[28px] place-items-center">
           {disabled ? <Icons.Info /> : <Icons.Add />}
         </div>

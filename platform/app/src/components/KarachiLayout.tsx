@@ -4,8 +4,8 @@ import SingleSpinalCord from '../../../../extensions/stl-extention/src/SingleSpi
 
 const KarachiLayout = ({ servicesManager, commandsManager, extensionManager }) => {
   return (
-    <div className="flex flex-col w-full h-full bg-gray-900">
-      <div className="flex-1 overflow-hidden">
+    <div className="w-full h-full bg-[#0a0e17]" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative', height: '100%' }}>
         <SingleSpinalCord
           servicesManager={servicesManager}
           commandsManager={commandsManager}

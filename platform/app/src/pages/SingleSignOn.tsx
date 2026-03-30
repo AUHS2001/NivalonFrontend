@@ -79,6 +79,8 @@ const SingleSignOnPage: React.FC = () => {
       // Save SSO info to localStorage
       localStorage.setItem('userRole', 'signer');
       localStorage.setItem('ssoId', ssoId);
+      // Store token so SingleSpinalCord can use it for STL data fetch
+      localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y');
 
       // Set STL context data
       if (stlListContext) {

@@ -24,7 +24,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
         flex: 1, // Change from flex: 6 to flex: 1
         display: 'flex',
         width: '100%',
-        backgroundColor: '#000',
+        backgroundColor: '#0a0e17',
         borderTop: '1.5px solid #fff',
         position: 'relative',
         height: '100%', // Add this
@@ -34,7 +34,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
       <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: show ? 'block' : 'none', height: ''  }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           border: '1px solid #000', fontSize: '12px'
         }}>Previous View</div>
         <div ref={startMountRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
@@ -44,7 +44,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
       <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: 'none'  }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           border: '1px solid #000', fontSize: '12px', marginTop: '12px'
         }}>Latest View</div>
         <div ref={leftMountRef} style={{ width: '100%', height: '70%', position: 'relative' }} />
@@ -66,7 +66,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
       }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           border: '1px solid #000', fontSize: '12px', marginTop: '12px'
         }}>Labelling View</div>
         <div ref={rightMountRef} style={{ width: '100%', height: '70%' }} />

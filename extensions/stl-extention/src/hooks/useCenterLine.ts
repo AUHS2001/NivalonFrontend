@@ -41,6 +41,7 @@ export const useCenterLine = ({
   const vertebraNamesRef = useRef<string[]>([]);
   const stlBoundsRef = useRef<{ min: THREE.Vector3; max: THREE.Vector3 } | null>(null);
   const volumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[] } | null>(null);
+  const canalOffsetRef = useRef<number>(15); // Anatomy-based canal offset in mm
 
   // Store event listeners for cleanup
   const eventListenersRef = useRef<Array<{ element: any; event: string; handler: (e: any) => void }>>([]);
@@ -119,11 +120,378 @@ export const useCenterLine = ({
   }, [servicesManager]);
 
   /**
+   * Detect spinal foramen center by scanning from posterior toward anterior.
+   * The foramen is the dark gap between laminae (bone) and vertebral body (bone).
+   */
+  const detectCanalPureDICOMHook = useCallback((): Array<[number, number, number]> | null => {
+    const { viewports } = getCornerstoneViewportsAndBounds();
+    if (viewports.length === 0) return null;
+
+    let scalarData: any = null;
+    let dims: number[] = [], sp: number[] = [], ori: number[] = [];
+    let dir: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    let vtkImgData: any = null;
+
+    for (const { viewport } of viewports) {
+      try {
+        let vol: any = null;
+        if (typeof viewport.getAllVolumeIds === 'function') {
+          const volumeIds = viewport.getAllVolumeIds();
+          for (const vid of volumeIds) { vol = (cache as any).getVolume?.(vid); if (vol) break; }
+        }
+        if (!vol) {
+          const actors = viewport.getActors?.();
+          if (actors?.length) { vol = (cache as any).getVolume?.((actors[0] as any).referencedId || actors[0].uid); }
+        }
+        if (!vol) continue;
+        try { scalarData = vol.getScalarData(); }
+        catch { scalarData = vol.voxelManager?.getCompleteScalarDataArray?.(); }
+        dims = Array.from(vol.dimensions);
+        sp = Array.from(vol.spacing);
+        ori = Array.from(vol.origin);
+        if (vol.direction) dir = Array.from(vol.direction);
+        try { vtkImgData = vol.imageData; } catch {}
+        break;
+      } catch (e) { continue; }
+    }
+
+    if (!scalarData || dims.length < 3 || dims[0] === 0) return null;
+
+    const sliceSize = dims[0] * dims[1];
+    const getV = (x: number, y: number, z: number): number | null => {
+      if (x < 0 || x >= dims[0] || y < 0 || y >= dims[1] || z < 0 || z >= dims[2]) return null;
+      return scalarData[x + y * dims[0] + z * sliceSize];
+    };
+    const i2w = (ix: number, iy: number, iz: number): [number, number, number] => {
+      if (vtkImgData && typeof vtkImgData.indexToWorld === 'function') {
+        const out: [number, number, number] = [0, 0, 0];
+        vtkImgData.indexToWorld([ix, iy, iz], out);
+        return out;
+      }
+      const sx = ix * sp[0], sy = iy * sp[1], sz = iz * sp[2];
+      return [
+        ori[0] + dir[0] * sx + dir[1] * sy + dir[2] * sz,
+        ori[1] + dir[3] * sx + dir[4] * sy + dir[5] * sz,
+        ori[2] + dir[6] * sx + dir[7] * sy + dir[8] * sz,
+      ];
+    };
+
+    const jDirY = dir[4];
+    const posteriorIsHighJ = jDirY >= 0;
+
+    let gMin = Infinity, gMax = -Infinity;
+    const sampleStepZ = Math.max(1, Math.floor(dims[2] / 20));
+    for (let iz = 0; iz < dims[2]; iz += sampleStepZ) {
+      for (let iy = 0; iy < dims[1]; iy += 4) {
+        for (let ix = 0; ix < dims[0]; ix += 4) {
+          const v = getV(ix, iy, iz);
+          if (v !== null) { if (v < gMin) gMin = v; if (v > gMax) gMax = v; }
+        }
+      }
+    }
+    if (gMax - gMin < 200) return null;
+
+    const BONE_HU = 200;
+    const SOFT_HU = 100;
+    const CANAL_MAX_HU = 80;
+
+    function scanColumn(ix: number, iz: number, yStart: number, yEnd: number, yStep: number): number | null {
+      let scanState: 'seeking_bone' | 'in_bone' | 'in_canal' = 'seeking_bone';
+      let bonePixelsSeen = 0;
+      let canalStart = -1, canalEnd = -1;
+      let transitionStart = -1; // Track continuous transition zone for VB cortex detection
+      const darkVoxels: Array<{ iy: number; v: number }> = [];
+
+      for (let iy = yStart; yStep > 0 ? iy <= yEnd : iy >= yEnd; iy += yStep) {
+        const v = getV(ix, iy, iz);
+        if (v === null) continue;
+
+        if (scanState === 'seeking_bone') {
+          if (v >= BONE_HU) { scanState = 'in_bone'; bonePixelsSeen = 1; }
+        } else if (scanState === 'in_bone') {
+          if (v >= BONE_HU) { bonePixelsSeen++; }
+          else if (v < SOFT_HU && bonePixelsSeen >= Math.max(2, Math.ceil(1.5 / sp[1]))) {
+            scanState = 'in_canal'; canalStart = iy;
+            if (v < CANAL_MAX_HU) darkVoxels.push({ iy, v });
+          } else if (v < BONE_HU) {
+            if (bonePixelsSeen < Math.max(2, Math.ceil(1.5 / sp[1]))) { scanState = 'seeking_bone'; bonePixelsSeen = 0; }
+            else { scanState = 'in_canal'; canalStart = iy; if (v < CANAL_MAX_HU) darkVoxels.push({ iy, v }); }
+          }
+        } else if (scanState === 'in_canal') {
+          if (v < CANAL_MAX_HU) {
+            if (transitionStart !== -1 && Math.abs(iy - transitionStart) * sp[1] >= 2) break;
+            transitionStart = -1; canalEnd = iy; darkVoxels.push({ iy, v });
+          }
+          else if (v >= BONE_HU) { if (canalEnd === -1) canalEnd = iy - yStep; break; }
+          else { if (transitionStart === -1) transitionStart = iy; const gapMM = Math.abs(iy - canalStart) * sp[1]; if (gapMM > 20) break; canalEnd = iy; }
+        }
+      }
+
+      if (canalStart === -1 || canalEnd === -1) return null;
+      const canalSizeMM = Math.abs(canalEnd - canalStart) * sp[1];
+      if (canalSizeMM < 3 || canalSizeMM > 25) return null;
+      // Trimmed mean of dark voxels — strip outermost 20% (LF posteriorly, PLL anteriorly)
+      if (darkVoxels.length >= 2) {
+        darkVoxels.sort((a, b) => a.iy - b.iy);
+        const trim = darkVoxels.length >= 6 ? Math.max(1, Math.floor(darkVoxels.length * 0.20)) : 0;
+        const trimmed = darkVoxels.slice(trim, darkVoxels.length - trim);
+        let wSum = 0;
+        for (const { iy } of trimmed) wSum += iy;
+        return Math.round(wSum / trimmed.length);
+      }
+      return Math.round((canalStart + canalEnd) / 2);
+    }
+
+    function detectSlice(iz: number, searchCenterX: number, searchRangeX: number): { ix: number; iy: number } | null {
+      const xLo = Math.max(0, searchCenterX - searchRangeX);
+      const xHi = Math.min(dims[0] - 1, searchCenterX + searchRangeX);
+      let yStart: number, yEnd: number, yStep: number;
+      if (posteriorIsHighJ) { yStart = dims[1] - 1; yEnd = Math.floor(dims[1] * 0.2); yStep = -1; }
+      else { yStart = 0; yEnd = Math.floor(dims[1] * 0.8); yStep = 1; }
+      // Scan every ~1mm for dense sampling
+      const scanStep = Math.max(1, Math.ceil(1 / sp[0]));
+      const results: Array<{ ix: number; iy: number }> = [];
+      for (let ix = xLo; ix <= xHi; ix += scanStep) {
+        const canalY = scanColumn(ix, iz, yStart, yEnd, yStep);
+        if (canalY !== null) results.push({ ix, iy: canalY });
+      }
+      if (results.length < 2) return null;
+      const sortedIxs = results.map(r => r.ix).sort((a, b) => a - b);
+      const sortedIys = results.map(r => r.iy).sort((a, b) => a - b);
+      const medIdx = Math.floor(results.length / 2);
+      let bestIx = sortedIxs[medIdx];
+      let bestIy = sortedIys[medIdx];
+
+      // --- 2D DT helper: compute chamfer DT + weighted centroid in ROI ---
+      function dtRefine(cx: number, cy: number, halfMM: number): { ix: number; iy: number } | null {
+        const half = Math.ceil(halfMM / Math.min(sp[0], sp[1]));
+        const x0 = Math.max(0, cx - half), x1 = Math.min(dims[0] - 1, cx + half);
+        const y0 = Math.max(0, cy - half), y1 = Math.min(dims[1] - 1, cy + half);
+        const w = x1 - x0 + 1, h = y1 - y0 + 1;
+        if (w < 6 || h < 6) return null;
+        const INF = 9999;
+        const dt = new Uint16Array(w * h);
+        for (let ry = 0; ry < h; ry++)
+          for (let rx = 0; rx < w; rx++) {
+            const v = getV(x0 + rx, y0 + ry, iz);
+            // Use CANAL_MAX_HU barrier: isolates canal (<80 HU) from VB marrow/muscle
+            dt[rx + ry * w] = (v !== null && v >= CANAL_MAX_HU) ? 0 : INF;
+          }
+        for (let ry = 1; ry < h - 1; ry++)
+          for (let rx = 1; rx < w - 1; rx++) {
+            const i = rx + ry * w;
+            dt[i] = Math.min(dt[i], dt[(rx-1)+(ry-1)*w]+4, dt[rx+(ry-1)*w]+3, dt[(rx+1)+(ry-1)*w]+4, dt[(rx-1)+ry*w]+3);
+          }
+        for (let ry = h - 2; ry >= 1; ry--)
+          for (let rx = w - 2; rx >= 1; rx--) {
+            const i = rx + ry * w;
+            dt[i] = Math.min(dt[i], dt[(rx+1)+(ry+1)*w]+4, dt[rx+(ry+1)*w]+3, dt[(rx-1)+(ry+1)*w]+4, dt[(rx+1)+ry*w]+3);
+          }
+        let peakD = 0, pRx = -1, pRy = -1;
+        const m = 3;
+        for (let ry = m; ry < h - m; ry++)
+          for (let rx = m; rx < w - m; rx++) {
+            const d = dt[rx + ry * w];
+            if (d <= 0 || d >= INF) continue;
+            const v = getV(x0 + rx, y0 + ry, iz);
+            if (v === null || v >= 50) continue;
+            if (d > peakD) { peakD = d; pRx = rx; pRy = ry; }
+          }
+        if (pRx < 0) return null;
+        // Collect contributing voxels for coordinate-wise trimmed centroid
+        const cR = Math.max(3, Math.round(peakD / 6));
+        const cPts: { x: number; y: number; d: number }[] = [];
+        for (let dy = -cR; dy <= cR; dy++)
+          for (let dx = -cR; dx <= cR; dx++) {
+            const rx = pRx + dx, ry = pRy + dy;
+            if (rx < 0 || rx >= w || ry < 0 || ry >= h) continue;
+            const d = dt[rx + ry * w];
+            if (d <= 0 || d >= INF) continue;
+            const v = getV(x0 + rx, y0 + ry, iz);
+            if (v === null || v >= 50) continue;
+            cPts.push({ x: x0 + rx, y: y0 + ry, d });
+          }
+        if (cPts.length >= 4) {
+          // Trim outermost 15% in X to remove lateral boundary bias
+          cPts.sort((a, b) => a.x - b.x);
+          const tX = cPts.length >= 10 ? Math.max(1, Math.floor(cPts.length * 0.15)) : 0;
+          let trimmed = cPts.slice(tX, cPts.length - tX);
+          // Trim outermost 15% in Y to remove anterior/posterior boundary bias
+          trimmed.sort((a, b) => a.y - b.y);
+          const tY = trimmed.length >= 10 ? Math.max(1, Math.floor(trimmed.length * 0.15)) : 0;
+          trimmed = trimmed.slice(tY, trimmed.length - tY);
+          let wcX = 0, wcY = 0, wcW = 0;
+          for (const p of trimmed) { wcX += p.x * p.d; wcY += p.y * p.d; wcW += p.d; }
+          if (wcW > 0) return { ix: Math.round(wcX / wcW), iy: Math.round(wcY / wcW) };
+        }
+        return { ix: x0 + pRx, iy: y0 + pRy };
+      }
+
+      // Two-iteration DT refinement: coarse (±15mm) then tight (±8mm)
+      // Clamp Y after each pass to prevent anterior drift through leaky DT boundaries
+      const anchorIy = bestIy;
+      const yClampPx = Math.ceil(5 / sp[1]);
+      const pass1 = dtRefine(bestIx, bestIy, 15);
+      if (pass1) { bestIx = pass1.ix; bestIy = Math.max(anchorIy - yClampPx, Math.min(anchorIy + yClampPx, pass1.iy)); }
+      const pass2 = dtRefine(bestIx, bestIy, 8);
+      if (pass2) { bestIx = pass2.ix; bestIy = Math.max(anchorIy - yClampPx, Math.min(anchorIy + yClampPx, pass2.iy)); }
+
+      return { ix: bestIx, iy: bestIy };
+    }
+
+    const coarseStep = Math.max(1, Math.round(4 / sp[2]));
+    const xCenter = Math.floor(dims[0] / 2);
+    const xSearchHalf = Math.floor(dims[0] * 0.15);
+    const coarseResults: Array<{ ix: number; iy: number; iz: number }> = [];
+    for (let iz = 0; iz < dims[2]; iz += coarseStep) {
+      const r = detectSlice(iz, xCenter, xSearchHalf);
+      if (r) coarseResults.push({ ...r, iz });
+    }
+    if (coarseResults.length < 3) return null;
+
+    const sortedXs = coarseResults.map(r => r.ix).sort((a, b) => a - b);
+    const globalMedianX = sortedXs[Math.floor(sortedXs.length / 2)];
+    coarseResults.sort((a, b) => a.iz - b.iz);
+
+    const fineStep = Math.max(1, Math.round(2 / sp[2]));
+    const refinedXRange = Math.ceil(12 / sp[0]); // ±12mm around adaptive center
+    const rawDetections = new Map<number, { ix: number; iy: number }>();
+
+    // Adaptive X center: interpolate from coarse results per-slice
+    function getAdaptiveX(iz: number): number {
+      if (coarseResults.length === 0) return globalMedianX;
+      if (iz <= coarseResults[0].iz) return coarseResults[0].ix;
+      if (iz >= coarseResults[coarseResults.length - 1].iz) return coarseResults[coarseResults.length - 1].ix;
+      for (let i = 0; i < coarseResults.length - 1; i++) {
+        if (iz >= coarseResults[i].iz && iz <= coarseResults[i + 1].iz) {
+          const t = (iz - coarseResults[i].iz) / (coarseResults[i + 1].iz - coarseResults[i].iz);
+          return Math.round(coarseResults[i].ix + t * (coarseResults[i + 1].ix - coarseResults[i].ix));
+        }
+      }
+      return globalMedianX;
+    }
+
+    for (let iz = 0; iz < dims[2]; iz += fineStep) {
+      const r = detectSlice(iz, getAdaptiveX(iz), refinedXRange);
+      if (r) rawDetections.set(iz, r);
+    }
+
+    // Interpolation
+    const allFineSlices: number[] = [];
+    for (let iz = 0; iz < dims[2]; iz += fineStep) allFineSlices.push(iz);
+    const detSlices = Array.from(rawDetections.keys()).sort((a, b) => a - b);
+    const minZ = detSlices.length > 0 ? detSlices[0] : 0;
+    const maxZ = detSlices.length > 0 ? detSlices[detSlices.length - 1] : 0;
+    for (const iz of allFineSlices) {
+      if (rawDetections.has(iz) || iz < minZ || iz > maxZ) continue;
+      const maxGap = Math.ceil(40 / sp[2]);
+      let above: { iz: number; ix: number; iy: number } | null = null;
+      let below: { iz: number; ix: number; iy: number } | null = null;
+      for (let d = fineStep; d <= maxGap; d += fineStep) {
+        if (!above && iz-d >= 0 && rawDetections.has(iz-d)) { const r = rawDetections.get(iz-d)!; above = { iz: iz-d, ix: r.ix, iy: r.iy }; }
+        if (!below && iz+d < dims[2] && rawDetections.has(iz+d)) { const r = rawDetections.get(iz+d)!; below = { iz: iz+d, ix: r.ix, iy: r.iy }; }
+        if (above && below) break;
+      }
+      if (above && below) {
+        const t = (iz - above.iz) / (below.iz - above.iz);
+        rawDetections.set(iz, { ix: Math.round(above.ix + (below.ix - above.ix) * t), iy: Math.round(above.iy + (below.iy - above.iy) * t) });
+      }
+    }
+
+    const sortedSlices = Array.from(rawDetections.keys()).sort((a, b) => a - b);
+    if (sortedSlices.length < 5) return null;
+    const tracked = sortedSlices.map(iz => { const r = rawDetections.get(iz)!; return { ix: r.ix, iy: r.iy, iz }; });
+
+    // Outlier rejection: clamp points deviating >8mm from local trend
+    // Edge-aware: extend window inward at endpoints for stable median
+    const OUTLIER_W = Math.max(8, Math.ceil(20 / sp[2]));
+    const MAX_DEV_X = Math.ceil(8 / sp[0]);
+    const MAX_DEV_Y = Math.ceil(8 / sp[1]);
+    const minCtx = Math.min(OUTLIER_W * 2 + 1, tracked.length);
+    const cleaned: typeof tracked = [];
+    for (let i = 0; i < tracked.length; i++) {
+      let lo = Math.max(0, i - OUTLIER_W);
+      let hi = Math.min(tracked.length - 1, i + OUTLIER_W);
+      // At edges, extend window inward to get enough context
+      if (hi - lo + 1 < minCtx) {
+        if (lo === 0) hi = Math.min(tracked.length - 1, minCtx - 1);
+        else if (hi === tracked.length - 1) lo = Math.max(0, tracked.length - minCtx);
+      }
+      const wxs: number[] = [], wys: number[] = [];
+      for (let j = lo; j <= hi; j++) {
+        wxs.push(tracked[j].ix); wys.push(tracked[j].iy);
+      }
+      wxs.sort((a, b) => a - b); wys.sort((a, b) => a - b);
+      const localMedX = wxs[Math.floor(wxs.length / 2)];
+      const localMedY = wys[Math.floor(wys.length / 2)];
+      let cx = tracked[i].ix, cy = tracked[i].iy;
+      if (Math.abs(cx - localMedX) > MAX_DEV_X) cx = localMedX + Math.sign(cx - localMedX) * MAX_DEV_X;
+      if (Math.abs(cy - localMedY) > MAX_DEV_Y) cy = localMedY + Math.sign(cy - localMedY) * MAX_DEV_Y;
+      cleaned.push({ ix: cx, iy: cy, iz: tracked[i].iz });
+    }
+
+    // Smoothing: single pass Median (±5) then Mean (±3)
+    const MED_W = 5;
+    const medFiltered: typeof tracked = [];
+    for (let i = 0; i < cleaned.length; i++) {
+      const wxs: number[] = [], wys: number[] = [];
+      for (let j = Math.max(0, i - MED_W); j <= Math.min(cleaned.length - 1, i + MED_W); j++) {
+        wxs.push(cleaned[j].ix); wys.push(cleaned[j].iy);
+      }
+      wxs.sort((a, b) => a - b); wys.sort((a, b) => a - b);
+      medFiltered.push({ ix: wxs[Math.floor(wxs.length / 2)], iy: wys[Math.floor(wys.length / 2)], iz: cleaned[i].iz });
+    }
+    const MEAN_W = 3;
+    let smoothedArr: typeof tracked = [];
+    for (let i = 0; i < medFiltered.length; i++) {
+      let sIx = 0, sIy = 0, cnt = 0;
+      for (let j = Math.max(0, i - MEAN_W); j <= Math.min(medFiltered.length - 1, i + MEAN_W); j++) {
+        sIx += medFiltered[j].ix; sIy += medFiltered[j].iy; cnt++;
+      }
+      smoothedArr.push({ ix: Math.round(sIx / cnt), iy: Math.round(sIy / cnt), iz: medFiltered[i].iz });
+    }
+
+    // Endpoint extrapolation: replace unreliable edge points with interior trend
+    const EXTRAP_N = 3;
+    const FIT_N = 8;
+    if (smoothedArr.length > EXTRAP_N + FIT_N + 2) {
+      // Low-Z end
+      const fitLo = EXTRAP_N;
+      const fitHiLo = Math.min(smoothedArr.length - 1, EXTRAP_N + FIT_N);
+      if (fitHiLo > fitLo + 1) {
+        const dxPerStep = (smoothedArr[fitHiLo].ix - smoothedArr[fitLo].ix) / (fitHiLo - fitLo);
+        const dyPerStep = (smoothedArr[fitHiLo].iy - smoothedArr[fitLo].iy) / (fitHiLo - fitLo);
+        for (let i = EXTRAP_N - 1; i >= 0; i--) {
+          const steps = fitLo - i;
+          smoothedArr[i].ix = Math.round(smoothedArr[fitLo].ix - dxPerStep * steps);
+          smoothedArr[i].iy = Math.round(smoothedArr[fitLo].iy - dyPerStep * steps);
+        }
+      }
+      // High-Z end
+      const fitHi = smoothedArr.length - 1 - EXTRAP_N;
+      const fitLoHi = Math.max(0, smoothedArr.length - 1 - EXTRAP_N - FIT_N);
+      if (fitHi > fitLoHi + 1) {
+        const dxPerStep = (smoothedArr[fitHi].ix - smoothedArr[fitLoHi].ix) / (fitHi - fitLoHi);
+        const dyPerStep = (smoothedArr[fitHi].iy - smoothedArr[fitLoHi].iy) / (fitHi - fitLoHi);
+        for (let i = fitHi + 1; i < smoothedArr.length; i++) {
+          const steps = i - fitHi;
+          smoothedArr[i].ix = Math.round(smoothedArr[fitHi].ix + dxPerStep * steps);
+          smoothedArr[i].iy = Math.round(smoothedArr[fitHi].iy + dyPerStep * steps);
+        }
+      }
+    }
+
+    const maxXDev = Math.ceil(12 / sp[0]);
+    for (const p of smoothedArr) {
+      if (p.ix > globalMedianX + maxXDev) p.ix = globalMedianX + maxXDev;
+      if (p.ix < globalMedianX - maxXDev) p.ix = globalMedianX - maxXDev;
+    }
+
+    return smoothedArr.map(p => i2w(p.ix, p.iy, p.iz));
+  }, [getCornerstoneViewportsAndBounds]);
+
+  /**
    * Transform STL coordinates to DICOM world coordinates
-   * Both STL and DICOM use LPS coordinate system:
-   * - L (Left): +X direction
-   * - P (Posterior): +Y direction
-   * - S (Superior): +Z direction
    */
   const transformSTLToDICOMWorld = useCallback((
     stlPoint: THREE.Vector3,
@@ -162,9 +530,9 @@ export const useCenterLine = ({
     const scaledOffsetY = offsetFromCenter.y * uniformScale;
     const scaledOffsetZ = offsetFromCenter.z * uniformScale;
 
-    // Direct LPS to LPS mapping - no axis transformation needed
+    // Negate Y: STL +Y is anterior, DICOM LPS +Y is posterior
     const dicomX = volumeCenter[0] + scaledOffsetX;
-    const dicomY = volumeCenter[1] + scaledOffsetY;
+    const dicomY = volumeCenter[1] - scaledOffsetY;
     const dicomZ = volumeCenter[2] + scaledOffsetZ;
 
     return [dicomX, dicomY, dicomZ];
@@ -256,17 +624,15 @@ export const useCenterLine = ({
         let adjustedWorldPoint = [...worldPoint] as [number, number, number];
 
         if (viewType === 'sagittal') {
-          // For sagittal: flip Z around volume center and apply offset
-          const zOffset = worldPoint[2] - volumeCenter[2];
-          adjustedWorldPoint[2] = volumeCenter[2] - zOffset + volumeHeight * 0.17;
-          // Move posterior (right in sagittal view) to position in spinal canal
-          adjustedWorldPoint[1] = worldPoint[1] + volumeYSize * 0.12;
+          adjustedWorldPoint[2] = worldPoint[2] - volumeHeight * 0.02;
+          // Anatomy-based posterior shift into spinal canal
+          adjustedWorldPoint[1] = worldPoint[1] + canalOffsetRef.current;
         } else if (viewType === 'coronal') {
           // For coronal: small downward offset
           adjustedWorldPoint[2] = worldPoint[2] - volumeHeight * 0.02;
         } else if (viewType === 'axial') {
-          // For axial: move posterior (increase Y) to position in spinal canal
-          adjustedWorldPoint[1] = worldPoint[1] + volumeYSize * 0.15;
+          // Anatomy-based posterior shift into spinal canal
+          adjustedWorldPoint[1] = worldPoint[1] + canalOffsetRef.current;
         }
 
         const canvasPoint = viewport.worldToCanvas(adjustedWorldPoint);
@@ -393,6 +759,22 @@ export const useCenterLine = ({
             }
           });
 
+          // Smooth curve helper using quadratic Bezier through midpoints
+          const drawSmoothCurve = (pts: typeof validPoints) => {
+            if (pts.length < 3) {
+              pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+              return;
+            }
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const xc = (pts[i].x + pts[i + 1].x) / 2;
+              const yc = (pts[i].y + pts[i + 1].y) / 2;
+              ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            const last = pts[pts.length - 1];
+            ctx.lineTo(last.x, last.y);
+          };
+
           // Draw glow path
           ctx.beginPath();
           ctx.strokeStyle = glowColor;
@@ -401,11 +783,7 @@ export const useCenterLine = ({
           ctx.lineJoin = 'round';
           ctx.shadowColor = color;
           ctx.shadowBlur = 20;
-
-          validPoints.forEach((point, i) => {
-            if (i === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-          });
+          drawSmoothCurve(validPoints);
           ctx.stroke();
 
           // Draw main path
@@ -413,11 +791,7 @@ export const useCenterLine = ({
           ctx.strokeStyle = color;
           ctx.lineWidth = 4;
           ctx.shadowBlur = 0;
-
-          validPoints.forEach((point, i) => {
-            if (i === 0) ctx.moveTo(point.x, point.y);
-            else ctx.lineTo(point.x, point.y);
-          });
+          drawSmoothCurve(validPoints);
           ctx.stroke();
 
           // Draw dots at each vertebra center
@@ -593,6 +967,9 @@ export const useCenterLine = ({
       max: new THREE.Vector3(-Infinity, -Infinity, -Infinity)
     };
 
+    let totalLocalYExtent = 0;
+    let vertebraCount = 0;
+
     sortedVertebrae.forEach(mesh => {
       const geometry = mesh.geometry;
       geometry.computeBoundingBox();
@@ -610,6 +987,10 @@ export const useCenterLine = ({
         // Get vertebra name from mesh userData
         const name = mesh.userData?.fullName || 'Unknown';
         vertebraNames.push(name);
+
+        // Accumulate local Y (AP) extent for anatomy-based canal offset
+        totalLocalYExtent += (boundingBox.max.y - boundingBox.min.y);
+        vertebraCount++;
 
         // Update overall bounds
         const min = boundingBox.min.clone().applyMatrix4(mesh.matrixWorld);
@@ -636,13 +1017,42 @@ export const useCenterLine = ({
       volumeBoundsRef.current = volumeBounds;
     }
 
-    // Transform center points to DICOM world coordinates
-    const worldPoints: Array<[number, number, number]> = centerPoints.map(p =>
+    // Compute anatomy-based canal offset (proportional to actual vertebra size, not volume dimensions)
+    const avgVertYExtent = vertebraCount > 0 ? totalLocalYExtent / vertebraCount : 0;
+    const stlSizeZ = overallBounds.max.z - overallBounds.min.z;
+    const volZ = volumeBoundsRef.current!.dimensions[2] * volumeBoundsRef.current!.spacing[2];
+    const uScale = stlSizeZ > 0 ? volZ / stlSizeZ : 1;
+    if (avgVertYExtent > 0) {
+      canalOffsetRef.current = avgVertYExtent * uScale * 0.20;
+    } else {
+      canalOffsetRef.current = 15;
+    }
+
+    // ===== STL-based calculation (separate) =====
+    const stlWorldPoints: Array<[number, number, number]> = centerPoints.map(p =>
       transformSTLToDICOMWorld(p, stlBoundsRef.current!, volumeBoundsRef.current!)
     );
 
-    return { threePoints: centerPoints, worldPoints, vertebraNames };
-  }, [meshRefs, getCornerstoneViewportsAndBounds, transformSTLToDICOMWorld]);
+    // ===== DICOM-based calculation (independent of STL) =====
+    const dicomCenterline = detectCanalPureDICOMHook();
+    if (dicomCenterline && dicomCenterline.length >= 5) {
+      // Map STL vertebra Z-levels onto the DICOM-detected canal centerline
+      const mappedPoints = stlWorldPoints.map(stlPt => {
+        let closest = dicomCenterline[0];
+        let closestDist = Math.abs(dicomCenterline[0][2] - stlPt[2]);
+        for (const dp of dicomCenterline) {
+          const dist = Math.abs(dp[2] - stlPt[2]);
+          if (dist < closestDist) { closestDist = dist; closest = dp; }
+        }
+        return [closest[0], closest[1], stlPt[2]] as [number, number, number];
+      });
+      canalOffsetRef.current = 0; // DICOM detection already at canal
+      return { threePoints: centerPoints, worldPoints: mappedPoints, vertebraNames };
+    }
+
+    // Fallback: STL positions with anatomy-based offset
+    return { threePoints: centerPoints, worldPoints: stlWorldPoints, vertebraNames };
+  }, [meshRefs, getCornerstoneViewportsAndBounds, transformSTLToDICOMWorld, detectCanalPureDICOMHook]);
 
   /**
    * Create DICOM centerlines on all viewports

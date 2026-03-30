@@ -274,7 +274,7 @@ const SpinalCordViewer: React.FC = () => {
       {/* Header Section */}
       <div className="d-flex justify-content-between align-items-center py-2 px-4"
         style={{
-          backgroundColor: '#17202a',
+          backgroundColor: '#0a0e17',
           color: 'white',
           minHeight: '60px',
           borderBottom: '1px solid #000'
@@ -401,7 +401,7 @@ const SpinalCordViewer: React.FC = () => {
             left: 10,
             color: 'white',
             zIndex: 100,
-            backgroundColor: '#17202a',
+            backgroundColor: '#0a0e17',
             padding: '4px 8px',
             borderRadius: '4px',
             border: '1px solid #000'
@@ -422,7 +422,7 @@ const SpinalCordViewer: React.FC = () => {
             left: 10,
             color: 'white',
             zIndex: 100,
-            backgroundColor: '#17202a',
+            backgroundColor: '#0a0e17',
             padding: '4px 8px',
             borderRadius: '4px',
             border: '1px solid #000'

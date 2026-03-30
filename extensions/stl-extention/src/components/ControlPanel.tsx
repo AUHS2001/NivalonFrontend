@@ -57,7 +57,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }}>
       {
         shouldShowContent ?
-          <div style={{ backgroundColor: '#000', borderRight: '1.5px solid #fff', padding: '10px' }}>
+          <div style={{ backgroundColor: '#0a0e17', borderRight: '1.5px solid #fff', padding: '10px' }}>
             {/* Loading state */}
             {loading && (
               <div style={{
@@ -154,7 +154,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div style={{
                   maxHeight: "600px",
                   overflowY: "auto",
-                  border: "1px solid #333",
+                  border: "1px solid #1a2030",
                   borderRadius: "4px",
                   padding: "8px"
                 }}>
@@ -166,7 +166,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: "6px 8px",
-                        borderBottom: "1px solid #363c48",
+                        borderBottom: "1px solid #1a2030",
                         fontSize: "12px",
                         backgroundColor: file.isVisible ? 'transparent' : 'rgba(255,255,255,0.1)',
                       }}
@@ -241,7 +241,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <>
                 <div style={{
                   position: 'relative', color: '#fff', zIndex: 100, width: '60px',
-                  backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+                  backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
                   border: '1px solid #000', fontSize: '12px', marginTop: '12px'
                 }}>Labels</div>
                 <div style={{ marginTop: "10px", marginBottom: "3px" }}>
@@ -316,7 +316,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div style={{
                   maxHeight: "330px",
                   overflowY: "auto",
-                  border: "1px solid #333",
+                  border: "1px solid #1a2030",
                   borderRadius: "4px",
                 }}>
                   {contextMeasurements.map((meas) => (
@@ -324,7 +324,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       key={meas.id}
                       style={{
                         padding: "6px",
-                        borderBottom: "1px solid #363c48",
+                        borderBottom: "1px solid #1a2030",
                         fontSize: "12px",
                         marginBottom: "12px",
                       }}

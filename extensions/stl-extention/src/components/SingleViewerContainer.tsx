@@ -28,26 +28,26 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
   const { showRightView, onToggleRightView } = useLabelingViewContext();
 
   return (
-    <div style={{ flex: 1, display: 'flex', width: '100%', backgroundColor: '#000', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', width: '100%', height: '100%', backgroundColor: '#0a0e17', position: 'relative' }}>
       {/* Start View */}
       <div style={{ flex: 1, position: 'relative', display: 'none'  }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px'
         }}>3D View</div>
         <div ref={startMountRef} style={{ width: '100%', height: '70%', position: 'relative' }} />
       </div>
 
       {/* Left Viewer */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', height: '100%' }}>
         {/* 3D View Header with Instructions */}
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
           marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px'
         }}>
           <div style={{
-            backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
             fontSize: '12px', width: 'fit-content'
           }}>3D View</div>
 
@@ -60,7 +60,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
               fontSize: '11px',
               lineHeight: '1.5',
               maxWidth: '220px',
-              border: '1px solid #333'
+              border: '1px solid #1a2030'
             }}>
               {/* Rotation angle display */}
               {currentRotationAngle !== 0 && (
@@ -127,11 +127,11 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
             </div>
           )}
         </div>
-        <div ref={leftMountRef} style={{ width: '100%', height: '70%' }} />
+        <div ref={leftMountRef} style={{ width: '100%', height: '100%' }} />
          <canvas
           ref={removalCanvasRef}
           style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '70%',
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
             pointerEvents: 'none', zIndex: 150, userSelect: 'none',
           }}
         />
@@ -146,10 +146,10 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       }}>
         <div style={{
           position: 'absolute', top: 0,left: 300, color: '#fff', zIndex: 100,
-          backgroundColor: '#17202a', padding: '4px 8px', borderRadius: '4px',
+          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px'
         }}>Labelling View</div>
-        <div ref={rightMountRef} style={{ width: '100%', height: '70%' }} />
+        <div ref={rightMountRef} style={{ width: '100%', height: '100%' }} />
       </div>
 
       {children}

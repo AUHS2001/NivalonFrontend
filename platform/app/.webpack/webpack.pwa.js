@@ -140,7 +140,8 @@ module.exports = (env, argv) => {
         },
       }),
       // Generate a service worker for fast local loads
-      ...(IS_COVERAGE
+      // Disabled in dev mode to prevent 743 MB precache freezing Chrome
+      ...(IS_COVERAGE || process.env.NODE_ENV === 'development'
         ? []
         : [
             new InjectManifest({
