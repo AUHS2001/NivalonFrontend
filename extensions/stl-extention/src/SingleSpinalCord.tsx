@@ -2359,24 +2359,103 @@ const createAutomaticSegmentation = async () => {
 
 
   useEffect(() => {
-  if (implantFile) {
-    const implantUrl = URL.createObjectURL(implantFile);
-    
-    // Add implant directly to existing STLs
-    setTestStls(prevStls => {
-      return [...prevStls, implantUrl]; // Just add the URL directly
-    });
-    
-    // Cleanup function
-    return () => {
-      URL.revokeObjectURL(implantUrl);
+    // Helper to remove existing implant meshes from the scene
+    const removeExistingImplants = () => {
+      // Remove from left
+      for (let i = meshRefs.current.left.length - 1; i >= 0; i--) {
+        const mesh = meshRefs.current.left[i];
+        if (mesh.userData?.isImplant || mesh.userData?.type === 'I') {
+          leftGroupRef.current.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+          else (mesh.material as THREE.Material).dispose();
+          meshRefs.current.left.splice(i, 1);
+        }
+      }
+      // Remove from right
+      for (let i = meshRefs.current.right.length - 1; i >= 0; i--) {
+        const mesh = meshRefs.current.right[i];
+        if (mesh.userData?.isImplant || mesh.userData?.type === 'I') {
+          rightGroupRef.current.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+          else (mesh.material as THREE.Material).dispose();
+          meshRefs.current.right.splice(i, 1);
+        }
+      }
     };
-  } else {
-    // Remove all object URLs (assuming they're all implants)
-    // Or if you need to clear implants, you'll need another approach
-    setTestStls(prevStls => prevStls.filter(url => !url.startsWith('blob:')));
-  }
-}, [implantFile]);
+
+    if (!implantFile) {
+      removeExistingImplants();
+      return;
+    }
+
+    // Load implant directly into the existing scene without triggering useSTLLoader
+    const loadImplantIntoScene = async () => {
+      try {
+        removeExistingImplants();
+
+        const arrayBuffer = await implantFile.arrayBuffer();
+        const loader = new STLLoader();
+        const geometry = loader.parse(arrayBuffer);
+        geometry.center();
+        geometry.computeBoundingBox();
+
+        // Calculate vertebrae center for positioning
+        let vertebraeCenterZ = 0;
+        const nonImplantMeshes = meshRefs.current.left.filter(
+          m => !m.userData?.isImplant && m.userData?.type !== 'I'
+        );
+        if (nonImplantMeshes.length > 0) {
+          const bbox = new THREE.Box3();
+          nonImplantMeshes.forEach(mesh => bbox.expandByObject(mesh));
+          const center = new THREE.Vector3();
+          bbox.getCenter(center);
+          vertebraeCenterZ = center.z;
+        }
+
+        const createImplantMaterial = () => new THREE.MeshPhongMaterial({
+          color: 0x00ff00,
+          specular: 0x111111,
+          shininess: 30,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+          emissive: new THREE.Color(0x00ff00),
+          emissiveIntensity: 0.3,
+        });
+
+        const implantUserData = {
+          type: 'I',
+          number: 0,
+          fullName: 'IMPLANT',
+          fileName: implantFile.name,
+          isImplant: true,
+        };
+
+        // Left mesh
+        const leftMesh = new THREE.Mesh(geometry.clone(), createImplantMaterial());
+        leftMesh.position.set(0, 0, vertebraeCenterZ);
+        leftMesh.userData = { ...implantUserData };
+        leftGroupRef.current.add(leftMesh);
+        meshRefs.current.left.push(leftMesh);
+
+        // Right mesh
+        const rightMesh = new THREE.Mesh(geometry.clone(), createImplantMaterial());
+        rightMesh.position.set(0, 0, vertebraeCenterZ);
+        rightMesh.userData = { ...implantUserData };
+        rightGroupRef.current.add(rightMesh);
+        meshRefs.current.right.push(rightMesh);
+
+        console.log('✅ Implant loaded directly into scene:', implantFile.name);
+      } catch (error) {
+        console.error('❌ Failed to load implant:', error);
+        setError('Failed to load implant STL file');
+      }
+    };
+
+    loadImplantIntoScene();
+  }, [implantFile]);
 
 
   // Update your refresh function

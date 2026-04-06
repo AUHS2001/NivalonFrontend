@@ -13,34 +13,33 @@ interface EnvironmentConfig {
 
 const ENV_CONFIG: Record<Environment, EnvironmentConfig> = {
   local: {
-    serverUrl: 'http://localhost:8000',
+    serverUrl: process.env.SERVER_URL_LOCAL || 'http://localhost:8000',
     name: 'Local Development',
   },
   production: {
-    serverUrl: 'https://your-production-api.amazonaws.com',
+    serverUrl: process.env.SERVER_URL_PRODUCTION || '',
     name: 'Production',
   },
 };
 
 /**
- * Detects the current environment based on hostname
+ * Detects the current environment.
+ * Set APP_ENV=local or APP_ENV=production in the .env file to control this.
  */
 const detectEnvironment = (): Environment => {
-  // Check for environment variable first (set during build)
-  if (typeof process !== 'undefined' && process.env?.REACT_APP_ENV) {
-    return process.env.REACT_APP_ENV as Environment;
+  const envValue = process.env.APP_ENV;
+  if (envValue === 'local' || envValue === 'production') {
+    return envValue;
   }
 
-  // Fallback to hostname detection
+  // Fallback to hostname detection if APP_ENV is not set
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'local';
     }
   }
 
-  // Default to production for any other hostname
   return 'production';
 };
 

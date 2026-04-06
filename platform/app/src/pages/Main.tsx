@@ -3,7 +3,7 @@ declare global {
     google?: {
       accounts: {
         id: {
-          initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
+          initialize: (config: { client_id: string; callback: (response: { credential: string }) => void; error_callback?: (error: { type: string; message?: string }) => void }) => void;
           renderButton: (element: HTMLElement, config: Record<string, unknown>) => void;
         };
       };
@@ -17,7 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import loginImage from '../../assets/login-image1.jpg';
 import { SERVER_URL } from '../../../../config/server';
 
-const GOOGLE_CLIENT_ID = '204069356451-bm75scue79vjfk8dd4dbosb6o3lfq0if.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
 const MainPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,6 +26,28 @@ const MainPage: React.FC = () => {
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let signInSucceeded = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Intercept window.open to detect when Google's popup closes
+    const originalOpen = window.open;
+    window.open = function (...args: Parameters<typeof window.open>) {
+      const popup = originalOpen.apply(this, args);
+      const url = args[0]?.toString() || '';
+      if (url.includes('accounts.google.com')) {
+        pollTimer = setInterval(() => {
+          if (popup && popup.closed) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            if (!signInSucceeded) {
+              setError('You can only sign in with your official Nivalon email address only.');
+            }
+          }
+        }, 500);
+      }
+      return popup;
+    };
+
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
@@ -34,7 +56,10 @@ const MainPage: React.FC = () => {
       if (window.google && googleButtonRef.current) {
         window.google.accounts.id.initialize({
           client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
+          callback: (response: { credential: string }) => {
+            signInSucceeded = true;
+            handleGoogleResponse(response);
+          },
         });
         window.google.accounts.id.renderButton(googleButtonRef.current, {
           theme: 'outline',
@@ -48,6 +73,8 @@ const MainPage: React.FC = () => {
     document.head.appendChild(script);
 
     return () => {
+      window.open = originalOpen;
+      if (pollTimer) clearInterval(pollTimer);
       document.head.removeChild(script);
     };
   }, []);
