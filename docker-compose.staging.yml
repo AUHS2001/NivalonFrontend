@@ -1,0 +1,19 @@
+name: NivalonMedicalFrontend
+
+services:
+  frontend:
+    image: ${ECR_REGISTRY}/nivalon-frontend:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      ENV: STAGING
+    networks:
+      nivalon:
+        aliases:
+          - "frontend"
+
+networks:
+  nivalon:
