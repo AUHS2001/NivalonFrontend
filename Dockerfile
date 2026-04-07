@@ -3,16 +3,13 @@ FROM node:20
 ENV NODE_ENV=development
 WORKDIR /app
 
-# Copy manifest files first (improves layer caching when possible)
-COPY package.json preinstall.js ./
-# commit.txt file is required
+# Copy the app
+COPY . .
+
 RUN touch commit.txt
 
 # Install dependencies
 RUN yarn install
-
-# Copy the rest of the app
-COPY . .
 
 # Build the application
 RUN yarn run build
