@@ -170,8 +170,7 @@ const createRoutes = ({
 
   const WorkListRoute = {
     path: '/',
-    children: LoginPage
-    // children: MainPage
+    children: MainPage
     // children: StudyWorkList
   };
 
