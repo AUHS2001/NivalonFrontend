@@ -23,6 +23,14 @@ jobs:
 
       - name: Build
         run: yarn run build
+        env:
+          PUBLIC_URL: /
+          APP_CONFIG: config/default.js
+          USE_HASH_ROUTER: "false"
+          APP_ENV: production
+          GOOGLE_CLIENT_ID: 218118243126-951d7vd9ie6ac8ga6o886pdjcc1chjrf.apps.googleusercontent.com
+          SERVER_URL_LOCAL: http://localhost:8000
+          SERVER_URL_PRODUCTION: http://18.225.42.119:8000
 
       - name: Copy build to EC2
         uses: appleboy/scp-action@v0.1.7
