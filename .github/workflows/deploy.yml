@@ -27,7 +27,7 @@ jobs:
             'APP_ENV=production' \
             'GOOGLE_CLIENT_ID=218118243126-951d7vd9ie6ac8ga6o886pdjcc1chjrf.apps.googleusercontent.com' \
             'SERVER_URL_LOCAL=http://localhost:8000' \
-            'SERVER_URL_PRODUCTION=http://18.225.42.119:8000' \
+            'SERVER_URL_PRODUCTION=https://planning.nivalonmedical.com/api' \
             > platform/app/.env
 
       - name: Install dependencies
