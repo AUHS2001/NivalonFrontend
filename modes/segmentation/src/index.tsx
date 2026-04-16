@@ -127,6 +127,7 @@ function modeFactory({ modeConfiguration }) {
         'Crosshairs',
         'MoreTools',
         'SpineLabel',
+        '3DTools',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topLeft, [

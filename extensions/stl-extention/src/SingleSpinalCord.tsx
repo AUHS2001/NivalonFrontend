@@ -26,8 +26,8 @@ import { handleScreenshot as handleScreenshotUtil } from './utils/fileHandlers';
 // import cornerstoneTools from 'platform/core/src/__mocks__/cornerstone-tools';
 import cornerstoneTools from '../../../platform/core/src/__mocks__/cornerstone-tools';
 import { SingleViewerContainer } from './components/SingleViewerContainer';
-import { SingleToolbar } from './components/SingleToolBar';
 import { useMeasurementContext } from './context/MeasurementContext';
+import { useThreeDToolsBridge, ToolDef } from './context/ThreeDToolsBridgeContext';
 import { useBrightnessContext } from './context/BrightnessContext';
 import { useBoneRemovalContext } from './context/BoneRemovalContext';
 import { useClickRemoveContext } from './context/ClickRemoveContext';
@@ -37,6 +37,7 @@ import { useSTLToDICOMLinking } from './hooks/useSTLToDICOMLinking';
 import { STLToDICOMConfig } from './types/three.types';
 import { useVersionHistoryContext } from './context/VersionHistoryContext'
 import { useCenterLine } from './hooks/useCenterLine';
+import { useCrosshairSync } from './hooks/useCrosshairSync';
 import { useImplantHighlight } from './hooks/useImplantHighlight';
 import { CenterLineProvider } from './context/CenterLineContext';
 import { servicesManager, commandsManager } from '../../../platform/app/src/App';
@@ -68,6 +69,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   // State
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<THREE.BufferGeometry[][]>([]);
   const [removalOutline, setRemovalOutline] = useState<{ x: number, y: number }[]>([]);
@@ -130,7 +132,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
   const { addStlFiles, clearStlFiles } = useStlVisibilityContext();
-  const { showRightView: labelViewEnabled } = useLabelingViewContext();
+  const { showRightView: labelViewEnabled, onToggleRightView } = useLabelingViewContext();
   const {
     isLinkingActive,
     toggleLinking,
@@ -147,7 +149,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { layout, activeViewportId, viewports, isHangingProtocolLayout } = viewportGrid;
   // const viewport1Rendering = useViewportRendering(activeViewportId || "");
-  const { versionHistoryEnabled, versions, setVersions } = useVersionHistoryContext();
+  const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory } = useVersionHistoryContext();
 
   const [rotationMode, setRotationMode] = useState(false);
   const [rotationMode1, setRotationMode1] = useState(false);
@@ -170,10 +172,12 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   }>>([]);
   const initialRotationRef = useRef<THREE.Euler>(new THREE.Euler());
   const selectedBoneCenterRef = useRef<THREE.Vector3 | null>(null);
-  const { implantFile } = useImplantContext();
+  const { implantFile, showImplantView, toggleImplantView } = useImplantContext();
   const implantUrlRef = useRef<string | null>(null);
 
   const {
+    measurementEnabled,
+    toggleMeasurement,
     clearMeasurements,
     setupMeasurementMode,
     cleanupMeasurementMode,
@@ -182,6 +186,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
 
   const {
     spineLabelingMode,
+    toggleSpineLabelingMode,
     isLabelingPopupOpen,
     closeLabelingPopup
   } = useSpineLabelingContext();
@@ -1444,6 +1449,15 @@ useEffect(() => {
     servicesManager: effectiveServicesManager
   });
 
+  useCrosshairSync({
+    leftSceneRef,
+    cameraRef,
+    meshRefs,
+    leftRendererRef,
+    leftControlsRef,
+    servicesManager: effectiveServicesManager,
+  });
+
   // Implant highlight - draws yellow block when merge is active
   const {
     showHighlights: showImplantHighlights,
@@ -1473,6 +1487,7 @@ useEffect(() => {
     toggleBrightness
   } = useBrightnessContext();
 
+  const { registerTools } = useThreeDToolsBridge();
 
   useEffect(() => {
     setupMeasurementMode({
@@ -2015,7 +2030,8 @@ const createAutomaticSegmentation = async () => {
     startRendererRef,
     startSceneRef,
     setLoading,
-    setError
+    setError,
+    setLoadProgress
   });
 
 
@@ -2081,14 +2097,20 @@ const createAutomaticSegmentation = async () => {
     cameraRef.current = leftCamera; // Keep ref for backward compatibility
 
     const leftRenderer = new THREE.WebGLRenderer({ antialias: true });
-    leftRenderer.setSize(leftMount.clientWidth, leftMount.clientHeight);
+    leftRenderer.setSize(leftMount.clientWidth, leftMount.clientHeight, false);
     leftRenderer.setPixelRatio(window.devicePixelRatio);
+    leftRenderer.domElement.style.width = '100%';
+    leftRenderer.domElement.style.height = '100%';
+    leftRenderer.domElement.style.display = 'block';
     leftRendererRef.current = leftRenderer;
     leftMount.appendChild(leftRenderer.domElement);
 
     const rightRenderer = new THREE.WebGLRenderer({ antialias: true });
-    rightRenderer.setSize(rightMount.clientWidth, rightMount.clientHeight);
+    rightRenderer.setSize(rightMount.clientWidth, rightMount.clientHeight, false);
     rightRenderer.setPixelRatio(window.devicePixelRatio);
+    rightRenderer.domElement.style.width = '100%';
+    rightRenderer.domElement.style.height = '100%';
+    rightRenderer.domElement.style.display = 'block';
     rightRendererRef.current = rightRenderer;
     rightMount.appendChild(rightRenderer.domElement);
 
@@ -2120,26 +2142,26 @@ const createAutomaticSegmentation = async () => {
 
     function setupLighting(scene: THREE.Scene) {
       // Ambient light for base illumination
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
       // Key light (main directional light)
-      const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.5);
       keyLight.position.set(1, 1, 1).normalize();
       keyLight.castShadow = false;
       scene.add(keyLight);
 
       // Fill light (from opposite direction)
-      const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
       fillLight.position.set(-1, 0.5, -0.5).normalize();
       scene.add(fillLight);
 
       // Back light (to illuminate from behind)
-      const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.15);
       backLight.position.set(0, 0, -1).normalize();
       scene.add(backLight);
 
       // Hemisphere light for even lighting
-      const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+      const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.2);
       scene.add(hemisphereLight);
     }
 
@@ -2162,16 +2184,20 @@ const createAutomaticSegmentation = async () => {
       // Resize left view
       const leftWidth = leftMount.clientWidth;
       const leftHeight = leftMount.clientHeight;
-      leftCamera.aspect = leftWidth / leftHeight;
-      leftCamera.updateProjectionMatrix();
-      leftRenderer.setSize(leftWidth, leftHeight);
+      if (leftWidth > 0 && leftHeight > 0) {
+        leftCamera.aspect = leftWidth / leftHeight;
+        leftCamera.updateProjectionMatrix();
+        leftRenderer.setSize(leftWidth, leftHeight, false);
+      }
 
       // Resize right view
       const rightWidth = rightMount.clientWidth;
       const rightHeight = rightMount.clientHeight;
-      rightCamera.aspect = rightWidth / rightHeight;
-      rightCamera.updateProjectionMatrix();
-      rightRenderer.setSize(rightWidth, rightHeight);
+      if (rightWidth > 0 && rightHeight > 0) {
+        rightCamera.aspect = rightWidth / rightHeight;
+        rightCamera.updateProjectionMatrix();
+        rightRenderer.setSize(rightWidth, rightHeight, false);
+      }
 
       if (removalCanvasRef.current) {
         removalCanvasRef.current.width = leftWidth;
@@ -2181,11 +2207,17 @@ const createAutomaticSegmentation = async () => {
 
     window.addEventListener('resize', handleResize);
 
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    resizeObserver.observe(leftMount);
+
     return () => {
       if (animationIdRef.current) {
         cancelAnimationFrame(animationIdRef.current);
       }
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
 
       if (leftMount.contains(leftRenderer.domElement)) {
         leftMount.removeChild(leftRenderer.domElement);
@@ -2657,6 +2689,141 @@ const createAutomaticSegmentation = async () => {
     hasOHIFServices: hasSegmentationService
   });
 
+  // Extracted toggle handlers for 3D tool bridge registration
+  const handleToggleRotation = useCallback(() => {
+    setRotationMode(prev => !prev);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+  }, []);
+
+  const handleToggleRotation1 = useCallback(() => {
+    setRotationMode1(prev => !prev);
+    setRotationMode(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+  }, []);
+
+  const handleToggleRotation2 = useCallback(() => {
+    setRotationMode2(prev => !prev);
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+  }, []);
+
+  const handleToggleRotation3 = useCallback(() => {
+    setRotationMode3(prev => !prev);
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+  }, []);
+
+  const handleToggleImplantMove = useCallback(() => {
+    setImplantMoveMode(prev => !prev);
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setInertialRotationMode(false);
+  }, []);
+
+  const handleToggleInertialRotation = useCallback(() => {
+    setInertialRotationMode(prev => !prev);
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setPivotPoint(null);
+    setPivotBoneIndex(null);
+    setCurrentRotationAngle(0);
+  }, []);
+
+  // Store latest callbacks in refs so the tool defs always call current versions
+  const toolCallbacksRef = useRef<Record<string, () => void>>({});
+  toolCallbacksRef.current = {
+    fileSelect: () => document.getElementById('stl-file-input')?.click(),
+    boneRemoval: () => setRemovalMode(!removalMode),
+    undoRemoval: handleUndo,
+    linking: toggleLinking,
+    alignment: toggleCenterLine,
+    download: downloadGenerated3D,
+    brightness: toggleBrightness,
+    measurement: toggleMeasurement,
+    angle: toggleAngleMeasurement,
+    horizontal: handleToggleRotation,
+    vertical: handleToggleRotation1,
+    longitudinal: handleToggleRotation3,
+    rotation: handleToggleRotation2,
+    implantMove: handleToggleImplantMove,
+    interactiveRotation: handleToggleInertialRotation,
+    screenshot: handleScreenshot,
+    merge: showMerge ? removeBoneAndRainbowFromAllViewports : applyBoneAndRainbowToAllViewports,
+    clickRemoval: () => onToggleClickRemoval(!clickRemovalMode),
+    undoClickRemoval: undoClickRemoval,
+    labelView: () => onToggleRightView(!labelViewEnabled),
+    spineLabeling: toggleSpineLabelingMode,
+    colorMode: toggleColorMode,
+    approve: approveEditedFiles,
+    versionHistory: () => { toggleVersionHistory(); versionHistory.getVersionHistory(); },
+    implant: () => { if (showImplantView) { toggleImplantView(); } else { document.getElementById('implant-file-input')?.click(); } },
+  };
+
+  const makeOnClick = useCallback((id: string) => () => toolCallbacksRef.current[id]?.(), []);
+
+  // Register tools into bridge context for top bar dropdown
+  // Only state values that affect rendering (active/disabled) are in the dep array
+  useEffect(() => {
+    const toolDefs: ToolDef[] = [
+      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, disabled: loading, onClick: makeOnClick('fileSelect') },
+      { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
+      { id: 'undoRemoval', label: 'Undo Removal', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0, onClick: makeOnClick('undoRemoval') },
+      { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking') },
+      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment') },
+      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
+      { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
+      { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
+      { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
+      { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: rotationMode, onClick: makeOnClick('horizontal') },
+      { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: rotationMode1, onClick: makeOnClick('vertical') },
+      { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: rotationMode3, onClick: makeOnClick('longitudinal') },
+      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation') },
+      { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: implantMoveMode, onClick: makeOnClick('implantMove') },
+      { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: inertialRotationMode, onClick: makeOnClick('interactiveRotation') },
+      { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
+      { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
+      { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
+      { id: 'undoClickRemoval', label: 'Undo Click Removal', icon: 'fa-undo-alt', active: false, disabled: clickRemovalUndoStack.length === 0, onClick: makeOnClick('undoClickRemoval') },
+      { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
+      { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
+      { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
+      { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve') },
+      { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
+      { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
+    ];
+    registerTools(toolDefs);
+  }, [
+    loading, removalMode, undoStack.length, isLinkingActive, centerLineEnabled, isDownloading,
+    brightnessEnabled, measurementEnabled, angleMeasurementEnabled,
+    rotationMode, rotationMode1, rotationMode2, rotationMode3,
+    implantMoveMode, inertialRotationMode, showMerge, clickRemovalMode,
+    clickRemovalUndoStack.length, labelViewEnabled, spineLabelingMode, colorModeEnabled,
+    isApproving, versionHistoryEnabled, showImplantView,
+    registerTools, makeOnClick,
+  ]);
+
+  // Clear tools on unmount only
+  useEffect(() => {
+    return () => registerTools([]);
+  }, [registerTools]);
 
   return (
     <CenterLineProvider
@@ -2668,6 +2835,54 @@ const createAutomaticSegmentation = async () => {
         backgroundColor: '#000', color: 'white', position: 'relative',
         border: 'none'
       }}>
+
+        {loading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 3000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.88)',
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              border: '4px solid rgba(255,255,255,0.1)',
+              borderTop: '4px solid #4FC3F7',
+              borderRadius: '50%',
+              animation: 'stl-spin 0.8s linear infinite',
+            }} />
+            <div style={{ color: '#fff', marginTop: '20px', fontSize: '16px', fontWeight: 600 }}>
+              Loading 3D Model
+            </div>
+            <div style={{ color: '#4FC3F7', marginTop: '8px', fontSize: '28px', fontWeight: 700 }}>
+              {loadProgress}%
+            </div>
+            <div style={{
+              width: '220px',
+              height: '6px',
+              backgroundColor: 'rgba(255,255,255,0.1)',
+              borderRadius: '3px',
+              marginTop: '12px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${loadProgress}%`,
+                height: '100%',
+                backgroundColor: '#4FC3F7',
+                borderRadius: '3px',
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <div style={{ color: '#888', marginTop: '10px', fontSize: '12px' }}>
+              Please wait while the model loads
+            </div>
+            <style>{`@keyframes stl-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
 
         <input
           id="stl-file-input"
@@ -2776,88 +2991,6 @@ const createAutomaticSegmentation = async () => {
             </button>
           )}
         </SingleViewerContainer>
-        <SingleToolbar
-                userRole={userRole || ''}
-                loading={loading}
-                isApproving={isApproving}
-                clickRemovalUndoStack={clickRemovalUndoStack}
-                undoStack={undoStack}
-                isDownloading={isDownloading}
-                isLinkingActive={isLinkingActive}
-                segmentationCreated={segmentationCreated} // NEW
-                hasSTLFiles={tetsStls.length > 0} // NEW
-                showMerge={showMerge}
-                rotationMode={rotationMode}
-                rotationMode1={rotationMode1}
-                rotationMode2={rotationMode2}
-                rotationMode3={rotationMode3}
-                implantMoveMode={implantMoveMode}
-                inertialRotationMode={inertialRotationMode}
-                onToggleRotation={() => {
-                  setRotationMode(!rotationMode);
-                  setRotationMode1(false);
-                  setRotationMode2(false);
-                  setRotationMode3(false);
-                  setImplantMoveMode(false);
-                  setInertialRotationMode(false);
-                }}
-                onToggleRotation1={() => {
-                  setRotationMode1(!rotationMode1);
-                  setRotationMode(false);
-                  setRotationMode2(false);
-                  setRotationMode3(false);
-                  setImplantMoveMode(false);
-                  setInertialRotationMode(false);
-                }}
-                onToggleRotation2={() => {
-                  setRotationMode2(!rotationMode2);
-                  setRotationMode(false);
-                  setRotationMode1(false);
-                  setRotationMode3(false);
-                  setImplantMoveMode(false);
-                  setInertialRotationMode(false);
-                }}
-                onToggleRotation3={() => {
-                  setRotationMode3(!rotationMode3);
-                  setRotationMode(false);
-                  setRotationMode1(false);
-                  setRotationMode2(false);
-                  setImplantMoveMode(false);
-                  setInertialRotationMode(false);
-                }}
-                onToggleImplantMove={() => {
-                  setImplantMoveMode(!implantMoveMode);
-                  setRotationMode(false);
-                  setRotationMode1(false);
-                  setRotationMode2(false);
-                  setRotationMode3(false);
-                  setInertialRotationMode(false);
-                }}
-                onToggleInertialRotation={() => {
-                  setInertialRotationMode(!inertialRotationMode);
-                  setRotationMode(false);
-                  setRotationMode1(false);
-                  setRotationMode2(false);
-                  setRotationMode3(false);
-                  setImplantMoveMode(false);
-                  setPivotPoint(null);
-                  setPivotBoneIndex(null);
-                  setCurrentRotationAngle(0);
-                }}
-                onFileSelect={() => document.getElementById('stl-file-input')?.click()}
-                onRefresh={handleRefresh}
-                onUndo={handleUndo}
-                onDownload={downloadGenerated3D}
-                onScreenshot={handleScreenshot}
-                onUndoClickRemoval={undoClickRemoval}
-                onApprove={approveEditedFiles}
-                onCreateSegmentation={createAutomaticSegmentation}
-                onToggleLinking={toggleLinking}
-                onMergeWithDicom={applyBoneAndRainbowToAllViewports}
-                onUnMergeWithDicom={removeBoneAndRainbowFromAllViewports}
-                colorModeEnabled={colorModeEnabled}
-                onToggleColorMode={toggleColorMode}
-              />
       </div>
     </CenterLineProvider>
   );

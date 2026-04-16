@@ -23,6 +23,7 @@ interface UseSTLLoaderProps {
   startSceneRef: React.MutableRefObject<THREE.Scene>;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setLoadProgress?: (progress: number) => void;
 }
 
 export const useSTLLoader = ({
@@ -39,7 +40,8 @@ export const useSTLLoader = ({
   startRendererRef,
   startSceneRef,
   setLoading,
-  setError
+  setError,
+  setLoadProgress
 }: UseSTLLoaderProps) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();
@@ -267,6 +269,8 @@ export const useSTLLoader = ({
     console.log('🚀 Starting STL loading with URLs:', stlUrls);
     setLoading(true);
     setError(null);
+    setLoadProgress?.(0);
+    let completedCount = 0;
 
     const loader = new STLLoader();
     const leftGroup = leftGroupRef.current;
@@ -304,6 +308,9 @@ export const useSTLLoader = ({
           boundingBox: geometry.boundingBox
         });
 
+        completedCount++;
+        setLoadProgress?.(Math.round((completedCount / stlUrls.length) * 100));
+
         return {
           geometry,
           fileName,
@@ -311,6 +318,8 @@ export const useSTLLoader = ({
           originalUrl: url // Store original URL for approved version lookup
         };
       } catch (error) {
+        completedCount++;
+        setLoadProgress?.(Math.round((completedCount / stlUrls.length) * 100));
         console.error(`❌ Failed to load ${url}:`, error);
         return null;
       }

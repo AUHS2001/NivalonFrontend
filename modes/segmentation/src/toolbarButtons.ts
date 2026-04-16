@@ -1064,6 +1064,11 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: '3DTools',
+    uiType: 'stl.threeDToolsDropdown',
+    props: {},
+  },
+  {
     id: 'Shapes',
     uiType: 'ohif.toolBoxButton',
     props: {

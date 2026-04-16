@@ -127,7 +127,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
             </div>
           )}
         </div>
-        <div ref={leftMountRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={leftMountRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
          <canvas
           ref={removalCanvasRef}
           style={{

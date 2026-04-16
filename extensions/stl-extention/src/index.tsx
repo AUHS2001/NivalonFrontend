@@ -4,6 +4,7 @@ import SingleSpinalCord from './SingleSpinalCord';
 import SignonStlPanel from './SignonStlPanel';
 import React from 'react';
 import { toggleSpineLabelOverlay } from './utils/spineLabelOverlayManager';
+import ThreeDToolsDropdown from './components/ThreeDToolsDropdown';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -110,7 +111,14 @@ export default {
    * {name, defaultComponent, clickHandler }. Examples include radioGroupIcons and
    * splitButton toolButton that the default extension is providing.
    */
-  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {
+    return [
+      {
+        name: 'stl.threeDToolsDropdown',
+        defaultComponent: ThreeDToolsDropdown,
+      },
+    ];
+  },
   /**
    * LayoutTemplateMOdule should provide a list of layout templates that will be
    * available in OHIF for Modes to consume and use to layout the viewer.

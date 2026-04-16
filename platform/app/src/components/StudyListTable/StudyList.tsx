@@ -34,6 +34,7 @@ export default function StudyList() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [isButtonLoading, setIsButtonLoading] = useState(false);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const [expandedStudyId, setExpandedStudyId] = useState<string | null>(null);
     const userRole = localStorage.getItem('userRole');
     const userToken = localStorage.getItem('token');
@@ -100,6 +101,7 @@ export default function StudyList() {
     const getSeriesInstances = async (selectedStudy?: { study_instance_uid: string; series: { series_instance_uid: string; instance_urls: string[] }[] }) => {
         try {
             setIsButtonLoading(true);
+            setLoadingProgress(0);
 
             // Use the selected study if provided, otherwise fall back to all studies
             const studiesToProcess = selectedStudy ? [selectedStudy] : data;
@@ -118,6 +120,9 @@ export default function StudyList() {
                 throw new Error("No instance URLs found for the selected study");
             }
 
+            const totalFiles = allInstanceUrls.length;
+            let completedFiles = 0;
+
             // Fetch DICOM files in parallel with retry logic
             const fetchedFiles = await Promise.all(
                 allInstanceUrls.map(async (url, idx) => {
@@ -128,13 +133,18 @@ export default function StudyList() {
                             if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
                             const blob = await res.blob();
                             const fileName = url.split('/').pop();
-                            return new File([blob], fileName || `dicom-${idx}.dcm`, {
+                            const file = new File([blob], fileName || `dicom-${idx}.dcm`, {
                                 type: blob.type || 'application/dicom',
                             });
+                            completedFiles++;
+                            setLoadingProgress(Math.round((completedFiles / totalFiles) * 100));
+                            return file;
                         } catch (error) {
                             retries++;
                             if (retries === 3) {
                                 console.error(`Failed to fetch ${url} after ${retries} attempts`);
+                                completedFiles++;
+                                setLoadingProgress(Math.round((completedFiles / totalFiles) * 100));
                                 return null;
                             }
                             await new Promise((resolve) => setTimeout(resolve, 1000 * retries));
@@ -199,6 +209,7 @@ export default function StudyList() {
             console.error("Failed to process series:", err);
         } finally {
             setIsButtonLoading(false);
+            setLoadingProgress(0);
         }
     };
 
@@ -505,17 +516,49 @@ export default function StudyList() {
                         <div className="p-3 rounded-bottom" style={{ backgroundColor: "#0a0e17", border: '1px solid white', marginTop: '-1px' }}>
                             {/* Buttons */}
                             <div className="mb-3">
-                                <button className="btn btn-primary me-2" onClick={() => handleNavigate(study,index)} disabled={isButtonLoading}>
-                                   {isButtonLoading ? (
-                                        <>
-                                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                                            Loading...
-                                        </>
-                                    ) :
-                                   (<>
-                                    <span className="me-1">→</span>
-                                    Viewer
-                                    </>)}
+                                <button
+                                    className={`btn me-2 ${isButtonLoading ? '' : 'btn-primary'}`}
+                                    onClick={() => handleNavigate(study,index)}
+                                    disabled={isButtonLoading}
+                                    style={{
+                                        minWidth: 140,
+                                        position: 'relative',
+                                        overflow: 'hidden',
+                                        ...(isButtonLoading ? {
+                                            backgroundColor: '#1a1f2e',
+                                            border: '2px solid #0d6efd',
+                                            color: '#fff',
+                                        } : {}),
+                                    }}
+                                >
+                                    {isButtonLoading && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                left: 0,
+                                                height: '100%',
+                                                width: `${loadingProgress}%`,
+                                                background: 'linear-gradient(90deg, #0d6efd, #3d8bfd)',
+                                                transition: 'width 0.3s ease',
+                                                zIndex: 0,
+                                                borderRadius: 'inherit',
+                                            }}
+                                        />
+                                    )}
+                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: isButtonLoading ? 700 : 400 }}>
+                                        {isButtonLoading ? (
+                                            <>
+                                                <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 14, height: 14 }}></span>
+                                                {loadingProgress}%
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="me-1">→</span>
+                                                Viewer
+                                            </>
+                                        )}
+                                    </span>
                                 </button>
                                 {
                                     (userRole === 'analyst' || userRole === 'admin') ?

@@ -154,3 +154,12 @@ export interface AngleMeasurementConfig {
   meshRefs: React.MutableRefObject<MeshRefs>;
   leftControlsRef?: React.MutableRefObject<any>;
 }
+
+export interface CrosshairSyncConfig {
+  leftSceneRef: React.RefObject<THREE.Scene>;
+  cameraRef: React.RefObject<THREE.PerspectiveCamera | undefined>;
+  meshRefs: React.MutableRefObject<MeshRefs>;
+  leftRendererRef: React.RefObject<THREE.WebGLRenderer | undefined>;
+  leftControlsRef?: React.RefObject<any>;
+  servicesManager?: any;
+}

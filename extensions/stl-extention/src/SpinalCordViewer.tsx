@@ -54,6 +54,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   // State
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [brightnessEnabled, setBrightnessEnabled] = useState(false);
   const [measurementEnabled, setMeasurementEnabled] = useState(false);
@@ -266,7 +267,8 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     startRendererRef,
     startSceneRef,
     setLoading,
-    setError
+    setError,
+    setLoadProgress
   });
 
 
@@ -793,8 +795,56 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       minHeight: 0 // Fallback
     }}>
 
+      {loading && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 3000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.88)',
+        }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            border: '4px solid rgba(255,255,255,0.1)',
+            borderTop: '4px solid #4FC3F7',
+            borderRadius: '50%',
+            animation: 'stl-spin 0.8s linear infinite',
+          }} />
+          <div style={{ color: '#fff', marginTop: '20px', fontSize: '16px', fontWeight: 600 }}>
+            Loading 3D Model
+          </div>
+          <div style={{ color: '#4FC3F7', marginTop: '8px', fontSize: '28px', fontWeight: 700 }}>
+            {loadProgress}%
+          </div>
+          <div style={{
+            width: '220px',
+            height: '6px',
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            borderRadius: '3px',
+            marginTop: '12px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              width: `${loadProgress}%`,
+              height: '100%',
+              backgroundColor: '#4FC3F7',
+              borderRadius: '3px',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          <div style={{ color: '#888', marginTop: '10px', fontSize: '12px' }}>
+            Please wait while the model loads
+          </div>
+          <style>{`@keyframes stl-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+
       {
-        angleMeasurementEnabled === true ? 
+        angleMeasurementEnabled === true ?
         <AngleMeasurementPanel /> :
         <></>
       }

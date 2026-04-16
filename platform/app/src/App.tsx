@@ -51,6 +51,7 @@ import { StlVisibilityProvider } from '../../../extensions/stl-extention/src/con
 import { AngleMeasurementProvider } from '../../../extensions/stl-extention/src/context/AngleMeasurementContext';
 import { SpineLabelingProvider } from '../../../extensions/stl-extention/src/context/SpineLabelingContext';
 import { SpineLabelOverlayProvider } from '../../../extensions/stl-extention/src/context/SpineLabelOverlayContext';
+import { ThreeDToolsBridgeProvider } from '../../../extensions/stl-extention/src/context/ThreeDToolsBridgeContext';
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -179,6 +180,7 @@ function App({
 
   return (
     <CombinedProviders>
+      <ThreeDToolsBridgeProvider>
       <SpineLabelOverlayProvider>
       <SpineLabelingProvider>
       <AngleMeasurementProvider>
@@ -211,6 +213,7 @@ function App({
       </AngleMeasurementProvider>
       </SpineLabelingProvider>
       </SpineLabelOverlayProvider>
+      </ThreeDToolsBridgeProvider>
     </CombinedProviders>
   );
 }
