@@ -79,6 +79,17 @@ function CornerstoneImageScrollbar({
         imageIndex: newImageIdIndex ?? imageIdIndex,
         numberOfSlices,
       });
+
+      // Trigger lazy loading when scroll nears the end
+      const PREFETCH_THRESHOLD = 10;
+      const currentIndex = newImageIdIndex ?? imageIdIndex;
+      if (numberOfSlices - currentIndex <= PREFETCH_THRESHOLD) {
+        window.dispatchEvent(
+          new CustomEvent('dicom-lazy-load-more', {
+            detail: { viewportId },
+          })
+        );
+      }
     };
 
     element.addEventListener(eventId, updateIndex);

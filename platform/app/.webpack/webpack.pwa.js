@@ -164,7 +164,11 @@ module.exports = (env, argv) => {
       open: true,
       port: OHIF_PORT,
       client: {
-        overlay: { errors: true, warnings: false },
+        overlay: {
+          errors: false,
+          warnings: false,
+          runtimeErrors: false,
+        },
       },
       proxy: [
         {

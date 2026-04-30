@@ -41,7 +41,7 @@ function PanelStudyBrowser({
   const [hasLoadedViewports, setHasLoadedViewports] = useState(false);
   const [studyDisplayList, setStudyDisplayList] = useState([]);
   const [displaySets, setDisplaySets] = useState([]);
-  const [displaySetsLoadingState, setDisplaySetsLoadingState] = useState({});
+
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
   const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
 
@@ -88,10 +88,32 @@ function PanelStudyBrowser({
 
       const handlers = customHandler?.callbacks.map(callback => callback(setupArgs));
 
-      for (const handler of handlers) {
-        await handler(displaySetInstanceUID);
+      const runViewportHandlers = async () => {
+        for (const handler of handlers) {
+          await handler(displaySetInstanceUID);
+        }
+        onDoubleClickThumbnailHandlerCallBack?.(displaySetInstanceUID);
+      };
+
+      // If the series needs lazy loading, load ALL instances FIRST then update viewport.
+      // This prevents volume viewports from crashing on partial data.
+      const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+      if (displaySet?.SeriesInstanceUID) {
+        window.dispatchEvent(
+          new CustomEvent('dicom-lazy-load-series', {
+            detail: {
+              seriesUID: displaySet.SeriesInstanceUID,
+              studyUID: displaySet.StudyInstanceUID,
+              onComplete: () => {
+                runViewportHandlers();
+              },
+            },
+          })
+        );
+      } else {
+        // No lazy loading needed — update viewport immediately
+        await runViewportHandlers();
       }
-      onDoubleClickThumbnailHandlerCallBack?.(displaySetInstanceUID);
     },
     [
       activeViewportId,
@@ -200,8 +222,12 @@ function PanelStudyBrowser({
         thumbnailSrc = await displaySet.getThumbnailSrc({ getImageSrc });
       }
       if (!thumbnailSrc && imageId) {
-        const thumbnailSrc = await getImageSrc(imageId);
-        displaySet.thumbnailSrc = thumbnailSrc;
+        try {
+          thumbnailSrc = await getImageSrc(imageId);
+          displaySet.thumbnailSrc = thumbnailSrc;
+        } catch (err) {
+          console.warn('[PanelStudyBrowser] Failed to generate thumbnail for', dSet.displaySetInstanceUID, err);
+        }
       }
       newImageSrcEntry[dSet.displaySetInstanceUID] = thumbnailSrc;
 
@@ -221,7 +247,7 @@ function PanelStudyBrowser({
 
     const mappedDisplaySets = mapDisplaySetsWithState(
       currentDisplaySets,
-      displaySetsLoadingState,
+      null,
       thumbnailImageSrcMap,
       viewports
     );
@@ -233,7 +259,6 @@ function PanelStudyBrowser({
     setDisplaySets(mappedDisplaySets);
   }, [
     displaySetService.activeDisplaySets,
-    displaySetsLoadingState,
     viewports,
     thumbnailImageSrcMap,
     customMapDisplaySets,
@@ -299,7 +324,7 @@ function PanelStudyBrowser({
       changedDisplaySets => {
         const mappedDisplaySets = mapDisplaySetsWithState(
           changedDisplaySets,
-          displaySetsLoadingState,
+          null,
           thumbnailImageSrcMap,
           viewports
         );
@@ -317,7 +342,7 @@ function PanelStudyBrowser({
       () => {
         const mappedDisplaySets = mapDisplaySetsWithState(
           displaySetService.getActiveDisplaySets(),
-          displaySetsLoadingState,
+          null,
           thumbnailImageSrcMap,
           viewports
         );
@@ -335,7 +360,6 @@ function PanelStudyBrowser({
       SubscriptionDisplaySetMetaDataInvalidated.unsubscribe();
     };
   }, [
-    displaySetsLoadingState,
     thumbnailImageSrcMap,
     viewports,
     displaySetService,
@@ -399,8 +423,8 @@ function PanelStudyBrowser({
   const activeDisplaySetInstanceUIDs = viewports.get(activeViewportId)?.displaySetInstanceUIDs;
 
   return (
-    <>
-      <>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex-none">
         <PanelStudyBrowserHeader
           viewPresets={viewPresets}
           updateViewPresetValue={updateViewPresetValue}
@@ -412,35 +436,37 @@ function PanelStudyBrowser({
           className="bg-black"
           thickness="2px"
         />
-      </>
+      </div>
 
-      <StudyBrowser
-        tabs={tabs}
-        servicesManager={servicesManager}
-        activeTabName={activeTabName}
-        expandedStudyInstanceUIDs={expandedStudyInstanceUIDs}
-        onClickStudy={_handleStudyClick}
-        onClickTab={clickedTabName => {
-          setActiveTabName(clickedTabName);
-        }}
-        onClickUntrack={onClickUntrack}
-        onClickThumbnail={() => {}}
-        onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
-        activeDisplaySetInstanceUIDs={activeDisplaySetInstanceUIDs}
-        showSettings={actionIcons.find(icon => icon.id === 'settings')?.value}
-        viewPresets={viewPresets}
-        ThumbnailMenuItems={MoreDropdownMenu({
-          commandsManager,
-          servicesManager,
-          menuItemsKey: 'studyBrowser.thumbnailMenuItems',
-        })}
-        StudyMenuItems={MoreDropdownMenu({
-          commandsManager,
-          servicesManager,
-          menuItemsKey: 'studyBrowser.studyMenuItems',
-        })}
-      />
-    </>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <StudyBrowser
+          tabs={tabs}
+          servicesManager={servicesManager}
+          activeTabName={activeTabName}
+          expandedStudyInstanceUIDs={expandedStudyInstanceUIDs}
+          onClickStudy={_handleStudyClick}
+          onClickTab={clickedTabName => {
+            setActiveTabName(clickedTabName);
+          }}
+          onClickUntrack={onClickUntrack}
+          onClickThumbnail={() => {}}
+          onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
+          activeDisplaySetInstanceUIDs={activeDisplaySetInstanceUIDs}
+          showSettings={actionIcons.find(icon => icon.id === 'settings')?.value}
+          viewPresets={viewPresets}
+          ThumbnailMenuItems={MoreDropdownMenu({
+            commandsManager,
+            servicesManager,
+            menuItemsKey: 'studyBrowser.thumbnailMenuItems',
+          })}
+          StudyMenuItems={MoreDropdownMenu({
+            commandsManager,
+            servicesManager,
+            menuItemsKey: 'studyBrowser.studyMenuItems',
+          })}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -468,7 +494,7 @@ function _mapDataSourceStudies(studies) {
   });
 }
 
-function _mapDisplaySets(displaySets, displaySetLoadingState, thumbnailImageSrcMap, viewports) {
+function _mapDisplaySets(displaySets, _displaySetLoadingState, thumbnailImageSrcMap, viewports) {
   const thumbnailDisplaySets = [];
   const thumbnailNoImageDisplaySets = [];
   displaySets
@@ -480,8 +506,6 @@ function _mapDisplaySets(displaySets, displaySetLoadingState, thumbnailImageSrcM
       const array =
         componentType === 'thumbnail' ? thumbnailDisplaySets : thumbnailNoImageDisplaySets;
 
-      const loadingProgress = displaySetLoadingState?.[displaySetInstanceUID];
-
       array.push({
         displaySetInstanceUID,
         description: ds.SeriesDescription || '',
@@ -489,7 +513,6 @@ function _mapDisplaySets(displaySets, displaySetLoadingState, thumbnailImageSrcM
         modality: ds.Modality,
         seriesDate: formatDate(ds.SeriesDate),
         numInstances: ds.numImageFrames,
-        loadingProgress,
         countIcon: ds.countIcon,
         messages: ds.messages,
         StudyInstanceUID: ds.StudyInstanceUID,

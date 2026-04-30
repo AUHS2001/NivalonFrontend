@@ -287,9 +287,8 @@ export default function ModeRoute({
     });
 
     return () => {
-      // The mode.onModeExit must be done first to allow it to store
-      // information, and must be in a try/catch to ensure subscriptions
-      // are unsubscribed.
+      // Wrap entire cleanup in try/catch so errors during mode exit
+      // never crash the React tree (which causes a white page on back-nav).
       try {
         mode?.onModeExit?.({
           servicesManager,
@@ -299,19 +298,25 @@ export default function ModeRoute({
       } catch (e) {
         console.warn('mode exit failure', e);
       }
-      // Clean up hotkeys
-      hotkeysManager.destroy();
-
-      // The unsubscriptions must occur before the extension onModeExit
-      // in order to prevent exceptions during cleanup caused by spurious events
-      if (unsubscriptions) {
-        unsubscriptions.forEach(unsub => {
-          unsub();
-        });
+      try {
+        hotkeysManager.destroy();
+      } catch (e) {
+        console.warn('hotkeys cleanup failure', e);
       }
-      // The extension manager must be called after the mode, this is
-      // expected to cleanup the state to a standard setup.
-      extensionManager.onModeExit();
+      try {
+        if (unsubscriptions) {
+          unsubscriptions.forEach(unsub => {
+            try { unsub(); } catch (_) { /* skip */ }
+          });
+        }
+      } catch (e) {
+        console.warn('unsubscription cleanup failure', e);
+      }
+      try {
+        extensionManager.onModeExit();
+      } catch (e) {
+        console.warn('extensionManager.onModeExit failure', e);
+      }
     };
   }, [
     mode,

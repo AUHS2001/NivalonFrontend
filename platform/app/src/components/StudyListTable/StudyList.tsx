@@ -2,13 +2,15 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { formatDicomDateTime } from '../../utils/Functions';
-import { DicomMetadataStore, MODULE_TYPES, useSystem } from '@ohif/core';
+import { MODULE_TYPES, useSystem } from '@ohif/core';
 import filesToStudies from '../../routes/Local/filesToStudies';
 import { extensionManager } from '../../App';
 import { StlInstanceContext } from '../../context/StlInstanceContext';
 import { StlInstanceListDataContext } from '../../../../app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from '../../../../app/src/context/parentStudyIdContext';
 import { SERVER_URL } from '../../../../../config/server';
+import { isCached, getAllCachedBlobs, cacheBlob, initCacheForStudy } from '../../utils/dicomCache';
+import { startSeriesLoad, fetchInitialBatch, cleanupPreviousStudy } from '../../services/lazyLoadService';
 
 interface Series {
   series_instance_uid: string;
@@ -16,7 +18,7 @@ interface Series {
   description: string;
   modality: string;
   num_series_instances: number;
-  instance_urls: string[];
+  instance_url: string;
 }
 
 interface Study {
@@ -33,7 +35,7 @@ export default function StudyList() {
     const navigate = useNavigate()
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState<boolean>(true);
-    const [isButtonLoading, setIsButtonLoading] = useState(false);
+    const [loadingStudyIndex, setLoadingStudyIndex] = useState<number | null>(null);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [expandedStudyId, setExpandedStudyId] = useState<string | null>(null);
     const userRole = localStorage.getItem('userRole');
@@ -61,7 +63,7 @@ export default function StudyList() {
 
     const handleNavigate = (study: { series: { series_instance_uid: string }[] },index: string) => {
         // Extract all series_instance_uids from the study's series
-        setIsButtonLoading(true);
+        setLoadingStudyIndex(Number(index));
         console.log("study data ",study?.study_instance_uid)
         updateStlInstanceId(data[index]?.series[0].series_instance_uid)
         updateSeriesName(data[index]?.series[0].description)
@@ -84,8 +86,10 @@ export default function StudyList() {
                         "Content-Type": "application/json"
                     }
                 });
-                setData(response.data?.data);
-                updateStlInstanceListData(response.data?.data)
+                const payload = response.data?.data;
+                const studiesArray = Array.isArray(payload) ? payload : (payload?.items ?? []);
+                setData(studiesArray);
+                updateStlInstanceListData(studiesArray)
             } catch (error) {
                 console.error('Failed to fetch studies:', error);
             } finally {
@@ -98,64 +102,154 @@ export default function StudyList() {
 
     console.log("data =>",data);
 
-    const getSeriesInstances = async (selectedStudy?: { study_instance_uid: string; series: { series_instance_uid: string; instance_urls: string[] }[] }) => {
+    const getSeriesInstances = async (selectedStudy?) => {
         try {
-            setIsButtonLoading(true);
             setLoadingProgress(0);
 
-            // Use the selected study if provided, otherwise fall back to all studies
+            // Clean up memory from any previously loaded study
+            cleanupPreviousStudy();
+
+            const studyUID = selectedStudy?.study_instance_uid;
+
+            // ── CACHE HIT: Load from IndexedDB (instant) ──
+            if (studyUID && await isCached(studyUID)) {
+                const cachedEntries = await getAllCachedBlobs();
+                if (cachedEntries.length > 0) {
+                    setLoadingProgress(50);
+                    const files = cachedEntries.map(e =>
+                        new File([e.blob], e.url.split('/').pop() || 'cached.dcm', {
+                            type: 'application/dicom',
+                        })
+                    );
+
+                    let modePath = "viewer/dicomlocal";
+                    if (userRole === 'analyst') modePath = "segmentation/dicomlocal";
+                    else if (userRole === 'admin') modePath = "segmentation/dicomlocal";
+                    else if (userRole === 'signer') modePath = "signons/dicomlocal";
+
+                    const dataSourceModules = extensionManager.modules[MODULE_TYPES.DATA_SOURCE];
+                    const localDataSources = dataSourceModules.reduce((acc, curr) => {
+                        const mods = [];
+                        curr.module.forEach(mod => { if (mod.type === 'localApi') mods.push(mod); });
+                        return acc.concat(mods);
+                    }, []);
+                    const dataSource = localDataSources[0].createDataSource({});
+
+                    const studies = await filesToStudies(files, dataSource);
+                    setLoadingProgress(100);
+
+                    const query = new URLSearchParams();
+                    studies.forEach(id => query.append('StudyInstanceUIDs', id));
+                    query.append('datasources', 'dicomlocal');
+                    query.append('t', Date.now().toString());
+                    navigate(`/${modePath}?${decodeURIComponent(query.toString())}`);
+                    return;
+                }
+            }
+
             const studiesToProcess = selectedStudy ? [selectedStudy] : data;
 
-            // Collect instance URLs only from the selected study
-            const allInstanceUrls = studiesToProcess.flatMap(study =>
-                study.series.flatMap(series =>
-                    series.instance_urls || []
-                )
+            // Collect all series, including those without instance_url
+            const rawSeries = studiesToProcess.flatMap(study =>
+                study.series.map(s => ({
+                    url: s.instance_url || '',
+                    modality: s.modality || '',
+                    seriesUID: s.series_instance_uid || '',
+                    numInstances: s.num_series_instances || 1,
+                }))
             );
 
-            console.log("Processing study:", selectedStudy?.study_instance_uid);
-            console.log("Instance URLs to fetch:", allInstanceUrls);
+            // For series missing instance_url, fetch one from /imaging/instances
+            const allSeries: typeof rawSeries = [];
+            for (const s of rawSeries) {
+                if (s.url) {
+                    allSeries.push(s);
+                } else if (s.seriesUID) {
+                    try {
+                        const urls = await fetchInitialBatch(s.seriesUID, 1);
+                        if (urls.length > 0) {
+                            allSeries.push({ ...s, url: urls[0] });
+                        } else {
+                            console.warn(`[StudyList] No instance URLs for series ${s.seriesUID}, skipping`);
+                        }
+                    } catch (err) {
+                        console.warn(`[StudyList] Failed to fetch URL for series ${s.seriesUID}:`, err);
+                    }
+                }
+            }
 
-            if (allInstanceUrls.length === 0) {
+            if (allSeries.length === 0) {
                 throw new Error("No instance URLs found for the selected study");
             }
 
-            const totalFiles = allInstanceUrls.length;
-            let completedFiles = 0;
+            // Initialize cache for this study (clears previous study's cache)
+            if (studyUID) {
+                initCacheForStudy(studyUID);
+            }
 
-            // Fetch DICOM files in parallel with retry logic
-            const fetchedFiles = await Promise.all(
-                allInstanceUrls.map(async (url, idx) => {
-                    let retries = 0;
-                    while (retries < 3) {
-                        try {
-                            const res = await fetch(url);
-                            if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-                            const blob = await res.blob();
-                            const fileName = url.split('/').pop();
-                            const file = new File([blob], fileName || `dicom-${idx}.dcm`, {
-                                type: blob.type || 'application/dicom',
-                            });
-                            completedFiles++;
-                            setLoadingProgress(Math.round((completedFiles / totalFiles) * 100));
-                            return file;
-                        } catch (error) {
-                            retries++;
-                            if (retries === 3) {
-                                console.error(`Failed to fetch ${url} after ${retries} attempts`);
-                                completedFiles++;
-                                setLoadingProgress(Math.round((completedFiles / totalFiles) * 100));
-                                return null;
-                            }
-                            await new Promise((resolve) => setTimeout(resolve, 1000 * retries));
+            // ── PHASE 1: Load priority series completely, 1 image per other series ──
+            setLoadingProgress(5);
+
+            const ctMrSeries = allSeries.filter(s => ['CT', 'MR'].includes(s.modality?.toUpperCase()));
+            const candidates = (ctMrSeries.length > 0 ? ctMrSeries : allSeries)
+                .sort((a, b) => b.numInstances - a.numInstances);
+            const prioritySeries = candidates[0];
+
+            // Fetch ALL instance URLs for the priority series
+            let priorityUrls: string[] = [];
+            if (prioritySeries) {
+                try {
+                    priorityUrls = await fetchInitialBatch(prioritySeries.seriesUID, 999999);
+                } catch (err) {
+                    console.warn('[StudyList] Failed to fetch priority series URLs, using fallback:', err);
+                }
+            }
+
+            // Build download list
+            const urlsToDownload: string[] = [];
+            allSeries.forEach(s => {
+                if (s.seriesUID === prioritySeries?.seriesUID && priorityUrls.length > 0) {
+                    // Priority series: download ALL instances
+                    priorityUrls.forEach(u => urlsToDownload.push(u));
+                } else {
+                    // Other series: just 1 thumbnail image
+                    urlsToDownload.push(s.url);
+                }
+            });
+
+            setLoadingProgress(15);
+
+            // ── PHASE 2: Download all files ──
+            const totalFiles = urlsToDownload.length;
+            let completed = 0;
+
+            const downloadFile = async (url: string): Promise<File | null> => {
+                for (let retries = 0; retries < 3; retries++) {
+                    try {
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const blob = await res.blob();
+                        if (studyUID) cacheBlob(url, blob);
+                        const fileName = url.split('/').pop();
+                        completed++;
+                        setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
+                        return new File([blob], fileName || 'dicom.dcm', {
+                            type: blob.type || 'application/dicom',
+                        });
+                    } catch {
+                        if (retries === 2) {
+                            completed++;
+                            setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
+                            return null;
                         }
+                        await new Promise(r => setTimeout(r, 1000 * (retries + 1)));
                     }
-                    return null;
-                })
-            );
+                }
+                return null;
+            };
 
-            // Filter out failed file fetches
-            const validFiles = fetchedFiles.filter((file): file is File => file !== null);
+            const files = await Promise.all(urlsToDownload.map(url => downloadFile(url)));
+            const validFiles = files.filter((f): f is File => f !== null);
 
             if (validFiles.length === 0) {
                 throw new Error("No valid DICOM files were fetched");
@@ -163,52 +257,45 @@ export default function StudyList() {
 
             // Determine the mode path based on user role
             let modePath = "viewer/dicomlocal";
-            if (userRole === 'analyst') {
-                modePath = "segmentation/dicomlocal";
-            } else if (userRole === 'admin') {
-                modePath = "segmentation/dicomlocal";
-            }else if (userRole === 'signer') {
-                modePath = "signons/dicomlocal";
-            }
+            if (userRole === 'analyst') modePath = "segmentation/dicomlocal";
+            else if (userRole === 'admin') modePath = "segmentation/dicomlocal";
+            else if (userRole === 'signer') modePath = "signons/dicomlocal";
 
             // Initialize the dicom local dataSource
             const dataSourceModules = extensionManager.modules[MODULE_TYPES.DATA_SOURCE];
             const localDataSources = dataSourceModules.reduce((acc, curr) => {
                 const mods = [];
                 curr.module.forEach(mod => {
-                    if (mod.type === 'localApi') {
-                        mods.push(mod);
-                    }
+                    if (mod.type === 'localApi') mods.push(mod);
                 });
                 return acc.concat(mods);
             }, []);
+            const dataSource = localDataSources[0].createDataSource({});
 
-            const firstLocalDataSource = localDataSources[0];
-            const dataSource = firstLocalDataSource.createDataSource({});
-
-            // Convert files to studies
-            const studies1 = await filesToStudies([], dataSource);
             const studies = await filesToStudies(validFiles, dataSource);
+            setLoadingProgress(100);
 
+            // ── NAVIGATE ──
             const query = new URLSearchParams();
-
-            // Add ONLY the current study to the query
             studies.forEach(id => query.append('StudyInstanceUIDs', id));
             query.append('datasources', 'dicomlocal');
-
-            // 🔥 ADD TIMESTAMP TO FORCE FRESH LOAD
             query.append('t', Date.now().toString());
-
-            console.log("Navigating with study:", studies[0]);
-            console.log("Query parameters:", Array.from(query.entries()));
-
-            // 🔥 USE REPLACE NAVIGATION TO PREVENT BROWSER HISTORY STACKING
             navigate(`/${modePath}?${decodeURIComponent(query.toString())}`);
+
+            // ── Register only the priority series as fully loaded (so drag-and-drop won't re-download it).
+            // Other series load on-demand when the user double-clicks or drags them onto a viewport. ──
+            if (studyUID && prioritySeries && priorityUrls.length > 0) {
+                setTimeout(() => {
+                    startSeriesLoad(prioritySeries.seriesUID, studyUID, priorityUrls).catch(err =>
+                        console.warn('[StudyList] startSeriesLoad error:', err)
+                    );
+                }, 3000);
+            }
 
         } catch (err) {
             console.error("Failed to process series:", err);
         } finally {
-            setIsButtonLoading(false);
+            setLoadingStudyIndex(null);
             setLoadingProgress(0);
         }
     };
@@ -467,7 +554,7 @@ export default function StudyList() {
                 {loading ?
                 <div className='text-center'>loading ...</div>
                 :
-              data.map((study: any, index) => (
+              (Array.isArray(data) ? data : []).map((study: any, index) => (
                 <div key={study.study_instance_uid} className="mb-1">
                     {/* Study Row */}
                     <div
@@ -517,21 +604,21 @@ export default function StudyList() {
                             {/* Buttons */}
                             <div className="mb-3">
                                 <button
-                                    className={`btn me-2 ${isButtonLoading ? '' : 'btn-primary'}`}
+                                    className={`btn me-2 ${loadingStudyIndex === index ? '' : 'btn-primary'}`}
                                     onClick={() => handleNavigate(study,index)}
-                                    disabled={isButtonLoading}
+                                    disabled={loadingStudyIndex !== null}
                                     style={{
                                         minWidth: 140,
                                         position: 'relative',
                                         overflow: 'hidden',
-                                        ...(isButtonLoading ? {
+                                        ...(loadingStudyIndex === index ? {
                                             backgroundColor: '#1a1f2e',
                                             border: '2px solid #0d6efd',
                                             color: '#fff',
                                         } : {}),
                                     }}
                                 >
-                                    {isButtonLoading && (
+                                    {loadingStudyIndex === index && (
                                         <div
                                             style={{
                                                 position: 'absolute',
@@ -546,8 +633,8 @@ export default function StudyList() {
                                             }}
                                         />
                                     )}
-                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: isButtonLoading ? 700 : 400 }}>
-                                        {isButtonLoading ? (
+                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: loadingStudyIndex === index ? 700 : 400 }}>
+                                        {loadingStudyIndex === index ? (
                                             <>
                                                 <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 14, height: 14 }}></span>
                                                 {loadingProgress}%

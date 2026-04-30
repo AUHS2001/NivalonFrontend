@@ -283,24 +283,14 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     };
 
     // Apply to all meshes in all views
-    console.log('🎨 Applying to LEFT meshes:', meshRefs.current.left.length);
     meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
-
-    console.log('🎨 Applying to RIGHT meshes:', meshRefs.current.right.length);
     meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
-
-    // Also apply to start view meshes (label view)
-    console.log('🎨 Applying to START meshes:', startMeshRefs.current.length);
-    startMeshRefs.current.forEach((mesh, i) => applyColorToMesh(mesh, i));
   }, [labelViewEnabled, LABEL_COLORS]);
 
   // Effect to apply/remove label colors when label view is toggled
   useEffect(() => {
     // Skip if color mode is enabled (color mode takes priority)
     if (colorModeRef.current) return;
-
-    console.log('🏷️ Label view toggled:', labelViewEnabled);
-    console.log('🏷️ Left meshes count:', meshRefs.current.left.length);
 
     const applyLabelColorToMesh = (mesh: THREE.Mesh) => {
       const material = mesh.material as THREE.MeshPhongMaterial;
@@ -1490,19 +1480,6 @@ useEffect(() => {
   const { registerTools } = useThreeDToolsBridge();
 
   useEffect(() => {
-    setupMeasurementMode({
-      leftRendererRef,
-      leftSceneRef,
-      cameraRef,
-      meshRefs
-    });
-
-    return () => {
-      cleanupMeasurementMode();
-    };
-  }, [setupMeasurementMode, cleanupMeasurementMode]);
-
-  useEffect(() => {
     // Setup distance measurement mode (existing)
     setupMeasurementMode({
       leftRendererRef,
@@ -2012,8 +1989,7 @@ const createAutomaticSegmentation = async () => {
   useBrightness({
     brightnessEnabled,
     brightness,
-    meshRefs,
-    startMeshRefs
+    meshRefs
   });
 
   useSTLLoader({
@@ -2174,9 +2150,11 @@ const createAutomaticSegmentation = async () => {
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
       leftControls.update();
-      rightControls.update();
       leftRenderer.render(leftScene, leftCamera);
-      rightRenderer.render(rightScene, rightCamera);
+      if (rightMount.offsetParent !== null) {
+        rightControls.update();
+        rightRenderer.render(rightScene, rightCamera);
+      }
     };
     animate();
 
@@ -2230,92 +2208,6 @@ const createAutomaticSegmentation = async () => {
       rightRenderer.dispose();
       leftControls.dispose();
       rightControls.dispose();
-    };
-  }, []);
-
-  // Start View Setup - Always visible
-  useEffect(() => {
-    if (!startMountRef.current) return;
-
-    const startScene = startSceneRef.current;
-    const startMount = startMountRef.current;
-    startScene.background = new THREE.Color(0x000000);
-
-    // Set up lighting
-    startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
-    keyLight.position.set(1, 1, 1).normalize();
-    startScene.add(keyLight);
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    fillLight.position.set(-1, 0.5, -0.5).normalize();
-    startScene.add(fillLight);
-    const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
-    backLight.position.set(0, 0, -1).normalize();
-    startScene.add(backLight);
-    startScene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.3));
-
-    // Add the start group to the scene
-    startScene.add(startGroupRef.current);
-
-    // Create renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(startMount.clientWidth, startMount.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    startRendererRef.current = renderer;
-    startMount.appendChild(renderer.domElement);
-
-    // Create independent camera for start view
-    // LPS coordinate system: Z is Superior (up)
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      startMount.clientWidth / startMount.clientHeight,
-      0.1,
-      10000
-    );
-    camera.up.copy(LPS_UP); // Set Z as up for LPS
-    camera.position.set(0, -500, 100); // Anterior view (looking from front)
-    camera.lookAt(0, 0, 0);
-
-    // Set up independent controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.25;
-    controls.maxDistance = 5000;
-    controls.enableRotate = true;
-    controls.rotateSpeed = 1.0;
-    controls.enableZoom = true;
-    controls.zoomSpeed = 1.2;
-    controls.enablePan = true;
-    controls.panSpeed = 0.8;
-    startControlsRef.current = controls;
-
-    // Independent animation loop for start view
-    const animateStartView = () => {
-      requestAnimationFrame(animateStartView);
-      controls.update();
-      renderer.render(startScene, camera);
-    };
-    animateStartView();
-
-    // Handle resize for start view
-    const handleResize = () => {
-      if (startMountRef.current) {
-        const width = startMountRef.current.clientWidth;
-        const height = startMountRef.current.clientHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-        renderer.render(startScene, camera);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (startMount.contains(renderer.domElement)) {
-        startMount.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
     };
   }, []);
 
@@ -2681,14 +2573,6 @@ const createAutomaticSegmentation = async () => {
     setUndoStack(stack => stack.slice(0, -1));
   };
 
-  console.log('🔍 Debug - STL-DICOM Linking Status:', {
-    hasSegmentationService,
-    isLinkingActive,
-    toggleLinking: typeof toggleLinking,
-    hasServicesManager: !!propServicesManager,
-    hasOHIFServices: hasSegmentationService
-  });
-
   // Extracted toggle handlers for 3D tool bridge registration
   const handleToggleRotation = useCallback(() => {
     setRotationMode(prev => !prev);
@@ -2840,7 +2724,7 @@ const createAutomaticSegmentation = async () => {
           <div style={{
             position: 'absolute',
             inset: 0,
-            zIndex: 3000,
+            zIndex: 30,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',

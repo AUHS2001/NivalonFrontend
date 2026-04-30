@@ -4,6 +4,8 @@ import { Enums } from '@cornerstonejs/core';
 
 function ViewportImageSliceLoadingIndicator({ viewportData, element }) {
   const [loading, setLoading] = useState(false);
+  const [lazyLoading, setLazyLoading] = useState(false);
+  const [lazyProgress, setLazyProgress] = useState(0);
   const [error, setError] = useState(false);
 
   const loadIndicatorRef = useRef(null);
@@ -46,6 +48,39 @@ function ViewportImageSliceLoadingIndicator({ viewportData, element }) {
     };
   }, [element, viewportData]);
 
+  // Listen for lazy-load viewport loading events (triggered by drag-and-drop)
+  useEffect(() => {
+    const onStart = (e: CustomEvent) => {
+      setLazyLoading(true);
+      setLazyProgress(0);
+    };
+
+    const onProgress = (e: CustomEvent) => {
+      const { progress } = e.detail || {};
+      if (typeof progress === 'number') {
+        setLazyProgress(Math.round(progress * 100));
+        if (progress >= 1) {
+          setLazyLoading(false);
+        }
+      }
+    };
+
+    const onComplete = () => {
+      setLazyLoading(false);
+      setLazyProgress(0);
+    };
+
+    window.addEventListener('dicom-viewport-loading-start', onStart as EventListener);
+    window.addEventListener('dicom-viewport-loading-progress', onProgress as EventListener);
+    window.addEventListener('dicom-viewport-loading-complete', onComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('dicom-viewport-loading-start', onStart as EventListener);
+      window.removeEventListener('dicom-viewport-loading-progress', onProgress as EventListener);
+      window.removeEventListener('dicom-viewport-loading-complete', onComplete as EventListener);
+    };
+  }, []);
+
   if (error) {
     return (
       <>
@@ -59,6 +94,17 @@ function ViewportImageSliceLoadingIndicator({ viewportData, element }) {
           </div>
         </div>
       </>
+    );
+  }
+
+  if (lazyLoading) {
+    return (
+      <div className="pointer-events-none absolute top-0 left-0 h-full w-full bg-black opacity-50">
+        <div className="transparent flex h-full w-full flex-col items-center justify-center">
+          <p className="text-primary-light text-xl font-light">Loading series...</p>
+          <p className="text-primary-light mt-2 text-sm font-light">{lazyProgress}%</p>
+        </div>
+      </div>
     );
   }
 

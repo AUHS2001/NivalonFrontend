@@ -200,7 +200,7 @@ function App({
                 {appRoutes}
               </BrowserRouter>
             </ParentStudyIdProvider>
-        </StlInstanceListDataProvider>
+          </StlInstanceListDataProvider>
         </StlInstanceProvider>
       </MeasurementProvider>
       </BrightnessProvider>

@@ -763,8 +763,7 @@ const createAutomaticSegmentation = async () => {
   useBrightness({
     brightnessEnabled,
     brightness,
-    meshRefs,
-    startMeshRefs
+    meshRefs
   });
 
   useSTLLoader({

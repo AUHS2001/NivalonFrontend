@@ -6,6 +6,7 @@ import EmptyViewport from './EmptyViewport';
 import { useAppConfig } from '@state';
 import KarachiLayout from './KarachiLayout';
 import ComparisonLayout from './ComparisonLayout';
+import { loadSeriesFully } from '../services/lazyLoadService';
 
 function ViewerViewportGrid(props: withAppTypes) {
   const { servicesManager, viewportComponents = [], dataSource, commandsManager } = props;
@@ -286,6 +287,30 @@ function ViewerViewportGrid(props: withAppTypes) {
 
   const onDropHandler = (viewportId, { displaySetInstanceUID }) => {
     const { viewportGridService } = servicesManager.services;
+    const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
+    // If the series needs lazy loading, load ALL instances FIRST then update viewport.
+    // This prevents volume viewports from crashing on partial data.
+    if (displaySet?.SeriesInstanceUID && !displaySet.isLoaded) {
+      loadSeriesFully(displaySet.SeriesInstanceUID, displaySet.StudyInstanceUID).then(() => {
+        const customOnDropHandler = customizationService.getCustomization('customOnDropHandler');
+        customOnDropHandler({
+          ...props,
+          viewportId,
+          displaySetInstanceUID,
+          appConfig,
+        }).then(({ handled }) => {
+          if (!handled) {
+            const updatedViewports = _getUpdatedViewports(viewportId, displaySetInstanceUID);
+            commandsManager.run('setDisplaySetsForViewports', { viewportsToUpdate: updatedViewports });
+          }
+        });
+        viewportGridService.publishViewportOnDropHandled({ displaySetInstanceUID });
+      }).catch(err => console.warn('[ViewportGrid] loadSeriesFully error:', err));
+      return;
+    }
+
+    // No lazy loading needed — update viewport immediately
     const customOnDropHandler = customizationService.getCustomization('customOnDropHandler');
     const dropHandlerPromise = customOnDropHandler({
       ...props,
@@ -296,7 +321,6 @@ function ViewerViewportGrid(props: withAppTypes) {
     dropHandlerPromise.then(({ handled }) => {
       if (!handled) {
         const updatedViewports = _getUpdatedViewports(viewportId, displaySetInstanceUID);
-
         commandsManager.run('setDisplaySetsForViewports', { viewportsToUpdate: updatedViewports });
       }
     });

@@ -132,13 +132,21 @@ const Thumbnail = ({
               <div className="bg-background h-[114px] w-[128px] rounded"></div>
             )}
 
+            {/* Loading overlay — z-10 so toolbar dropdowns (z-50) render above */}
+            {loadingProgress !== undefined && loadingProgress < 1 && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded bg-black/40">
+                <div className="mb-1 h-5 w-5 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></div>
+                <div className="text-[10px] font-medium text-white/80">Loading...</div>
+              </div>
+            )}
+
             {/* bottom left */}
             <div className="absolute bottom-0 left-0 flex h-[14px] items-center gap-[4px] rounded-tr pt-[10px] pb-[10px] pr-[6px] pl-[5px]">
               <div
                 className={classnames(
                   'h-[10px] w-[10px] rounded-[2px]',
                   isActive || isHydratedForDerivedDisplaySet ? 'bg-highlight' : 'bg-primary/65',
-                  loadingProgress && loadingProgress < 1 && 'bg-primary/25'
+                  loadingProgress !== undefined && loadingProgress < 1 && 'bg-primary/25'
                 )}
               ></div>
               <div className="text-[11px] font-semibold text-white">{modality}</div>
@@ -228,9 +236,12 @@ const Thumbnail = ({
             className={classnames(
               'h-[32px] w-[4px] min-w-[4px] rounded',
               isActive || isHydratedForDerivedDisplaySet ? 'bg-highlight' : 'bg-primary/65',
-              loadingProgress && loadingProgress < 1 && 'bg-primary/25'
+              loadingProgress !== undefined && loadingProgress < 1 && 'bg-primary/25'
             )}
           ></div>
+          {loadingProgress !== undefined && loadingProgress < 1 && (
+            <div className="absolute right-2 h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-transparent"></div>
+          )}
           <div className="flex h-full w-[calc(100%-12px)] flex-col justify-start">
             <div className="flex items-center gap-[7px]">
               <div className="text-[13px] font-semibold text-white">{modality}</div>

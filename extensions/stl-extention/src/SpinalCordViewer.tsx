@@ -249,8 +249,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   useBrightness({
     brightnessEnabled,
     brightness,
-    meshRefs,
-    startMeshRefs
+    meshRefs
   });
 
   useSTLLoader({
@@ -382,9 +381,11 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
       leftControls.update();
-      rightControls.update();
       leftRenderer.render(leftScene, camera);
-      rightRenderer.render(rightScene, camera);
+      if (rightMount.offsetParent !== null) {
+        rightControls.update();
+        rightRenderer.render(rightScene, camera);
+      }
     };
     animate();
 
@@ -421,86 +422,6 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       rightRenderer.dispose();
     };
   }, []);
-
-  // Start View Setup - Always visible
-  useEffect(() => {
-    if (!startMountRef.current) return;
-
-    const startScene = startSceneRef.current;
-    const startMount = startMountRef.current;
-    startScene.background = new THREE.Color(0x000000);
-
-    // Set up lighting
-    startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
-    dirLight.position.set(0, 1, 1).normalize();
-    startScene.add(dirLight);
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    fillLight.position.set(-1, 0.5, -0.5).normalize();
-    startScene.add(fillLight);
-
-    // Add the start group to the scene
-    startScene.add(startGroupRef.current);
-
-    // Create renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(startMount.clientWidth, startMount.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    startRendererRef.current = renderer;
-    startMount.appendChild(renderer.domElement);
-
-    // Create independent camera for start view
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      startMount.clientWidth / startMount.clientHeight,
-      0.1,
-      10000
-    );
-    camera.position.set(300, 200, 350);
-    camera.lookAt(300, 300, 250);
-
-    // Set up independent controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.25;
-    controls.maxDistance = 5000;
-    controls.enableRotate = true;
-    controls.rotateSpeed = 1.0;
-    controls.enableZoom = true;
-    controls.zoomSpeed = 1.2;
-    controls.enablePan = true;
-    controls.panSpeed = 0.8;
-    startControlsRef.current = controls;
-
-    // Independent animation loop for start view
-    const animateStartView = () => {
-      requestAnimationFrame(animateStartView);
-      controls.update();
-      renderer.render(startScene, camera);
-    };
-    animateStartView();
-
-    // Handle resize for start view
-    const handleResize = () => {
-      if (startMountRef.current) {
-        const width = startMountRef.current.clientWidth;
-        const height = startMountRef.current.clientHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-        renderer.render(startScene, camera);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (startMount.contains(renderer.domElement)) {
-        startMount.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-    };
-  }, [versionHistoryEnabled]);
 
   // Right view resize handler
   useEffect(() => {
@@ -582,13 +503,6 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       }
     });
     meshRefs.current.right.forEach(mesh => {
-      if (mesh.material) {
-        mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
-        mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
-        mesh.material.needsUpdate = true;
-      }
-    });
-    startMeshRefs.current.forEach(mesh => {
       if (mesh.material) {
         mesh.material.emissive = brightnessEnabled ? mesh.material.color : new THREE.Color(0x000000);
         mesh.material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
@@ -799,7 +713,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         <div style={{
           position: 'absolute',
           inset: 0,
-          zIndex: 3000,
+          zIndex: 30,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',

@@ -273,6 +273,29 @@ const ErrorBoundary = ({
     };
 
     const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+
+      // Only show rejections that are proper Error instances with a message.
+      // Plain objects, undefined, strings, etc. from internal libraries
+      // (cornerstone cache, VTK.js) are suppressed — they are not actionable
+      // for the user and just cause noise.
+      if (!(reason instanceof Error) || !reason.message) {
+        event.preventDefault();
+        return;
+      }
+
+      // Also suppress known harmless cornerstone cache errors
+      const msg = reason.message;
+      if (
+        msg.includes('CACHE_SIZE_EXCEEDED') ||
+        msg.includes('caching image') ||
+        msg.includes('sizeInBytes') ||
+        msg.includes('imageId already in cache')
+      ) {
+        event.preventDefault();
+        return;
+      }
+
       event.preventDefault();
       clearTimeout(errorTimeout);
       errorTimeout = setTimeout(() => {

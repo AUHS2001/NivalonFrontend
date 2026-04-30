@@ -465,7 +465,7 @@ const SidePanel = ({
           {getOpenStateComponent()}
           {tabs.map((tab, tabIndex) => {
             if (tabIndex === activeTabIndex) {
-              return <div key={tabIndex} className="relative">
+              return <div key={tabIndex} className="relative flex-1 min-h-0 overflow-hidden">
               <tab.content />
               {/* Overlay icon - only shown on active tab */}
               {

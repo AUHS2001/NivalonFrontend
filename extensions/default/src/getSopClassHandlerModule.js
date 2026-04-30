@@ -129,21 +129,19 @@ const makeDisplaySet = instances => {
 
   imageSet.sortBy(instancesSortCriteria.default);
 
-  // Include the first image instance number (after sorted)
-  /*imageSet.setAttribute(
-    'instanceNumber',
-    imageSet.getImage(0).InstanceNumber
-  );*/
+  // Allow lazy-loaded instances to be merged into this display set
+  imageSet.addInstances = function (newInstances, displaySetService) {
+    const validNew = newInstances.filter(
+      inst => !this.images.some(existing => existing.SOPInstanceUID === inst.SOPInstanceUID)
+    );
+    if (validNew.length === 0) return null;
 
-  /*const isReconstructable = isDisplaySetReconstructable(series, instances);
-
-  imageSet.isReconstructable = isReconstructable.value;
-
-  if (isReconstructable.missingFrames) {
-    // TODO -> This is currently unused, but may be used for reconstructing
-    // Volumes with gaps later on.
-    imageSet.missingFrames = isReconstructable.missingFrames;
-  }*/
+    validNew.forEach(inst => this.images.push(inst));
+    sortStudyInstances(this.images);
+    this.sortBy(instancesSortCriteria.default);
+    this.setAttributes({ numImageFrames: this.images.length });
+    return this;
+  };
 
   return imageSet;
 };

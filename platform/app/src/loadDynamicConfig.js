@@ -1,4 +1,5 @@
 export default async config => {
+  if (!config) return null;
   const useDynamicConfig = config.dangerouslyUseDynamicConfig;
 
   // Check if dangerouslyUseDynamicConfig enabled

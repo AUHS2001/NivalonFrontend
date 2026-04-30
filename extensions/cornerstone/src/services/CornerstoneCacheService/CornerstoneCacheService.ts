@@ -80,8 +80,12 @@ class CornerstoneCacheService {
 
       // remove images from the cache to be able to re-load them
       imageIds.forEach(imageId => {
-        if (cs3DCache.getImageLoadObject(imageId)) {
-          cs3DCache.removeImageLoadObject(imageId);
+        try {
+          if (cs3DCache.getImageLoadObject(imageId)) {
+            cs3DCache.removeImageLoadObject(imageId);
+          }
+        } catch {
+          // Skip images with shared cache keys (used by volumes)
         }
       });
 
@@ -106,8 +110,12 @@ class CornerstoneCacheService {
         // since that will hold the old metadata as well
 
         volume.imageIds.forEach(imageId => {
-          if (cs3DCache.getImageLoadObject(imageId)) {
-            cs3DCache.removeImageLoadObject(imageId);
+          try {
+            if (cs3DCache.getImageLoadObject(imageId)) {
+              cs3DCache.removeImageLoadObject(imageId);
+            }
+          } catch {
+            // Skip images with shared cache keys
           }
         });
       }

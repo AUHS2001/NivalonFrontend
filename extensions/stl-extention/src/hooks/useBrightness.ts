@@ -6,24 +6,20 @@ interface UseBrightnessProps {
   brightnessEnabled: boolean;
   brightness: number;
   meshRefs: React.MutableRefObject<MeshRefs>;
-  startMeshRefs: React.MutableRefObject<THREE.Mesh[]>;
 }
 
 export const useBrightness = ({
   brightnessEnabled,
   brightness,
-  meshRefs,
-  startMeshRefs
+  meshRefs
 }: UseBrightnessProps) => {
   // Store original material properties
   const originalPropertiesRef = useRef<{
     left: Map<THREE.Mesh, { color: THREE.Color; emissive: THREE.Color; emissiveIntensity: number }>;
     right: Map<THREE.Mesh, { color: THREE.Color; emissive: THREE.Color; emissiveIntensity: number }>;
-    start: Map<THREE.Mesh, { color: THREE.Color; emissive: THREE.Color; emissiveIntensity: number }>;
   }>({
     left: new Map(),
-    right: new Map(),
-    start: new Map()
+    right: new Map()
   });
 
   // Store original properties when meshes are loaded
@@ -51,19 +47,7 @@ export const useBrightness = ({
         });
       }
     });
-
-    // Store original properties for start view meshes
-    startMeshRefs.current.forEach(mesh => {
-      if (mesh.material && !originalPropertiesRef.current.start.has(mesh)) {
-        const material = mesh.material as THREE.MeshPhongMaterial;
-        originalPropertiesRef.current.start.set(mesh, {
-          color: material.color.clone(),
-          emissive: material.emissive.clone(),
-          emissiveIntensity: material.emissiveIntensity
-        });
-      }
-    });
-  }, [meshRefs.current.left.length, meshRefs.current.right.length, startMeshRefs.current.length]);
+  }, [meshRefs.current.left.length, meshRefs.current.right.length]);
 
   useEffect(() => {
     if (brightnessEnabled) {
@@ -105,24 +89,6 @@ export const useBrightness = ({
         }
       });
 
-      // Start view
-      startMeshRefs.current.forEach(mesh => {
-        if (mesh.material) {
-          const material = mesh.material as THREE.MeshPhongMaterial;
-          const original = originalPropertiesRef.current.start.get(mesh);
-
-          if (original) {
-            // Brighten while preserving original colors
-            const brightenedColor = original.color.clone().multiplyScalar(1 + (brightness * 0.5));
-            material.color = brightenedColor;
-            // Keep original emissive properties
-            material.emissive.copy(original.emissive);
-            material.emissiveIntensity = original.emissiveIntensity;
-          }
-          material.needsUpdate = true;
-        }
-      });
-
     } else {
       // Disable brightness - restore ALL original properties exactly
 
@@ -155,21 +121,6 @@ export const useBrightness = ({
           material.needsUpdate = true;
         }
       });
-
-      // Start view - restore original properties
-      startMeshRefs.current.forEach(mesh => {
-        if (mesh.material) {
-          const material = mesh.material as THREE.MeshPhongMaterial;
-          const original = originalPropertiesRef.current.start.get(mesh);
-
-          if (original) {
-            material.color.copy(original.color);
-            material.emissive.copy(original.emissive);
-            material.emissiveIntensity = original.emissiveIntensity;
-          }
-          material.needsUpdate = true;
-        }
-      });
     }
-  }, [brightnessEnabled, brightness, meshRefs, startMeshRefs]);
+  }, [brightnessEnabled, brightness, meshRefs]);
 };

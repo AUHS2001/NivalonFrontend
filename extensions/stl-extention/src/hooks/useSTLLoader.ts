@@ -5,7 +5,6 @@ import { VertebraInfo, MeshRefs } from '../types/three.types';
 import { useLabelingViewContext } from '../context/LabelingViewContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useMeshVisibility } from '../hooks/useMeshVisibility';
-import { LPS_UP } from '../utils/coordinateSystem';
 import { storeVertebraData } from '../utils/spineLabelOverlayManager';
 
 interface UseSTLLoaderProps {
@@ -48,18 +47,15 @@ export const useSTLLoader = ({
   const { addStlFiles, stlFiles, clearStlFiles } = useStlVisibilityContext();
 
   useMeshVisibility({
-    meshRefs,
-    startMeshRefs
+    meshRefs
   });
 
   const getVertebraInfo = useCallback((fileName: string, url: string): VertebraInfo & { fileName: string } => {
-    console.log('🔍 Analyzing file:', fileName, 'URL:', url);
 
     // Check if this is an implant file (blob URL)
     const isImplantFile = url.startsWith('blob:') || fileName.includes('blob:') || fileName === 'implant.stl';
     
     if (isImplantFile) {
-      console.log('🟢 Identified as IMPLANT file');
       return {
         type: 'I', // I for Implant
         number: 0,
@@ -80,7 +76,6 @@ export const useSTLLoader = ({
         fullName: vertebraMatch[0].toUpperCase(),
         fileName,
       };
-      console.log('✅ Identified as vertebra:', result);
       return result;
     }
 
@@ -95,7 +90,6 @@ export const useSTLLoader = ({
         fullName: 'AORTA',
         fileName,
       };
-      console.log('✅ Identified as aorta:', result);
       return result;
     }
 
@@ -110,7 +104,6 @@ export const useSTLLoader = ({
         fullName: 'HEART',
         fileName,
       };
-      console.log('✅ Identified as heart:', result);
       return result;
     }
 
@@ -122,7 +115,6 @@ export const useSTLLoader = ({
         fullName: 'AORTA',
         fileName,
       };
-      console.log('✅ Identified as aorta by pattern:', result);
       return result;
     }
 
@@ -133,16 +125,7 @@ export const useSTLLoader = ({
         fullName: 'HEART',
         fileName,
       };
-      console.log('✅ Identified as heart by pattern:', result);
       return result;
-    }
-
-    // Default for unrecognized bones - let's check if it might be an organ
-    console.log('❓ Unrecognized file, checking if organ:', fileName);
-
-    // If it's not a vertebra pattern and has a short name, it might be an organ
-    if (!fileName.match(/(C|T|L|S)(\d+)/i) && nameWithoutExt.length < 10) {
-      console.log('⚠️ Short file name detected, might be organ:', fileName);
     }
 
     return {
@@ -154,11 +137,9 @@ export const useSTLLoader = ({
   }, []);
 
   const createMeshMaterial = useCallback((color: number, isRightView: boolean = false, isStartView: boolean = false, organType?: string) => {
-    console.log('🎨 Creating material for organType:', organType, 'isRightView:', isRightView, 'isStartView:', isStartView);
     
     // IMPLANT (Type 'I'): Always use GREEN in all views
     if (organType === 'I') {
-      console.log('✅ Creating GREEN material for implant');
       return new THREE.MeshPhongMaterial({
         color: 0x00ff00, // BRIGHT GREEN for implants
         specular: 0x111111,
@@ -232,41 +213,11 @@ export const useSTLLoader = ({
     }
   }, []);
 
-  // Function to convert "generated" to "approved" in URLs for start view only
-  const getApprovedUrl = useCallback((url: string): string => {
-    // Don't convert blob URLs (implants)
-    if (url.startsWith('blob:')) {
-      return url;
-    }
-    return url.replace('/generated/', '/approved/');
-  }, []);
-
-  // Function to load STL from URL
-  const loadSTL = useCallback(async (url: string, loader: STLLoader) => {
-    try {
-      console.log(`📥 Loading STL from: ${url}`);
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} for ${url}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const geometry = loader.parse(arrayBuffer);
-      // STLs are already in LPS - no transformation needed
-      geometry.computeBoundingBox();
-      return geometry;
-    } catch (error) {
-      console.error(`❌ Failed to load ${url}:`, error);
-      throw error;
-    }
-  }, []);
-
   useEffect(() => {
     if (!stlUrls || stlUrls.length === 0) {
-      console.log('❌ No STL URLs provided');
       return;
     }
 
-    console.log('🚀 Starting STL loading with URLs:', stlUrls);
     setLoading(true);
     setError(null);
     setLoadProgress?.(0);
@@ -287,13 +238,11 @@ export const useSTLLoader = ({
 
     const loadPromises = stlUrls.map(async (url, index) => {
       try {
-        console.log(`📥 Loading STL ${index + 1}/${stlUrls.length}:`, url);
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }
         const arrayBuffer = await response.arrayBuffer();
-        console.log(`✅ Downloaded ${arrayBuffer.byteLength} bytes from ${url}`);
 
         const geometry = loader.parse(arrayBuffer);
         // STLs are already in LPS - no transformation needed
@@ -301,12 +250,6 @@ export const useSTLLoader = ({
 
         const fileName = url.substring(url.lastIndexOf('/') + 1);
         const vertebraInfo = getVertebraInfo(fileName, url);
-
-        console.log(`✅ Parsed STL: ${fileName}`, {
-          type: vertebraInfo.type,
-          fullName: vertebraInfo.fullName,
-          boundingBox: geometry.boundingBox
-        });
 
         completedCount++;
         setLoadProgress?.(Math.round((completedCount / stlUrls.length) * 100));
@@ -328,13 +271,6 @@ export const useSTLLoader = ({
     Promise.all(loadPromises)
       .then((loadedObjects) => {
         const valid = loadedObjects.filter(Boolean);
-        console.log(`📊 Loaded ${valid.length} valid objects out of ${stlUrls.length} URLs`);
-
-        // Log all loaded objects with their types
-        console.log('📋 All loaded objects:');
-        valid.forEach((obj, index) => {
-          console.log(`   ${index + 1}. ${obj!.fileName} -> Type: '${obj!.type}', Name: '${obj!.fullName}'`);
-        });
 
         // Separate objects by type
         const vertebrae = valid.filter(v => ['C', 'T', 'L', 'S'].includes(v!.type));
@@ -342,10 +278,6 @@ export const useSTLLoader = ({
         const implants = valid.filter(v => v!.type === 'I'); // NEW: Filter implants
         const unknown = valid.filter(v => v!.type === 'X');
 
-        console.log(`🦴 Vertebrae count: ${vertebrae.length}`);
-        console.log(`❤️ Organs count: ${organs.length}`, organs.map(o => o!.fullName));
-        console.log(`🟢 Implants count: ${implants.length}`, implants.map(i => i!.fileName));
-        console.log(`❓ Unknown files count: ${unknown.length}`, unknown.map(u => u!.fileName));
 
         // If we have unknown files, they might be our organs - let's try to identify them
         const potentialOrgans = [...organs];
@@ -353,12 +285,10 @@ export const useSTLLoader = ({
           const name = unk!.fileName.toLowerCase();
           // If file name is short and doesn't look like a vertebra, treat it as organ
           if (name.length < 8 && !name.match(/(c|t|l|s)\d/)) {
-            console.log(`🔍 Treating ${unk!.fileName} as potential organ`);
             potentialOrgans.push(unk!);
           }
         });
 
-        console.log(`🔍 Final organs to process: ${potentialOrgans.length}`, potentialOrgans.map(o => o!.fileName));
 
         // Sort vertebrae only (keep original order)
         const anatomicalOrder = ['C', 'T', 'L', 'S'];
@@ -385,7 +315,6 @@ export const useSTLLoader = ({
         const allCreatedMeshes: { fileName: string; originalUrl: string; meshIndex: number }[] = [];
 
         // First, create all vertebrae in their original positions for LEFT and RIGHT views
-        console.log('🎨 Creating vertebrae meshes for left/right views...');
         vertebrae.forEach((v, i) => {
           if (!v) return;
 
@@ -414,6 +343,15 @@ export const useSTLLoader = ({
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
+          // Start view mesh - clone geometry instead of re-downloading
+          const matStart = createMeshMaterial(color.getHex(), false, true, v.type);
+          const startMesh = new THREE.Mesh(v.geometry.clone(), matStart);
+          startMesh.position.copy(mesh.position);
+          startMesh.rotation.copy(mesh.rotation);
+          startMesh.userData = { ...v, isApproved: false };
+          startGroup.add(startMesh);
+          startMeshRefs.current.push(startMesh);
+
           currentY -= size.z * compression + gap;
 
           allCreatedMeshes.push({
@@ -436,11 +374,9 @@ export const useSTLLoader = ({
         }
 
         // Now create IMPLANTS with GREEN color
-        console.log('🟢 Creating implant meshes with GREEN color...');
         implants.forEach((implant, index) => {
           if (!implant) return;
 
-          console.log(`🟢 Creating GREEN implant: ${implant.fileName}`);
 
           // CENTER THE GEOMETRY so rotation happens around its own center
           // This is crucial for proper rotation behavior
@@ -476,7 +412,14 @@ export const useSTLLoader = ({
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
-          console.log(`✅ Created GREEN implant mesh: ${implant.fileName} at center Z: ${vertebraeCenterZ}`);
+          // Start view mesh - clone geometry instead of re-downloading
+          const matStart = createMeshMaterial(implantColor, false, true, 'I');
+          const startMesh = new THREE.Mesh(implant.geometry.clone(), matStart);
+          startMesh.position.copy(mesh.position);
+          startMesh.userData = { ...implant, isImplant: true, isApproved: false };
+          startGroup.add(startMesh);
+          startMeshRefs.current.push(startMesh);
+
           allCreatedMeshes.push({
             fileName: implant.fileName,
             originalUrl: implant.originalUrl,
@@ -484,134 +427,10 @@ export const useSTLLoader = ({
           });
         });
 
-        // Now load APPROVED versions for START view (both vertebrae and organs)
-        console.log('🔄 Loading APPROVED versions for START view...');
-        const startViewPromises = valid.map(async (obj) => {
-          if (!obj) return;
-
-          // Skip implants for start view (they don't have approved versions)
-          if (obj.type === 'I') {
-            console.log(`⏭️ Skipping implant for start view: ${obj.fileName}`);
-
-            // But still create a mesh for start view with implant
-            // Geometry is already centered from the main implant creation
-            const color = new THREE.Color(colorMap['I'] || 0x00ff00);
-            const matStart = createMeshMaterial(color.getHex(), false, true, 'I');
-            const startMesh = new THREE.Mesh(obj.geometry.clone(), matStart);
-
-            // Position implant at center of vertebrae (LPS: Z is vertical)
-            startMesh.position.set(0, 0, vertebraeCenterZ);
-            // LPS coordinate system - no rotation needed
-            startMesh.userData = { ...obj, isApproved: false };
-            startGroup.add(startMesh);
-            startMeshRefs.current.push(startMesh);
-
-            console.log(`✅ Created implant mesh for start view: ${obj.fileName}`);
-            return;
-          }
-
-          try {
-            const approvedUrl = getApprovedUrl(obj.originalUrl);
-            console.log(`📥 Loading approved version for start view: ${approvedUrl}`);
-
-            const approvedGeometry = await loadSTL(approvedUrl, loader);
-            const color = new THREE.Color(colorMap[obj.type] || 0x9b59b6);
-
-            // Start mesh = Previous View - Use APPROVED version
-            const matStart = createMeshMaterial(color.getHex(), false, true, obj.type);
-            const startMesh = new THREE.Mesh(approvedGeometry, matStart);
-
-            // Position like other views
-            const bbox = approvedGeometry.boundingBox!;
-            const size = new THREE.Vector3();
-            bbox.getSize(size);
-            const center = new THREE.Vector3();
-            bbox.getCenter(center);
-
-            // For organs, use anatomical positioning
-            if (['A', 'H', 'X'].includes(obj.type)) {
-              let organY = 0;
-              let organX = 0;
-              let organZ = 0;
-
-              if (obj.type === 'H' || obj.fileName.toLowerCase().includes('heart')) {
-                organY = -2.5;
-                organX = -1.5;
-                organZ = 1.5;
-              } else if (obj.type === 'A' || obj.fileName.toLowerCase().includes('aorta')) {
-                organY = -1.5;
-                organX = -1.0;
-                organZ = 1.0;
-              } else {
-                organY = -5;
-                organX = 3;
-                organZ = 0;
-              }
-              startMesh.position.set(organX, organY, organZ);
-            } else {
-              // For vertebrae, use the stacking position (LPS: Z is vertical)
-              startMesh.position.z = currentY - center.z * compression;
-            }
-
-            // LPS coordinate system - no rotation needed
-            startMesh.userData = { ...obj, isApproved: true };
-            startGroup.add(startMesh);
-            startMeshRefs.current.push(startMesh);
-
-            console.log(`✅ Created approved mesh for start view: ${obj.fileName}`);
-          } catch (error) {
-            console.error(`❌ Failed to load approved version for ${obj.fileName}, using generated as fallback:`, error);
-            // Fallback to generated version
-            const color = new THREE.Color(colorMap[obj.type] || 0x9b59b6);
-            const matStart = createMeshMaterial(color.getHex(), false, true, obj.type);
-            const startMesh = new THREE.Mesh(obj.geometry, matStart);
-
-            // Position like other views
-            const bbox = obj.geometry.boundingBox!;
-            const size = new THREE.Vector3();
-            bbox.getSize(size);
-            const center = new THREE.Vector3();
-            bbox.getCenter(center);
-
-            // For organs, use anatomical positioning
-            if (['A', 'H', 'X'].includes(obj.type)) {
-              let organY = 0;
-              let organX = 0;
-              let organZ = 0;
-
-              if (obj.type === 'H' || obj.fileName.toLowerCase().includes('heart')) {
-                organY = -2.5;
-                organX = -1.5;
-                organZ = 1.5;
-              } else if (obj.type === 'A' || obj.fileName.toLowerCase().includes('aorta')) {
-                organY = -1.5;
-                organX = -1.0;
-                organZ = 1.0;
-              } else {
-                organY = -5;
-                organX = 3;
-                organZ = 0;
-              }
-              startMesh.position.set(organX, organY, organZ);
-            } else {
-              // For vertebrae, use the stacking position (LPS: Z is vertical)
-              startMesh.position.z = currentY - center.z * compression;
-            }
-
-            // LPS coordinate system - no rotation needed
-            startMesh.userData = obj;
-            startGroup.add(startMesh);
-            startMeshRefs.current.push(startMesh);
-            console.log(`✅ Created fallback mesh for start view: ${obj.fileName}`);
-          }
-        });
-
         // Now add organs for LEFT and RIGHT views (generated versions)
-        console.log('🎨 Creating organ meshes for left/right views...');
         potentialOrgans.forEach((organ, index) => {
           if (!organ) return;
 
-          console.log(`❤️ Creating mesh for: ${organ.fileName} (${organ.fullName})`);
 
           const bbox = organ.geometry.boundingBox!;
           const size = new THREE.Vector3();
@@ -642,19 +461,16 @@ export const useSTLLoader = ({
             organY = -2.5;
             organX = -1.5;
             organZ = 1.5;
-            console.log(`📍 Positioning heart (${organ.fileName}) at: (${organX}, ${organY}, ${organZ})`);
           } else if (organType === 'A' || organ.fileName.toLowerCase().includes('aorta')) {
             // Aorta position: Runs along the left side of spine
             organY = -1.5;
             organX = -1.0;
             organZ = 1.0;
-            console.log(`📍 Positioning aorta (${organ.fileName}) at: (${organX}, ${organY}, ${organZ})`);
           } else {
             // Unknown organ - position it visibly
             organY = -5;
             organX = 3;
             organZ = 0;
-            console.log(`📍 Positioning unknown organ (${organ.fileName}) at: (${organX}, ${organY}, ${organZ})`);
           }
 
           // Left mesh = Latest View (Blue for aorta, Red for heart) - Use generated
@@ -673,7 +489,14 @@ export const useSTLLoader = ({
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
-          console.log(`✅ Created organ mesh for left/right views: ${organ.fileName} as ${organType}`);
+          // Start view mesh - clone geometry instead of re-downloading
+          const matStart = createMeshMaterial(vertebraeColor.getHex(), false, true, organType);
+          const startMesh = new THREE.Mesh(organ.geometry.clone(), matStart);
+          startMesh.position.copy(mesh.position);
+          startMesh.userData = { ...organ, organType, isApproved: false };
+          startGroup.add(startMesh);
+          startMeshRefs.current.push(startMesh);
+
           allCreatedMeshes.push({
             fileName: organ.fileName,
             originalUrl: organ.originalUrl,
@@ -682,16 +505,6 @@ export const useSTLLoader = ({
         });
 
         addStlFiles(allCreatedMeshes);
-        return Promise.all(startViewPromises);
-      })
-      .then(() => {
-        // Note: STLs are already in LPS - no transformation needed
-
-        console.log('🎯 Final mesh counts:', {
-          left: meshRefs.current.left.length,
-          right: meshRefs.current.right.length,
-          start: startMeshRefs.current.length
-        });
 
         // Center camera on main view
         const bbox = new THREE.Box3().setFromObject(leftGroup);
@@ -702,7 +515,6 @@ export const useSTLLoader = ({
         if (cameraRef.current) {
           cameraRef.current.position.set(center.x, center.y, maxDim * 2.5);
           cameraRef.current.lookAt(center);
-          console.log('📷 Camera positioned');
         }
 
         if (leftControlsRef.current) {
@@ -738,18 +550,12 @@ export const useSTLLoader = ({
           storeVertebraData(meshRefs.current.left);
         }
 
-        console.log('✅ STL loading completed successfully');
-        console.log('📊 Summary:');
-        console.log('   - Left/Right views: Generated STLs');
-        console.log('   - Start view: Approved STLs (with fallback to generated)');
-        console.log('   - Implants: GREEN color in all views');
       })
       .catch((error) => {
         console.error('❌ Error in STL loading:', error);
         setError(`Error loading models: ${error.message}`);
       })
       .finally(() => {
-        console.log('🏁 STL loading process finished');
         setLoading(false);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
