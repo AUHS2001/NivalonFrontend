@@ -7,6 +7,7 @@ import {
   Types as CoreTypes,
   BaseVolumeViewport,
   getRenderingEngines,
+  eventTarget,
 } from '@cornerstonejs/core';
 import {
   ToolGroupManager,
@@ -836,10 +837,41 @@ function commandsModule({
       }
     },
     setToolActiveToolbar: ({ value, itemId, toolName, toolGroupIds = [] }) => {
-      // Sometimes it is passed as value (tools with options), sometimes as itemId (toolbar buttons)
       toolName = toolName || itemId || value;
-
       toolGroupIds = toolGroupIds.length ? toolGroupIds : toolGroupService.getToolGroupIds();
+
+      // Check the active viewport's tool group — this is the same group
+      // the toolbar evaluator (evaluate.cornerstoneTool) checks for isActive,
+      // so toggle and highlighting stay in sync.
+      try {
+        const activeGroupId = _getActiveViewportToolGroupId();
+        const activeGroup = toolGroupService.getToolGroup(activeGroupId);
+        if (
+          activeGroup?.hasTool(toolName) &&
+          activeGroup.getActivePrimaryMouseButtonTool() === toolName
+        ) {
+          // Tool is already active in current viewport → toggle off
+          // Deactivate without activating any fallback — no button highlighted
+          toolGroupIds.forEach(toolGroupId => {
+            const tg = toolGroupService.getToolGroup(toolGroupId);
+            if (!tg || !tg.hasTool(toolName)) return;
+            const cfg = tg.getToolConfiguration(toolName);
+            cfg?.disableOnPassive
+              ? tg.setToolDisabled(toolName)
+              : tg.setToolPassive(toolName);
+          });
+          // Notify 3D crosshair sync via a dedicated custom event
+          // (avoids interfering with Cornerstone's TOOL_ACTIVATED listeners)
+          eventTarget.dispatchEvent(
+            new CustomEvent('nivalon:toolToggledOff', {
+              detail: { toolName },
+            })
+          );
+          return;
+        }
+      } catch {
+        // No active viewport yet — skip toggle check, just activate
+      }
 
       toolGroupIds.forEach(toolGroupId => {
         actions.setToolActive({ toolName, toolGroupId });

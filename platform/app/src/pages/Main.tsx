@@ -16,6 +16,7 @@ import logo from '../../assets/logo.png';
 import { useNavigate } from 'react-router-dom';
 import loginImage from '../../assets/login-image1.jpg';
 import { SERVER_URL } from '../../../../config/server';
+import DevelopmentBanner from '../components/DevelopmentBanner';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
@@ -100,9 +101,17 @@ const MainPage: React.FC = () => {
   return (
     <div style={{
       display: 'flex',
+      flexDirection: 'column',
       minHeight: '100vh',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
     }}>
+      <DevelopmentBanner />
+
+      {/* Main Content */}
+      <div style={{
+        display: 'flex',
+        flex: 1,
+      }}>
       {/* Left Side - Login */}
       <div style={{
         flex: 1,
@@ -364,6 +373,7 @@ const MainPage: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Animation styles */}

@@ -6,6 +6,7 @@ import { useLabelingViewContext } from '../context/LabelingViewContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useMeshVisibility } from '../hooks/useMeshVisibility';
 import { storeVertebraData } from '../utils/spineLabelOverlayManager';
+import { storeMeshDataForContours } from '../utils/vertebraContourOverlayManager';
 
 interface UseSTLLoaderProps {
   stlUrls: string[];
@@ -513,7 +514,9 @@ export const useSTLLoader = ({
         const maxDim = Math.max(size.x, size.y, size.z);
 
         if (cameraRef.current) {
-          cameraRef.current.position.set(center.x, center.y, maxDim * 2.5);
+          // Coronal view: camera in front (negative Y), Z up
+          cameraRef.current.position.set(center.x, center.y - maxDim * 2.5, center.z);
+          cameraRef.current.up.set(0, 0, 1);
           cameraRef.current.lookAt(center);
         }
 
@@ -535,7 +538,9 @@ export const useSTLLoader = ({
 
         if (startControlsRef.current) {
           const startCamera = startControlsRef.current.object as THREE.PerspectiveCamera;
-          startCamera.position.set(startCenter.x, startCenter.y, startMaxDim * 2.5);
+          // Coronal view: camera in front (negative Y), Z up
+          startCamera.position.set(startCenter.x, startCenter.y - startMaxDim * 2.5, startCenter.z);
+          startCamera.up.set(0, 0, 1);
           startCamera.lookAt(startCenter);
           startControlsRef.current.target.copy(startCenter);
           startControlsRef.current.update();
@@ -548,6 +553,7 @@ export const useSTLLoader = ({
         // Store vertebra data globally for spine label overlay (works even when STL panel unmounts)
         if (meshRefs.current.left.length > 0) {
           storeVertebraData(meshRefs.current.left);
+          storeMeshDataForContours(meshRefs.current.left);
         }
 
       })

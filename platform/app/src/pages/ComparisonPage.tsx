@@ -135,6 +135,8 @@ const ComparisonPage: React.FC = () => {
   const animationRef = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState('Fetching model info...');
   const [error, setError] = useState<string | null>(null);
   const [stlUrls1, setStlUrls1] = useState<string[]>([]);
   const [stlUrls2, setStlUrls2] = useState<string[]>([]);
@@ -340,32 +342,85 @@ const ComparisonPage: React.FC = () => {
       group1.clear();
       group2.clear();
 
-      const loadSTLsForGroup = async (urls: string[], group: THREE.Group, baseColor: number) => {
-        for (const url of urls) {
-          if (cancelled) return null;
-          try {
-            const response = await fetch(url, { cache: 'no-store' });
-            if (!response.ok) continue;
+      const totalFiles = stlUrls1.length + stlUrls2.length;
+      let completedFiles = 0;
+      let totalBytes = 0;
+      let downloadedBytes = 0;
 
-            const arrayBuffer = await response.arrayBuffer();
-            const geometry = loader.parse(arrayBuffer);
-            // STLs are already in LPS - no transformation needed
-            geometry.computeBoundingBox();
+      setLoadingStatus(`Downloading 0/${totalFiles} files...`);
+      setLoadingProgress(0);
 
-            const material = new THREE.MeshPhongMaterial({
-              color: baseColor, specular: 0x111111, shininess: 10,
-              side: THREE.DoubleSide
-            });
+      const fetchWithProgress = async (url: string): Promise<ArrayBuffer | null> => {
+        if (cancelled) return null;
+        try {
+          const response = await fetch(url, { cache: 'no-store' });
+          if (!response.ok) return null;
 
-            const mesh = new THREE.Mesh(geometry.clone(), material);
-            // LPS coordinate system - no rotation needed
-            group.add(mesh);
-          } catch (error) {
-            console.error('Failed to load STL:', url, error);
+          const contentLength = response.headers.get('content-length');
+          const fileSize = contentLength ? parseInt(contentLength, 10) : 0;
+
+          if (fileSize > 0) {
+            totalBytes += fileSize;
           }
-        }
 
-        // Note: Geometry transformation applied during loading for posterior view
+          if (!response.body || fileSize === 0) {
+            const buffer = await response.arrayBuffer();
+            completedFiles++;
+            downloadedBytes += buffer.byteLength;
+            const progress = Math.round((completedFiles / totalFiles) * 100);
+            setLoadingProgress(progress);
+            setLoadingStatus(`Downloading ${completedFiles}/${totalFiles} files... (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+            return buffer;
+          }
+
+          const reader = response.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let received = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            downloadedBytes += value.length;
+
+            const fileProgress = received / fileSize;
+            const overallProgress = ((completedFiles + fileProgress) / totalFiles) * 100;
+            setLoadingProgress(Math.round(overallProgress));
+            setLoadingStatus(`Downloading ${completedFiles + 1}/${totalFiles} files... (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+          }
+
+          completedFiles++;
+          const buffer = new Uint8Array(received);
+          let offset = 0;
+          for (const chunk of chunks) {
+            buffer.set(chunk, offset);
+            offset += chunk.length;
+          }
+          return buffer.buffer;
+        } catch (error) {
+          console.error('Failed to fetch STL:', url, error);
+          completedFiles++;
+          return null;
+        }
+      };
+
+      const loadSTLsForGroup = async (urls: string[], group: THREE.Group, baseColor: number) => {
+        const buffers = await Promise.all(urls.map(url => fetchWithProgress(url)));
+
+        setLoadingStatus('Rendering 3D models...');
+
+        for (const buffer of buffers) {
+          if (cancelled) return null;
+          if (!buffer) continue;
+
+          const geometry = loader.parse(buffer);
+          const material = new THREE.MeshPhongMaterial({
+            color: baseColor, specular: 0x111111, shininess: 10,
+            side: THREE.DoubleSide
+          });
+          group.add(new THREE.Mesh(geometry, material));
+        }
 
         if (group.children.length > 0) {
           const bbox = new THREE.Box3().setFromObject(group);
@@ -377,8 +432,10 @@ const ComparisonPage: React.FC = () => {
         return null;
       };
 
-      const result1 = await loadSTLsForGroup(stlUrls1, group1, 0xffffff);
-      const result2 = await loadSTLsForGroup(stlUrls2, group2, 0x00ffff);
+      const [result1, result2] = await Promise.all([
+        loadSTLsForGroup(stlUrls1, group1, 0xffffff),
+        loadSTLsForGroup(stlUrls2, group2, 0x00ffff)
+      ]);
 
       if (cancelled) return;
 
@@ -1389,8 +1446,15 @@ Report generated by Nivalon 3D Comparison Tool
       </div>
 
       {loading && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#222', color: '#fff', padding: '24px 40px', borderRadius: '12px', fontSize: '18px', fontWeight: 'bold' }}>Loading 3D Models...</div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a2e', color: '#fff', padding: '32px 48px', borderRadius: '16px', minWidth: '320px', textAlign: 'center', border: '1px solid #333' }}>
+            <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Loading 3D Models</div>
+            <div style={{ fontSize: '13px', color: '#aaa', marginBottom: '12px' }}>{loadingStatus}</div>
+            <div style={{ width: '100%', height: '8px', backgroundColor: '#333', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' }}>
+              <div style={{ width: `${loadingProgress}%`, height: '100%', backgroundColor: '#4da6ff', borderRadius: '4px', transition: 'width 0.2s ease' }} />
+            </div>
+            <div style={{ fontSize: '14px', color: '#4da6ff', fontWeight: 'bold' }}>{loadingProgress}%</div>
+          </div>
         </div>
       )}
 

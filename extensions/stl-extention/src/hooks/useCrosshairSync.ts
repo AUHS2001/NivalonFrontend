@@ -31,8 +31,8 @@ type ViewOrientation = 'axial' | 'sagittal' | 'coronal';
 //   Coronal:  vpn=[0,-1,0], viewUp=[0,0,1]   → camera anterior, +Z up
 const ORIENTATION_OFFSETS: Record<ViewOrientation, { dir: THREE.Vector3; up: THREE.Vector3 }> = {
   axial: {
-    dir: new THREE.Vector3(0, 0, -1),   // camera below patient (matches DICOM vpn -Z)
-    up: new THREE.Vector3(0, -1, 0),    // -Y is screen up (matches DICOM viewUp)
+    dir: new THREE.Vector3(0, 0, 1),    // camera above patient — T7 (superior) appears in front
+    up: new THREE.Vector3(0, 1, 0),
   },
   sagittal: {
     dir: new THREE.Vector3(1, 0, 0),
@@ -193,7 +193,7 @@ export const useCrosshairSync = ({
 
   // Cached bounds
   const cachedSTLBoundsRef = useRef<{ min: THREE.Vector3; max: THREE.Vector3 } | null>(null);
-  const cachedVolumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[] } | null>(null);
+  const cachedVolumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] } | null>(null);
 
   // Target marker position for lerp
   const targetMarkerPosRef = useRef(new THREE.Vector3());
@@ -225,7 +225,7 @@ export const useCrosshairSync = ({
       orientation: string;
     }> = [];
 
-    let volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[] } | null = null;
+    let volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] } | null = null;
 
     const viewportEntries = viewports instanceof Map
       ? Array.from(viewports.entries())
@@ -249,6 +249,7 @@ export const useCrosshairSync = ({
                   origin: imageData.origin || [0, 0, 0],
                   dimensions: imageData.dimensions || [512, 512, 100],
                   spacing: imageData.spacing || [1, 1, 1],
+                  direction: imageData.direction ? Array.from(imageData.direction) : undefined,
                 };
               }
             } catch (_) {}
@@ -305,23 +306,29 @@ export const useCrosshairSync = ({
   const transformDICOMToSTL = useCallback((
     dicomPoint: [number, number, number],
     stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
-    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[] }
+    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] }
   ): THREE.Vector3 => {
     const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
     const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
 
-    // Volume size in world coordinates (matches forward transform)
+    // Volume center in world space — must use direction matrix for correct mapping.
+    // Without direction, volumes with flipped Z (dir[8]=-1) compute a center that's
+    // off by the entire volume height, causing all positions to map near the sacrum.
+    const vd = volumeBounds.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const halfI = ((volumeBounds.dimensions[0] - 1) / 2) * volumeBounds.spacing[0];
+    const halfJ = ((volumeBounds.dimensions[1] - 1) / 2) * volumeBounds.spacing[1];
+    const halfK = ((volumeBounds.dimensions[2] - 1) / 2) * volumeBounds.spacing[2];
+
+    const volumeCenter = [
+      volumeBounds.origin[0] + vd[0] * halfI + vd[1] * halfJ + vd[2] * halfK,
+      volumeBounds.origin[1] + vd[3] * halfI + vd[4] * halfJ + vd[5] * halfK,
+      volumeBounds.origin[2] + vd[6] * halfI + vd[7] * halfJ + vd[8] * halfK,
+    ];
+
     const volumeSize = [
       volumeBounds.dimensions[0] * volumeBounds.spacing[0],
       volumeBounds.dimensions[1] * volumeBounds.spacing[1],
       volumeBounds.dimensions[2] * volumeBounds.spacing[2],
-    ];
-
-    // Volume center — simple origin + halfSize (matches forward transform, NO direction matrix)
-    const volumeCenter = [
-      volumeBounds.origin[0] + volumeSize[0] / 2,
-      volumeBounds.origin[1] + volumeSize[1] / 2,
-      volumeBounds.origin[2] + volumeSize[2] / 2,
     ];
 
     // Uniform scale based on Z axis (volumeHeight / stlHeight)
@@ -476,7 +483,7 @@ export const useCrosshairSync = ({
       let distance = 400;
       const ps = latestParallelScaleRef.current;
       if (ps != null) {
-        const zoomScale = orientation === 'axial' ? 0.45 : 1.0;
+        const zoomScale = orientation === 'axial' ? 1.8 : 1.0;
         distance = THREE.MathUtils.clamp(
           (ps / TAN_HALF_FOV) * zoomScale,
           MIN_CAMERA_DISTANCE,
@@ -621,12 +628,66 @@ export const useCrosshairSync = ({
       }
     };
 
+    // Handle toolbar toggle-off (no TOOL_ACTIVATED fires when deactivating
+    // without activating a fallback tool)
+    const handleToolToggledOff = (evt: any) => {
+      const { toolName } = evt?.detail || {};
+      if (toolName === 'Crosshairs' && isActiveRef.current) {
+        isActiveRef.current = false;
+        cleanup();
+      }
+    };
+
     const toolActivatedEvent = ToolEnums.Events.TOOL_ACTIVATED;
     eventTarget.addEventListener(toolActivatedEvent, handleToolActivated);
+    eventTarget.addEventListener('nivalon:toolToggledOff', handleToolToggledOff);
 
     return () => {
       eventTarget.removeEventListener(toolActivatedEvent, handleToolActivated);
+      eventTarget.removeEventListener('nivalon:toolToggledOff', handleToolToggledOff);
       cleanup();
     };
   }, [attachListeners, cleanup]);
+
+  // ─── Re-attach listeners after layout changes (e.g. double-click fullscreen toggle) ───
+  // When layout changes, viewport DOM elements are destroyed and recreated.
+  // The old listeners point to dead elements, so we must re-attach to the new ones.
+  // We listen on ELEMENT_ENABLED (fires on the global eventTarget when any viewport
+  // element is enabled). We check actual Crosshairs tool state because isActiveRef
+  // may have been set to false during the layout transition.
+
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const isCrosshairsToolActive = (): boolean => {
+      try {
+        const { toolGroupService } = servicesManager?.services || {};
+        if (!toolGroupService) return false;
+        const tg = toolGroupService.getToolGroup('mpr');
+        return tg?.getActivePrimaryMouseButtonTool?.() === 'Crosshairs';
+      } catch {
+        return false;
+      }
+    };
+
+    const handleElementEnabled = () => {
+      // Debounce: multiple ELEMENT_ENABLED events fire in quick succession
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (isCrosshairsToolActive()) {
+          isActiveRef.current = true;
+          cachedVolumeBoundsRef.current = null;
+          cachedSTLBoundsRef.current = null;
+          attachListeners();
+        }
+      }, 300);
+    };
+
+    eventTarget.addEventListener(Enums.Events.ELEMENT_ENABLED, handleElementEnabled);
+
+    return () => {
+      eventTarget.removeEventListener(Enums.Events.ELEMENT_ENABLED, handleElementEnabled);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, [servicesManager, attachListeners]);
 };

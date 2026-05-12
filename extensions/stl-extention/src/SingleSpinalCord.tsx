@@ -51,6 +51,7 @@ import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineL
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
+import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
 
 interface SingleSpinalCordProps {
   servicesManager?: any;
@@ -285,6 +286,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     // Apply to all meshes in all views
     meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
     meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
+
+    // Toggle contour overlay on DICOM viewports
+    if (newState) {
+      showContourOverlay(servicesManager);
+    } else {
+      hideContourOverlay();
+    }
   }, [labelViewEnabled, LABEL_COLORS]);
 
   // Effect to apply/remove label colors when label view is toggled
@@ -1754,7 +1762,9 @@ useEffect(() => {
         const maxDim = Math.max(size.x, size.y, size.z);
 
         if (cameraRef.current) {
-          cameraRef.current.position.set(center.x, center.y, maxDim * 2.5);
+          // Coronal view: camera in front (negative Y), looking toward center, Z up
+          cameraRef.current.position.set(center.x, center.y - maxDim * 2.5, center.z);
+          cameraRef.current.up.set(0, 0, 1);
           cameraRef.current.lookAt(center);
         }
 
@@ -2424,9 +2434,10 @@ const createAutomaticSegmentation = async () => {
     clearMeasurements();
     clearAngleMeasurements();
 
-    // Reset camera exactly like your useEffect
+    // Reset camera to coronal view
     if (cameraRef.current) {
-      cameraRef.current.position.set(0, 0, 350);
+      cameraRef.current.position.set(0, -500, 100);
+      cameraRef.current.up.set(0, 0, 1);
       cameraRef.current.lookAt(0, 0, 0);
 
       if (leftControlsRef.current) {

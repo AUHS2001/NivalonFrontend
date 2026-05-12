@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import logo from '../../assets/logo.png';
 import { useNavigate } from 'react-router-dom';
 import { SERVER_URL } from '../../../../config/server';
+import DevelopmentBanner from '../components/DevelopmentBanner';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -86,6 +87,9 @@ const LoginPage: React.FC = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50 }}>
+        <DevelopmentBanner />
+      </div>
       {/* Animated Background Elements */}
       <div style={{
         position: 'absolute',

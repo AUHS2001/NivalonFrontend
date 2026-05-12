@@ -64,35 +64,26 @@ const InvestigationalUseDialog = ({
   }
 
   return (
-    <div></div>
-    // <div className="fixed bottom-2 z-50 flex h-[86px] w-full justify-center">
-    //   <div className="bg-secondary-dark border-primary-dark flex w-[90%] items-center justify-between rounded-lg border-2 pl-[22px] pr-[22px] pt-[10px] pb-[10px] shadow-lg">
-    //     <div className="flex items-center gap-4">
-    //       <Icons.InvestigationalUse className="h-18 w-18" />
-    //       <div className="flex flex-col">
-    //         <div className="text-[19px] text-white">
-    //           OHIF Viewer is{' '}
-    //           <span className="text-primary-light">{t('for investigational use only')}</span>
-    //         </div>
-    //         <div className="text-[13px] text-white">
-    //           <span
-    //             className="text-primary-active cursor-pointer"
-    //             onClick={() => window.open('https://ohif.org/', '_blank')}
-    //           >
-    //             {t('Learn more about OHIF Viewer')}
-    //           </span>
-    //         </div>
-    //       </div>
-    //     </div>
-    //     <Button
-    //       onClick={handleConfirmAndHide}
-    //       className="bg-primary-main"
-    //       dataCY="confirm-and-hide-button"
-    //     >
-    //       {t('Confirm and hide')}
-    //     </Button>
-    //   </div>
-    // </div>
+    <div className="fixed bottom-2 z-50 flex h-[86px] w-full justify-center">
+      <div className="bg-secondary-dark border-primary-dark flex w-[90%] items-center justify-between rounded-lg border-2 pl-[22px] pr-[22px] pt-[10px] pb-[10px] shadow-lg">
+        <div className="flex items-center gap-4">
+          <Icons.InvestigationalUse className="h-18 w-18" />
+          <div className="flex flex-col">
+            <div className="text-[14px] text-white">
+              <span className="text-primary-light font-semibold">Nivalon Medical</span>{' '}
+              is currently in active development. You may experience occasional errors or incomplete features. We appreciate your understanding and patience as we work toward a stable release.
+            </div>
+          </div>
+        </div>
+        <Button
+          onClick={handleConfirmAndHide}
+          className="bg-primary-main"
+          dataCY="confirm-and-hide-button"
+        >
+          {t('Confirm and hide')}
+        </Button>
+      </div>
+    </div>
   );
 };
 
