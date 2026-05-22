@@ -25,6 +25,7 @@ import PatientList from '../components/PatientList';
 import PatientFormData from '../components/CreatePatient'
 import AddUser from '../components/CreateUser'
 import ComparisonPage from '../pages/ComparisonPage'
+import ChangePasswordPage from '../pages/ChangePassword'
 
 const NotFoundServer = ({
   message = 'Unable to query for studies at this time. Check your data source configuration or network connection',
@@ -111,6 +112,10 @@ const bakedInRoutes = [
   {
     path: `/admin`,
     children: Dashboard
+  },
+  {
+    path: `/change-password`,
+    children: ChangePasswordPage
   },
   {
     path: `/patients`,

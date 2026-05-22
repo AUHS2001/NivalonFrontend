@@ -9,12 +9,8 @@ import { CrosshairSyncConfig } from '../types/three.types';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 // --- Constants ---
-const CROSSHAIR_LINE_LENGTH = 22;
-const CROSSHAIR_LINE_RADIUS = 0.6;
-const CROSSHAIR_OUTLINE_RADIUS = 1.1;
-const CROSSHAIR_SPHERE_RADIUS = 2.0;
-const CROSSHAIR_PLANE_SIZE = 14;
-const CROSSHAIR_PLANE_OPACITY = 0.12;
+const CROSSHAIR_CENTER_GAP = 20; // pixels — matches 2D referenceLinesCenterGapRadius
+const CROSSHAIR_LINE_WIDTH = 1;  // pixels — matches 2D crosshair default lineWidth
 const THROTTLE_MS = 16;
 const CAMERA_LERP_FACTOR = 0.12;
 const STL_CAMERA_FOV = 45; // must match SingleSpinalCord.tsx PerspectiveCamera FOV
@@ -44,118 +40,213 @@ const ORIENTATION_OFFSETS: Record<ViewOrientation, { dir: THREE.Vector3; up: THR
   },
 };
 
-// ─── Medical imaging crosshair colors ───
-// RGB = XYZ convention: Red=sagittal(X), Green=coronal(Y), Blue=axial(Z)
+// ─── Medical imaging crosshair colors (matching 2D DICOM viewport colors from initToolGroups.ts) ───
+// All 3 planes needed: as the camera orbits, one plane goes face-on (hidden) while
+// the other 2 remain visible — exactly matching the corresponding 2D viewport.
 const COLORS = {
-  sagittal: 0xff4444, // Red — X axis
-  coronal: 0x44ff44,  // Green — Y axis
-  axial: 0x4488ff,    // Blue — Z axis
-  sagittalDark: 0x661111,
-  coronalDark: 0x116611,
-  axialDark: 0x113366,
-  center: 0xffffff,
-  centerRing: 0xffcc00,
+  axial: 'rgb(200, 0, 0)',      // Red    — Z-normal plane
+  sagittal: 'rgb(200, 200, 0)', // Yellow — X-normal plane
+  coronal: 'rgb(0, 200, 0)',    // Green  — Y-normal plane
 };
 
-// ─── Marker creation ───
+// ─── SVG crosshair overlay (same approach as 2D DICOM CrosshairsTool — SVG lines over canvas) ───
 
-function createAxisCylinder(
-  axis: 'x' | 'y' | 'z',
-  length: number,
-  radius: number,
-  color: number,
-  order = 999
-): THREE.Mesh {
-  const geo = new THREE.CylinderGeometry(radius, radius, length, 8);
-  const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = order;
-  if (axis === 'x') mesh.rotation.z = Math.PI / 2;
-  if (axis === 'z') mesh.rotation.x = Math.PI / 2;
-  return mesh;
+interface SVGCrosshairLines {
+  axialPos: SVGLineElement;
+  axialNeg: SVGLineElement;
+  sagittalPos: SVGLineElement;
+  sagittalNeg: SVGLineElement;
+  coronalPos: SVGLineElement;
+  coronalNeg: SVGLineElement;
+  centerCircle: SVGCircleElement;
 }
 
-function createSlicePlane(
-  orientation: 'axial' | 'sagittal' | 'coronal',
-  size: number,
-  color: number,
-  opacity: number
-): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(size, size);
-  const mat = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 997;
-
-  // Orient the plane perpendicular to its axis
-  if (orientation === 'sagittal') mesh.rotation.y = Math.PI / 2; // YZ plane
-  if (orientation === 'coronal') mesh.rotation.x = Math.PI / 2;  // XZ plane
-  // axial = XY plane (default PlaneGeometry orientation)
-
-  return mesh;
+function createSVGOverlay(container: HTMLElement): SVGSVGElement {
+  // Ensure the container is a positioning context for the absolute SVG
+  if (getComputedStyle(container).position === 'static') {
+    container.style.position = 'relative';
+  }
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'crosshair-svg-overlay');
+  svg.style.position = 'absolute';
+  svg.style.top = '0';
+  svg.style.left = '0';
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.style.pointerEvents = 'none';
+  svg.style.zIndex = '200';
+  svg.style.overflow = 'hidden';
+  container.appendChild(svg);
+  return svg;
 }
 
-function createCrosshairMarker(): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'crosshairSyncMarker';
-  group.renderOrder = 999;
-
-  // --- Dark outlines behind each axis line ---
-  group.add(createAxisCylinder('x', CROSSHAIR_LINE_LENGTH, CROSSHAIR_OUTLINE_RADIUS, COLORS.sagittalDark, 998));
-  group.add(createAxisCylinder('y', CROSSHAIR_LINE_LENGTH, CROSSHAIR_OUTLINE_RADIUS, COLORS.coronalDark, 998));
-  group.add(createAxisCylinder('z', CROSSHAIR_LINE_LENGTH, CROSSHAIR_OUTLINE_RADIUS, COLORS.axialDark, 998));
-
-  // --- Colored axis lines ---
-  group.add(createAxisCylinder('x', CROSSHAIR_LINE_LENGTH, CROSSHAIR_LINE_RADIUS, COLORS.sagittal));
-  group.add(createAxisCylinder('y', CROSSHAIR_LINE_LENGTH, CROSSHAIR_LINE_RADIUS, COLORS.coronal));
-  group.add(createAxisCylinder('z', CROSSHAIR_LINE_LENGTH, CROSSHAIR_LINE_RADIUS, COLORS.axial));
-
-  // --- Semi-transparent slice planes ---
-  group.add(createSlicePlane('axial', CROSSHAIR_PLANE_SIZE, COLORS.axial, CROSSHAIR_PLANE_OPACITY));
-  group.add(createSlicePlane('sagittal', CROSSHAIR_PLANE_SIZE, COLORS.sagittal, CROSSHAIR_PLANE_OPACITY));
-  group.add(createSlicePlane('coronal', CROSSHAIR_PLANE_SIZE, COLORS.coronal, CROSSHAIR_PLANE_OPACITY));
-
-  // --- Center ring (outer glow) ---
-  const ringGeo = new THREE.TorusGeometry(CROSSHAIR_SPHERE_RADIUS * 1.3, 0.4, 8, 24);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: COLORS.centerRing,
-    depthTest: false,
-    depthWrite: false,
-    transparent: true,
-    opacity: 0.6,
-  });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.renderOrder = 999;
-  group.add(ring);
-
-  // --- Center sphere ---
-  const sphereGeo = new THREE.SphereGeometry(CROSSHAIR_SPHERE_RADIUS, 16, 16);
-  const sphereMat = new THREE.MeshBasicMaterial({
-    color: COLORS.center,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-  sphere.renderOrder = 999;
-  group.add(sphere);
-
-  return group;
+function createSVGLine(svg: SVGSVGElement, color: string): SVGLineElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const line = document.createElementNS(ns, 'line');
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', String(CROSSHAIR_LINE_WIDTH));
+  line.setAttribute('stroke-opacity', '1');
+  line.setAttribute('visibility', 'hidden');
+  svg.appendChild(line);
+  return line;
 }
 
-function disposeCrosshairMarker(group: THREE.Group) {
-  group.traverse((obj) => {
-    const m = obj as THREE.Mesh;
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) {
-      if (Array.isArray(m.material)) m.material.forEach(mt => mt.dispose());
-      else (m.material as THREE.Material).dispose();
+function createCenterCircle(svg: SVGSVGElement): SVGCircleElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const circle = document.createElementNS(ns, 'circle');
+  circle.setAttribute('r', '6');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('stroke', 'rgb(255, 0, 0)'); // red center pointer
+  circle.setAttribute('stroke-width', String(CROSSHAIR_LINE_WIDTH));
+  circle.setAttribute('visibility', 'hidden');
+  svg.appendChild(circle);
+  return circle;
+}
+
+function createCrosshairSVGLines(svg: SVGSVGElement): SVGCrosshairLines {
+  return {
+    axialPos: createSVGLine(svg, COLORS.axial),
+    axialNeg: createSVGLine(svg, COLORS.axial),
+    sagittalPos: createSVGLine(svg, COLORS.sagittal),
+    sagittalNeg: createSVGLine(svg, COLORS.sagittal),
+    coronalPos: createSVGLine(svg, COLORS.coronal),
+    coronalNeg: createSVGLine(svg, COLORS.coronal),
+    centerCircle: createCenterCircle(svg),
+  };
+}
+
+function projectToScreen(
+  point: THREE.Vector3,
+  camera: THREE.PerspectiveCamera,
+  width: number,
+  height: number
+): [number, number] | null {
+  const v = point.clone().project(camera);
+  if (v.z > 1) return null; // behind camera
+  return [(v.x + 1) / 2 * width, (-v.y + 1) / 2 * height];
+}
+
+function extendToEdge(
+  cx: number, cy: number,
+  dx: number, dy: number,
+  width: number, height: number
+): [number, number] {
+  // Find smallest positive t where the ray (cx+dx*t, cy+dy*t) hits a viewport edge
+  let t = 10000;
+  if (dx > 1e-6) t = Math.min(t, (width - cx) / dx);
+  else if (dx < -1e-6) t = Math.min(t, -cx / dx);
+  if (dy > 1e-6) {
+    const ty = (height - cy) / dy;
+    if (ty > 0) t = Math.min(t, ty);
+  } else if (dy < -1e-6) {
+    const ty = -cy / dy;
+    if (ty > 0) t = Math.min(t, ty);
+  }
+  if (t < 0) t = 10000;
+  return [cx + dx * t, cy + dy * t];
+}
+
+function updateSVGCrosshair(
+  lines: SVGCrosshairLines,
+  crosshairPos: THREE.Vector3,
+  camera: THREE.PerspectiveCamera,
+  width: number,
+  height: number
+) {
+  const center = projectToScreen(crosshairPos, camera, width, height);
+  if (!center) {
+    lines.axialPos.setAttribute('visibility', 'hidden');
+    lines.axialNeg.setAttribute('visibility', 'hidden');
+    lines.sagittalPos.setAttribute('visibility', 'hidden');
+    lines.sagittalNeg.setAttribute('visibility', 'hidden');
+    lines.coronalPos.setAttribute('visibility', 'hidden');
+    lines.coronalNeg.setAttribute('visibility', 'hidden');
+    lines.centerCircle.setAttribute('visibility', 'hidden');
+    return;
+  }
+
+  const [cx, cy] = center;
+
+  // Center circle at the crosshair intersection point
+  lines.centerCircle.setAttribute('cx', String(cx));
+  lines.centerCircle.setAttribute('cy', String(cy));
+  lines.centerCircle.setAttribute('visibility', 'visible');
+
+  // Camera forward direction — analogous to viewPlaneNormal in the 2D CrosshairsTool.
+  const cameraForward = camera.getWorldDirection(new THREE.Vector3());
+
+  // For each reference plane, compute the intersection direction using the SAME
+  // cross-product algorithm as the 2D CrosshairsTool:
+  //   direction = cross(viewPlaneNormal, otherPlaneNormal)
+  //
+  // This gives the line where the reference plane intersects the camera's viewing plane.
+  // The plane whose normal is parallel to cameraForward will have cross=0 and be hidden,
+  // leaving exactly 2 visible lines — matching the corresponding 2D viewport.
+  //
+  // Example: axial camera (forward≈Z):
+  //   Axial plane:    cross(Z, Z) = 0        → hidden (face-on)
+  //   Sagittal plane: cross(Z, X) = Y        → yellow vertical line  ✓
+  //   Coronal plane:  cross(Z, Y) = -X       → green horizontal line ✓
+  //   (matches exactly what the 2D axial viewport shows)
+
+  const planesDef: Array<{
+    planeNormal: THREE.Vector3;
+    posLine: SVGLineElement;
+    negLine: SVGLineElement;
+  }> = [
+    { planeNormal: new THREE.Vector3(0, 0, 1), posLine: lines.axialPos, negLine: lines.axialNeg },
+    { planeNormal: new THREE.Vector3(1, 0, 0), posLine: lines.sagittalPos, negLine: lines.sagittalNeg },
+    { planeNormal: new THREE.Vector3(0, 1, 0), posLine: lines.coronalPos, negLine: lines.coronalNeg },
+  ];
+
+  planesDef.forEach(({ planeNormal, posLine, negLine }) => {
+    // cross(cameraForward, planeNormal) = world-space intersection direction
+    const worldDir = new THREE.Vector3().crossVectors(cameraForward, planeNormal);
+    const dirLen = worldDir.length();
+    if (dirLen < 0.001) {
+      // Camera looking along this plane's normal — plane is face-on, no visible line
+      posLine.setAttribute('visibility', 'hidden');
+      negLine.setAttribute('visibility', 'hidden');
+      return;
     }
+    worldDir.divideScalar(dirLen);
+
+    // Project the intersection direction to screen space
+    const worldEnd = crosshairPos.clone().add(worldDir);
+    const screenEnd = projectToScreen(worldEnd, camera, width, height);
+    if (!screenEnd) {
+      posLine.setAttribute('visibility', 'hidden');
+      negLine.setAttribute('visibility', 'hidden');
+      return;
+    }
+
+    let dx = screenEnd[0] - cx;
+    let dy = screenEnd[1] - cy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) {
+      posLine.setAttribute('visibility', 'hidden');
+      negLine.setAttribute('visibility', 'hidden');
+      return;
+    }
+    dx /= len;
+    dy /= len;
+
+    // Positive arm: from center+gap to viewport edge
+    const [edgePosX, edgePosY] = extendToEdge(cx, cy, dx, dy, width, height);
+    posLine.setAttribute('x1', String(cx + dx * CROSSHAIR_CENTER_GAP));
+    posLine.setAttribute('y1', String(cy + dy * CROSSHAIR_CENTER_GAP));
+    posLine.setAttribute('x2', String(edgePosX));
+    posLine.setAttribute('y2', String(edgePosY));
+    posLine.setAttribute('visibility', 'visible');
+
+    // Negative arm: from center-gap to opposite viewport edge
+    const [edgeNegX, edgeNegY] = extendToEdge(cx, cy, -dx, -dy, width, height);
+    negLine.setAttribute('x1', String(cx - dx * CROSSHAIR_CENTER_GAP));
+    negLine.setAttribute('y1', String(cy - dy * CROSSHAIR_CENTER_GAP));
+    negLine.setAttribute('x2', String(edgeNegX));
+    negLine.setAttribute('y2', String(edgeNegY));
+    negLine.setAttribute('visibility', 'visible');
   });
 }
 
@@ -177,7 +268,10 @@ export const useCrosshairSync = ({
   leftControlsRef,
   servicesManager,
 }: CrosshairSyncConfig) => {
-  const markerRef = useRef<THREE.Group | null>(null);
+  const svgOverlayRef = useRef<SVGSVGElement | null>(null);
+  const svgLinesRef = useRef<SVGCrosshairLines | null>(null);
+  const currentCrosshairPosRef = useRef(new THREE.Vector3());
+  const crosshairVisibleRef = useRef(false);
   const isActiveRef = useRef(false);
   const listenersRef = useRef<Array<{ element: HTMLElement; event: string; handler: (e: any) => void }>>([]);
   const lastUpdateRef = useRef(0);
@@ -391,6 +485,21 @@ export const useCrosshairSync = ({
   // Lerps marker + camera toward targets, then STOPS so OrbitControls can work freely.
   // OrbitControls is DISABLED during animation to prevent damping conflicts.
 
+  // Helper: re-project SVG lines from current 3D position onto 2D canvas
+  const refreshSVG = useCallback(() => {
+    const cam = cameraRef.current as THREE.PerspectiveCamera | undefined;
+    const renderer = leftRendererRef.current;
+    if (!cam || !renderer || !svgLinesRef.current || !crosshairVisibleRef.current) return;
+    // Use CSS pixel dimensions (not framebuffer which is scaled by devicePixelRatio)
+    const canvas = renderer.domElement;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (width === 0 || height === 0) return;
+    // Ensure camera matrices are up-to-date before projecting
+    cam.updateMatrixWorld();
+    updateSVGCrosshair(svgLinesRef.current, currentCrosshairPosRef.current, cam, width, height);
+  }, [cameraRef, leftRendererRef]);
+
   const startAnimation = useCallback(() => {
     if (animFrameRef.current !== null) return;
 
@@ -402,14 +511,14 @@ export const useCrosshairSync = ({
       const ctrl = leftControlsRef?.current as OrbitControls | undefined;
       let stillMoving = false;
 
-      // ── Lerp marker ──
-      if (markerRef.current && markerRef.current.visible) {
-        const md = markerRef.current.position.distanceTo(targetMarkerPosRef.current);
+      // ── Lerp crosshair 3D position ──
+      if (crosshairVisibleRef.current) {
+        const md = currentCrosshairPosRef.current.distanceTo(targetMarkerPosRef.current);
         if (md > 0.05) {
-          markerRef.current.position.lerp(targetMarkerPosRef.current, 0.25);
+          currentCrosshairPosRef.current.lerp(targetMarkerPosRef.current, 0.25);
           stillMoving = true;
         } else {
-          markerRef.current.position.copy(targetMarkerPosRef.current);
+          currentCrosshairPosRef.current.copy(targetMarkerPosRef.current);
         }
       }
 
@@ -426,9 +535,13 @@ export const useCrosshairSync = ({
           cam.up.lerp(targetCamUpRef.current, CAMERA_LERP_FACTOR);
           cam.up.normalize();
           cam.lookAt(ctrl.target);
+          cam.updateMatrixWorld(); // ensure matrixWorldInverse is fresh for SVG projection
           stillMoving = true;
         }
       }
+
+      // ── Update SVG projection every frame during animation ──
+      refreshSVG();
 
       if (stillMoving) {
         animFrameRef.current = requestAnimationFrame(animate);
@@ -439,7 +552,7 @@ export const useCrosshairSync = ({
     };
 
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [cameraRef, leftControlsRef]);
+  }, [cameraRef, leftControlsRef, refreshSVG]);
 
   const stopAnimation = useCallback(() => {
     if (animFrameRef.current !== null) {
@@ -457,7 +570,7 @@ export const useCrosshairSync = ({
     if (now - lastUpdateRef.current < THROTTLE_MS) return;
     lastUpdateRef.current = now;
 
-    if (!isActiveRef.current || !leftSceneRef.current) return;
+    if (!isActiveRef.current) return;
     if (!latestPositionRef.current) return;
 
     const { stlBounds, volumeBounds } = ensureCachedBounds();
@@ -465,14 +578,16 @@ export const useCrosshairSync = ({
 
     const stlPos = transformDICOMToSTL(latestPositionRef.current, stlBounds, volumeBounds);
 
-    // --- Marker target ---
-    if (!markerRef.current) {
-      markerRef.current = createCrosshairMarker();
-      leftSceneRef.current.add(markerRef.current);
-      markerRef.current.position.copy(stlPos);
+    // --- Create SVG overlay on first update ---
+    if (!svgOverlayRef.current) {
+      const container = leftRendererRef.current?.domElement?.parentElement;
+      if (!container) return;
+      svgOverlayRef.current = createSVGOverlay(container);
+      svgLinesRef.current = createCrosshairSVGLines(svgOverlayRef.current);
+      currentCrosshairPosRef.current.copy(stlPos);
     }
     targetMarkerPosRef.current.copy(stlPos);
-    markerRef.current.visible = true;
+    crosshairVisibleRef.current = true;
 
     // --- Camera orientation + zoom ---
     const vpn = latestViewPlaneNormalRef.current;
@@ -498,7 +613,7 @@ export const useCrosshairSync = ({
     }
 
     startAnimation();
-  }, [leftSceneRef, ensureCachedBounds, transformDICOMToSTL, startAnimation]);
+  }, [leftRendererRef, ensureCachedBounds, transformDICOMToSTL, startAnimation]);
 
   // ──��� Event: CAMERA_MODIFIED (fires on viewport elements) ───
   //
@@ -586,6 +701,54 @@ export const useCrosshairSync = ({
     });
   }, [getCornerstoneViewportsAndBounds]);
 
+  // ─── Read current viewport state immediately (for initial sync on activation) ───
+
+  const initialSync = useCallback(() => {
+    const { viewports } = getCornerstoneViewportsAndBounds();
+    if (viewports.length === 0) return;
+
+    // Composite the crosshair position from all viewports' focalPoints
+    // (same logic as handleCameraModified, but reading current state instead of events)
+    let initialized = false;
+    viewports.forEach(({ viewport, element }) => {
+      try {
+        const camera = viewport.getCamera?.();
+        if (!camera?.focalPoint) return;
+        const fp = camera.focalPoint;
+        const vpn = camera.viewPlaneNormal;
+
+        if (!initialized) {
+          latestPositionRef.current = [fp[0], fp[1], fp[2]];
+          initialized = true;
+        }
+
+        // Each viewport is authoritative for its scroll axis
+        if (vpn && latestPositionRef.current) {
+          const absVpn = [Math.abs(vpn[0]), Math.abs(vpn[1]), Math.abs(vpn[2])];
+          const maxIdx = absVpn.indexOf(Math.max(...absVpn));
+          latestPositionRef.current[maxIdx] = fp[maxIdx];
+        }
+      } catch (_) {}
+    });
+
+    // Use the first viewport's orientation + zoom as initial camera state
+    const firstVp = viewports[0];
+    try {
+      const camera = firstVp.viewport.getCamera?.();
+      if (camera?.viewPlaneNormal) {
+        latestViewPlaneNormalRef.current = [...camera.viewPlaneNormal];
+      }
+      if (camera?.parallelScale != null) {
+        latestParallelScaleRef.current = camera.parallelScale;
+      }
+      activeViewportElementRef.current = firstVp.element;
+    } catch (_) {}
+
+    // Force immediate update (bypass throttle)
+    lastUpdateRef.current = 0;
+    scheduleUpdate();
+  }, [getCornerstoneViewportsAndBounds, scheduleUpdate]);
+
   // ─── Cleanup ───
 
   const cleanup = useCallback(() => {
@@ -596,11 +759,13 @@ export const useCrosshairSync = ({
 
     stopAnimation();
 
-    if (markerRef.current && leftSceneRef.current) {
-      leftSceneRef.current.remove(markerRef.current);
-      disposeCrosshairMarker(markerRef.current);
-      markerRef.current = null;
+    // Remove SVG overlay
+    if (svgOverlayRef.current) {
+      svgOverlayRef.current.parentElement?.removeChild(svgOverlayRef.current);
+      svgOverlayRef.current = null;
+      svgLinesRef.current = null;
     }
+    crosshairVisibleRef.current = false;
 
     activeViewportElementRef.current = null;
     latestPositionRef.current = null;
@@ -609,7 +774,7 @@ export const useCrosshairSync = ({
     cachedSTLBoundsRef.current = null;
     cachedVolumeBoundsRef.current = null;
     currentOrientationRef.current = null;
-  }, [leftSceneRef, stopAnimation]);
+  }, [stopAnimation]);
 
   // ─── Tool activation listener ───
 
@@ -622,6 +787,7 @@ export const useCrosshairSync = ({
         cachedSTLBoundsRef.current = null;
         cachedVolumeBoundsRef.current = null;
         attachListeners();
+        initialSync();
       } else if (isActiveRef.current) {
         isActiveRef.current = false;
         cleanup();
@@ -647,7 +813,7 @@ export const useCrosshairSync = ({
       eventTarget.removeEventListener('nivalon:toolToggledOff', handleToolToggledOff);
       cleanup();
     };
-  }, [attachListeners, cleanup]);
+  }, [attachListeners, cleanup, initialSync]);
 
   // ─── Re-attach listeners after layout changes (e.g. double-click fullscreen toggle) ───
   // When layout changes, viewport DOM elements are destroyed and recreated.
@@ -679,6 +845,7 @@ export const useCrosshairSync = ({
           cachedVolumeBoundsRef.current = null;
           cachedSTLBoundsRef.current = null;
           attachListeners();
+          initialSync();
         }
       }, 300);
     };
@@ -689,5 +856,14 @@ export const useCrosshairSync = ({
       eventTarget.removeEventListener(Enums.Events.ELEMENT_ENABLED, handleElementEnabled);
       if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, [servicesManager, attachListeners]);
+  }, [servicesManager, attachListeners, initialSync]);
+
+  // ─── Update SVG when user orbits the 3D view (OrbitControls 'change') ───
+  useEffect(() => {
+    const controls = leftControlsRef?.current as OrbitControls | undefined;
+    if (!controls) return;
+    const onControlsChange = () => { refreshSVG(); };
+    controls.addEventListener('change', onControlsChange);
+    return () => { controls.removeEventListener('change', onControlsChange); };
+  }, [leftControlsRef, refreshSVG]);
 };

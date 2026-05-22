@@ -1,6 +1,7 @@
 import { id } from './id';
 import toolbarButtons from './toolbarButtons';
 import initToolGroups from './initToolGroups';
+import { initCrosshairCenterCircle, destroyCrosshairCenterCircle } from './crosshairCenterCircle';
 
 const NON_IMAGE_MODALITIES = ['ECG', 'SEG', 'RTSTRUCT', 'RTPLAN', 'PR'];
 
@@ -112,6 +113,7 @@ function modeFactory({ modeConfiguration }) {
 
       // Init Default and SR ToolGroups
       initToolGroups(extensionManager, toolGroupService, commandsManager);
+      initCrosshairCenterCircle();
 
       toolbarService.register(toolbarButtons);
 
@@ -226,6 +228,7 @@ function modeFactory({ modeConfiguration }) {
       syncGroupService.destroy();
       segmentationService.destroy();
       cornerstoneViewportService.destroy();
+      destroyCrosshairCenterCircle();
     },
     /** */
     validationTags: {

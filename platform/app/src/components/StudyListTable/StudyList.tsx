@@ -255,11 +255,26 @@ export default function StudyList() {
                 throw new Error("No valid DICOM files were fetched");
             }
 
-            // Determine the mode path based on user role
+            // Determine the mode path based on user role + permissions
+            const userPermissions: string[] = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+            const hasView = userPermissions.includes('case:view');
+            const hasEdit = userPermissions.includes('case:edit');
+            const hasApprove = userPermissions.includes('case:approve');
+
             let modePath = "viewer/dicomlocal";
-            if (userRole === 'analyst') modePath = "segmentation/dicomlocal";
-            else if (userRole === 'admin') modePath = "segmentation/dicomlocal";
-            else if (userRole === 'signer') modePath = "signons/dicomlocal";
+            if (userRole === 'admin' || userRole === 'super_admin') {
+                modePath = "segmentation/dicomlocal";
+            } else if (userRole === 'analyst') {
+                if (hasEdit) {
+                    // case:view + case:edit (with or without case:approve) → segmentation
+                    modePath = "segmentation/dicomlocal";
+                } else {
+                    // only case:view → signon viewer
+                    modePath = "signons/dicomlocal";
+                }
+            } else if (userRole === 'patient' || userRole === 'signer') {
+                modePath = "signons/dicomlocal";
+            }
 
             // Initialize the dicom local dataSource
             const dataSourceModules = extensionManager.modules[MODULE_TYPES.DATA_SOURCE];

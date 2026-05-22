@@ -62,7 +62,7 @@ function HeaderPatientInfo({ servicesManager, appConfig }: withAppTypes) {
           </>
         ) : (
           <div className="text-white self-center text-[13px]">
-            {isMixedPatients ? 'Multiple Patients' : 'Patient'}
+            {isMixedPatients ? 'Multiple Patients' : (localStorage.getItem('userRole') || 'Patient')}
           </div>
         )}
       </div>

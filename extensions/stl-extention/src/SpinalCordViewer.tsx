@@ -286,12 +286,15 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
           }
         );
 
+        console.log(`[STL Fetch] GET ${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId} → Status: ${response.status}`);
         if (!response.ok) {
-          throw new Error('Failed to fetch data');
+          const errData = await response.json().catch(() => ({}));
+          console.error('[STL Fetch] Error response:', errData);
+          throw new Error(errData.message || errData.detail || 'Failed to fetch data');
         }
 
         const data = await response.json();
-        console.log('Fetched segmentation URLs:', data?.data?.processed?.urls);
+        console.log('[STL Fetch] Segmentation URLs:', data?.data?.processed?.urls);
         setTestStls(data?.data?.processed?.urls || []);
         setVersions(data?.data?.versions || []);
         versionHistory.getVersionHistory();
@@ -320,7 +323,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       45, leftMount.clientWidth / leftMount.clientHeight, 0.1, 10000
     );
     camera.up.copy(LPS_UP); // Set Z as up for LPS
-    camera.position.set(0, -500, 100); // Anterior view (looking from front)
+    camera.position.set(0, -250, 50); // Anterior view (looking from front)
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -646,18 +649,29 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         const maxDim = Math.max(size.x, size.y, size.z);
 
         if (cameraRef.current) {
-          cameraRef.current.position.set(center.x, center.y, maxDim * 2.5);
+          const fov = cameraRef.current.fov * (Math.PI / 180);
+          const fitDist = maxDim / (2 * Math.tan(fov / 2));
+          const camDist = fitDist * 1.0;
+          console.log('[handleFileChange] Camera fit:', { maxDim, fitDist, camDist });
+
+          if (leftControlsRef.current) {
+            leftControlsRef.current.target.copy(center);
+          }
+          if (rightControlsRef.current) {
+            rightControlsRef.current.target.copy(center);
+          }
+
+          cameraRef.current.position.set(center.x, center.y - camDist, center.z);
+          cameraRef.current.up.set(0, 0, 1);
           cameraRef.current.lookAt(center);
-        }
+          cameraRef.current.updateProjectionMatrix();
 
-        if (leftControlsRef.current) {
-          leftControlsRef.current.target.copy(center);
-          leftControlsRef.current.update();
-        }
-
-        if (rightControlsRef.current) {
-          rightControlsRef.current.target.copy(center);
-          rightControlsRef.current.update();
+          if (leftControlsRef.current) {
+            leftControlsRef.current.update();
+          }
+          if (rightControlsRef.current) {
+            rightControlsRef.current.update();
+          }
         }
 
       } catch (err: any) {

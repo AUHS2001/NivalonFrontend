@@ -515,19 +515,33 @@ export const useSTLLoader = ({
 
         if (cameraRef.current) {
           // Coronal view: camera in front (negative Y), Z up
-          cameraRef.current.position.set(center.x, center.y - maxDim * 2.5, center.z);
+          // Use FOV-based distance so model nearly fills the viewport
+          const fov = cameraRef.current.fov * (Math.PI / 180);
+          const fitDist = maxDim / (2 * Math.tan(fov / 2));
+          const camDist = fitDist * 1.0; // Closer than exact fit for a bigger appearance
+          console.log('[useSTLLoader] Camera fit:', { maxDim, fitDist, camDist, center: center.toArray(), size: size.toArray() });
+
+          // Set controls target FIRST, then position camera, then update controls
+          // This order prevents OrbitControls.update() from overriding position
+          if (leftControlsRef.current) {
+            leftControlsRef.current.target.copy(center);
+          }
+          if (rightControlsRef.current) {
+            rightControlsRef.current.target.copy(center);
+          }
+
+          cameraRef.current.position.set(center.x, center.y - camDist, center.z);
           cameraRef.current.up.set(0, 0, 1);
           cameraRef.current.lookAt(center);
-        }
+          cameraRef.current.updateProjectionMatrix();
 
-        if (leftControlsRef.current) {
-          leftControlsRef.current.target.copy(center);
-          leftControlsRef.current.update();
-        }
-
-        if (rightControlsRef.current) {
-          rightControlsRef.current.target.copy(center);
-          rightControlsRef.current.update();
+          // Update controls AFTER camera is in final position so they adopt the new state
+          if (leftControlsRef.current) {
+            leftControlsRef.current.update();
+          }
+          if (rightControlsRef.current) {
+            rightControlsRef.current.update();
+          }
         }
 
         // Center start view
@@ -539,7 +553,9 @@ export const useSTLLoader = ({
         if (startControlsRef.current) {
           const startCamera = startControlsRef.current.object as THREE.PerspectiveCamera;
           // Coronal view: camera in front (negative Y), Z up
-          startCamera.position.set(startCenter.x, startCenter.y - startMaxDim * 2.5, startCenter.z);
+          const startFov = startCamera.fov * (Math.PI / 180);
+          const startFitDist = startMaxDim / (2 * Math.tan(startFov / 2));
+          startCamera.position.set(startCenter.x, startCenter.y - startFitDist * 1.0, startCenter.z);
           startCamera.up.set(0, 0, 1);
           startCamera.lookAt(startCenter);
           startControlsRef.current.target.copy(startCenter);

@@ -1,193 +1,123 @@
 // components/AddUser.tsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { SERVER_URL } from '../../../../config/server';
 
-interface UserFormData {
+interface Role {
+  slug: string;
   name: string;
-  email: string;
-  role: 'Admin' | 'Analyst' | 'Viewer' | 'Approver' | 'Editor';
-  permissions: ('view' | 'approve' | 'edit')[];
-  dateOfJoining: string;
-  department?: string;
-  phone?: string;
-  status: 'Active' | 'Inactive' | 'Pending';
+  description?: string;
 }
 
-interface AddUserProps {
-  onCreateUser: (userData: UserFormData) => Promise<void> | void;
-  onCancel?: () => void;
-}
-
-const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
-  const navigate = useNavigate();
-  const [formData, setFormData] = useState<UserFormData>({
-    name: '',
-    email: '',
-    role: 'Viewer',
-    permissions: ['view'],
-    dateOfJoining: new Date().toISOString().split('T')[0],
-    department: '',
-    phone: '',
-    status: 'Active',
-  });
-
+const AddUser: React.FC = ({ onPageChange }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [selectedRole, setSelectedRole] = useState('');
+  const [roles, setRoles] = useState<Role[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Partial<UserFormData>>({});
+  const [loadingRoles, setLoadingRoles] = useState(true);
+  const [errors, setErrors] = useState<{ name?: string; email?: string; role?: string }>({});
+  const [submitError, setSubmitError] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [tempPassword, setTempPassword] = useState('');
+  const [createdEmail, setCreatedEmail] = useState('');
+  const [copied, setCopied] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    // Clear error for this field
-    if (errors[name as keyof UserFormData]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: undefined
-      }));
-    }
-  };
-
-  const handlePermissionToggle = (permission: 'view' | 'approve' | 'edit') => {
-    setFormData(prev => {
-      const newPermissions = prev.permissions.includes(permission)
-        ? prev.permissions.filter(p => p !== permission)
-        : [...prev.permissions, permission];
-      
-      // If no permissions selected, add 'view' automatically
-      if (newPermissions.length === 0) {
-        return { ...prev, permissions: ['view'] };
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${SERVER_URL}/auth/admin/roles`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!response.ok) throw new Error('Failed to fetch roles');
+        const data = await response.json();
+        const rawRoles = data.roles || data || [];
+        // Handle both object array [{slug, name}] and string array ["admin", "patient"]
+        const parsed = rawRoles.map((r: any) =>
+          typeof r === 'string' ? { slug: r, name: r } : r
+        );
+        setRoles(parsed);
+      } catch (err: any) {
+        console.error('Failed to load roles:', err);
+      } finally {
+        setLoadingRoles(false);
       }
-      
-      return { ...prev, permissions: newPermissions };
-    });
-  };
-
-  const handleRoleChange = (role: UserFormData['role']) => {
-    setFormData(prev => {
-      let permissions = [...prev.permissions];
-      
-      // Set default permissions based on role
-      switch (role) {
-        case 'Admin':
-          permissions = ['view', 'approve', 'edit'];
-          break;
-        case 'Analyst':
-          permissions = ['view', 'edit'];
-          break;
-        case 'Approver':
-          permissions = ['view', 'approve'];
-          break;
-        case 'Editor':
-          permissions = ['view', 'edit'];
-          break;
-        case 'Viewer':
-          permissions = ['view'];
-          break;
-      }
-      
-      return { ...prev, role, permissions };
-    });
-  };
+    };
+    fetchRoles();
+  }, []);
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<UserFormData> = {};
-
-    if (!formData.name.trim()) newErrors.name = 'Full name is required';
-    if (!formData.email.trim()) {
+    const newErrors: { name?: string; email?: string; role?: string } = {};
+    if (!name.trim()) newErrors.name = 'Name is required';
+    if (!email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Invalid email format';
     }
-    if (!formData.role) newErrors.role = 'Role is required';
-    if (!formData.dateOfJoining) newErrors.dateOfJoining = 'Date of joining is required';
-    if (formData.permissions.length === 0) {
-      // This shouldn't happen with our logic, but just in case
-      setFormData(prev => ({ ...prev, permissions: ['view'] }));
-    }
-
+    if (!selectedRole) newErrors.role = 'Role is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
+    setSubmitError('');
+
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
-
     try {
-      // Call the onCreateUser function passed as prop
-    //   await onCreateUser(formData);
-      
-      // Show success message
-      alert(`User created successfully! Role: ${formData.role}`);
-      
-      // Navigate back to users list
-      navigate('/dashboard/users');
-      
-    } catch (error) {
-      console.error('Error creating user:', error);
-      alert('Failed to create user. Please try again.');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${SERVER_URL}/auth/admin/create-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, role: selectedRole }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to create user');
+      }
+
+      setCreatedEmail(email);
+      setTempPassword(data.temporary_password || data.temp_password || data.password || '');
+      setShowSuccessModal(true);
+      setName('');
+      setEmail('');
+      setSelectedRole('');
+    } catch (err: any) {
+      setSubmitError(err.message || 'Failed to create user');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleCancel = () => {
-    if (onCancel) {
-      onCancel();
-    } else {
-      navigate('/dashboard/users');
-    }
+  const inputStyle = {
+    width: '100%',
+    padding: '0.875rem 1rem',
+    backgroundColor: 'rgba(2, 6, 23, 0.5)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '8px',
+    color: '#f8fafc',
+    fontSize: '0.95rem',
+    outline: 'none',
+    transition: 'border-color 0.2s'
   };
 
-  const getPermissionColor = (permission: string) => {
-    switch (permission) {
-      case 'view': return '#3b82f6';
-      case 'approve': return '#10b981';
-      case 'edit': return '#8b5cf6';
-      default: return '#64748b';
-    }
+  const labelStyle = {
+    display: 'block' as const,
+    marginBottom: '0.75rem',
+    color: '#e2e8f0',
+    fontSize: '0.875rem',
+    fontWeight: '500' as const
   };
-
-  const getPermissionLabel = (permission: string) => {
-    switch (permission) {
-      case 'view': return 'View Only';
-      case 'approve': return 'Can Approve';
-      case 'edit': return 'Can Edit';
-      default: return permission;
-    }
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'Admin': return '#ef4444';
-      case 'Analyst': return '#3b82f6';
-      case 'Approver': return '#10b981';
-      case 'Editor': return '#8b5cf6';
-      case 'Viewer': return '#64748b';
-      default: return '#64748b';
-    }
-  };
-
-  const departments = [
-    'Administration',
-    'Medical Records',
-    'Radiology',
-    'Laboratory',
-    'Pharmacy',
-    'Billing',
-    'IT Support',
-    'Human Resources',
-    'Quality Assurance'
-  ];
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
@@ -201,11 +131,11 @@ const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
         <div>
           <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '600' }}>Add New User</h2>
           <p style={{ margin: '0.5rem 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
-            Create a new user account with specific permissions
+            Create a new user account
           </p>
         </div>
-        <button 
-          onClick={() => { onPageChange('users') }}
+        <button
+          onClick={() => onPageChange('users')}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -230,7 +160,17 @@ const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
         </button>
       </div>
 
-      {/* Main Form */}
+      {/* Error Message */}
+      {submitError && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', padding: '1rem',
+          borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)', marginBottom: '1.5rem'
+        }}>
+          {submitError}
+        </div>
+      )}
+
+      {/* Form */}
       <form onSubmit={handleSubmit}>
         <div style={{
           backgroundColor: 'rgba(15, 23, 42, 0.7)',
@@ -241,421 +181,101 @@ const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
           border: '1px solid rgba(255, 255, 255, 0.05)',
           marginBottom: '2rem'
         }}>
-          <h3 style={{
-            margin: '0 0 1.5rem 0',
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: '#e2e8f0'
-          }}>
-            User Information
-          </h3>
-
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.5rem',
-            marginBottom: '2rem'
+            gap: '1.5rem'
           }}>
+            {/* Name */}
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Full Name *
-              </label>
+              <label style={labelStyle}>Full Name *</label>
               <input
                 type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
+                value={name}
+                onChange={(e) => { setName(e.target.value); setErrors(p => ({ ...p, name: undefined })); }}
                 placeholder="Enter full name"
-                style={{
-                  width: '100%',
-                  padding: '0.875rem 1rem',
-                  backgroundColor: 'rgba(2, 6, 23, 0.5)',
-                  border: errors.name ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: '#f8fafc',
-                  fontSize: '0.95rem',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
+                style={{ ...inputStyle, border: errors.name ? '1px solid #ef4444' : inputStyle.border }}
               />
-              {errors.name && (
-                <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>
-                  {errors.name}
-                </p>
-              )}
+              {errors.name && <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>{errors.name}</p>}
             </div>
 
+            {/* Email */}
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Email Address *
-              </label>
+              <label style={labelStyle}>Email Address *</label>
               <input
                 type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="user@nivalon.com"
-                style={{
-                  width: '100%',
-                  padding: '0.875rem 1rem',
-                  backgroundColor: 'rgba(2, 6, 23, 0.5)',
-                  border: errors.email ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: '#f8fafc',
-                  fontSize: '0.95rem',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setErrors(p => ({ ...p, email: undefined })); }}
+                placeholder="user@example.com"
+                style={{ ...inputStyle, border: errors.email ? '1px solid #ef4444' : inputStyle.border }}
               />
-              {errors.email && (
-                <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>
-                  {errors.email}
-                </p>
-              )}
+              {errors.email && <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>{errors.email}</p>}
             </div>
 
+            {/* Role */}
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="+1 (555) 123-4567"
-                style={{
-                  width: '100%',
-                  padding: '0.875rem 1rem',
-                  backgroundColor: 'rgba(2, 6, 23, 0.5)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: '#f8fafc',
-                  fontSize: '0.95rem',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Department
-              </label>
+              <label style={labelStyle}>Role *</label>
               <select
-                name="department"
-                value={formData.department}
-                onChange={handleChange}
+                value={selectedRole}
+                onChange={(e) => { setSelectedRole(e.target.value); setErrors(p => ({ ...p, role: undefined })); }}
                 style={{
-                  width: '100%',
-                  padding: '0.875rem 1rem',
-                  backgroundColor: 'rgba(2, 6, 23, 0.5)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: '#f8fafc',
-                  fontSize: '0.95rem',
-                  outline: 'none',
-                  cursor: 'pointer'
+                  ...inputStyle,
+                  cursor: 'pointer',
+                  border: errors.role ? '1px solid #ef4444' : inputStyle.border
                 }}
               >
-                <option value="">Select Department</option>
-                {departments.map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
+                <option value="">{loadingRoles ? 'Loading roles...' : 'Select a role'}</option>
+                {roles.filter(r => r.slug !== 'super_admin' && r.slug !== 'patient').map(role => (
+                  <option key={role.slug} value={role.slug}>{role.name || role.slug}</option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          {/* Role and Permissions */}
-          <h3 style={{
-            margin: '0 0 1.5rem 0',
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: '#e2e8f0',
-            paddingTop: '1rem',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)'
-          }}>
-            Role & Permissions
-          </h3>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.5rem',
-            marginBottom: '2rem'
-          }}>
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Role *
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {(['Admin', 'Analyst', 'Approver', 'Editor', 'Viewer'] as const).map(role => (
-                  <div key={role} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input
-                      type="radio"
-                      id={`role-${role}`}
-                      name="role"
-                      checked={formData.role === role}
-                      onChange={() => handleRoleChange(role)}
-                      style={{
-                        width: '1.125rem',
-                        height: '1.125rem',
-                        accentColor: getRoleColor(role),
-                        cursor: 'pointer'
-                      }}
-                    />
-                    <label 
-                      htmlFor={`role-${role}`}
-                      style={{
-                        color: '#e2e8f0',
-                        cursor: 'pointer',
-                        fontSize: '0.95rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem'
-                      }}
-                    >
-                      <span style={{
-                        display: 'inline-block',
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: getRoleColor(role)
-                      }}></span>
-                      {role}
-                    </label>
-                  </div>
-                ))}
-              </div>
-              {errors.role && (
-                <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>
-                  {errors.role}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Permissions
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {(['view', 'edit', 'approve'] as const).map(permission => (
-                  <div key={permission} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input
-                      type="checkbox"
-                      id={`permission-${permission}`}
-                      checked={formData.permissions.includes(permission)}
-                      onChange={() => handlePermissionToggle(permission)}
-                      style={{
-                        width: '1.125rem',
-                        height: '1.125rem',
-                        accentColor: getPermissionColor(permission),
-                        cursor: 'pointer'
-                      }}
-                    />
-                    <label 
-                      htmlFor={`permission-${permission}`}
-                      style={{
-                        color: '#e2e8f0',
-                        cursor: 'pointer',
-                        fontSize: '0.95rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem'
-                      }}
-                    >
-                      <span style={{
-                        display: 'inline-block',
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '2px',
-                        backgroundColor: getPermissionColor(permission)
-                      }}></span>
-                      {getPermissionLabel(permission)}
-                    </label>
-                  </div>
-                ))}
-              </div>
-              <p style={{
-                margin: '0.75rem 0 0 0',
-                color: '#94a3b8',
-                fontSize: '0.75rem',
-                fontStyle: 'italic'
-              }}>
-                Permissions are auto-set based on role selection
-              </p>
-            </div>
-          </div>
-
-          {/* Employment Details */}
-          <h3 style={{
-            margin: '0 0 1.5rem 0',
-            fontSize: '1.25rem',
-            fontWeight: '600',
-            color: '#e2e8f0',
-            paddingTop: '1rem',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)'
-          }}>
-            Employment Details
-          </h3>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.5rem',
-            marginBottom: '1rem'
-          }}>
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Date of Joining *
-              </label>
-              <input
-                type="date"
-                name="dateOfJoining"
-                value={formData.dateOfJoining}
-                onChange={handleChange}
-                max={new Date().toISOString().split('T')[0]}
-                style={{
-                  width: '100%',
-                  padding: '0.875rem 1rem',
-                  backgroundColor: 'rgba(2, 6, 23, 0.5)',
-                  border: errors.dateOfJoining ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: '#f8fafc',
-                  fontSize: '0.95rem',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
-              />
-              {errors.dateOfJoining && (
-                <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>
-                  {errors.dateOfJoining}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '0.75rem',
-                color: '#e2e8f0',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}>
-                Status
-              </label>
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                {(['Active', 'Inactive', 'Pending'] as const).map(status => (
-                  <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="radio"
-                      id={`status-${status}`}
-                      name="status"
-                      checked={formData.status === status}
-                      onChange={() => setFormData(prev => ({ ...prev, status }))}
-                      style={{
-                        width: '1rem',
-                        height: '1rem',
-                        accentColor: status === 'Active' ? '#10b981' : 
-                                     status === 'Pending' ? '#f59e0b' : '#64748b',
-                        cursor: 'pointer'
-                      }}
-                    />
-                    <label 
-                      htmlFor={`status-${status}`}
-                      style={{
-                        color: '#e2e8f0',
-                        cursor: 'pointer',
-                        fontSize: '0.875rem'
-                      }}
-                    >
-                      {status}
-                    </label>
-                  </div>
-                ))}
-              </div>
+              {errors.role && <p style={{ margin: '0.5rem 0 0 0', color: '#ef4444', fontSize: '0.875rem' }}>{errors.role}</p>}
             </div>
           </div>
 
           {/* Role Descriptions */}
           <div style={{
-            marginTop: '2rem',
+            marginTop: '1.5rem',
             padding: '1.5rem',
             backgroundColor: 'rgba(2, 6, 23, 0.3)',
             borderRadius: '8px',
             border: '1px solid rgba(255, 255, 255, 0.05)'
           }}>
             <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#e2e8f0' }}>
-              Role Descriptions:
+              Role Descriptions (Default Permissions)
             </h4>
-            <ul style={{
-              margin: 0,
-              paddingLeft: '1.25rem',
-              color: '#94a3b8',
-              fontSize: '0.85rem',
-              lineHeight: '1.6'
-            }}>
-              <li><strong style={{ color: getRoleColor('Admin') }}>Admin</strong>: Full system access, can manage users and settings</li>
-              <li><strong style={{ color: getRoleColor('Analyst') }}>Analyst</strong>: Can view and edit data, generate reports</li>
-              <li><strong style={{ color: getRoleColor('Approver') }}>Approver</strong>: Can view and approve/reject submissions</li>
-              <li><strong style={{ color: getRoleColor('Editor') }}>Editor</strong>: Can view and edit data, but not approve</li>
-              <li><strong style={{ color: getRoleColor('Viewer') }}>Viewer</strong>: Read-only access to view data</li>
-            </ul>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#f59e0b' }}>Super Admin</strong>{': create, edit, manage, view, approve'}
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#ef4444' }}>Admin</strong>{': create, edit, manage, view'}
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#3b82f6' }}>Analyst</strong>{': view'}
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#a855f7' }}>Registry Admin</strong>{': create, edit, manage, view'}
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#06b6d4' }}>User Admin</strong>{': create, edit, manage, view'}
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                <strong style={{ color: '#10b981' }}>Patient</strong>{': view'}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Form Actions */}
+        {/* Actions */}
         <div style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          gap: '1rem',
-          paddingTop: '1rem',
-          borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+          gap: '1rem'
         }}>
           <button
             type="button"
-            onClick={() => { onPageChange('users') }}
+            onClick={() => onPageChange('users')}
             style={{
               padding: '0.875rem 2rem',
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -672,7 +292,7 @@ const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
           >
             Cancel
           </button>
-          
+
           <button
             type="submit"
             disabled={isSubmitting}
@@ -691,42 +311,119 @@ const AddUser: React.FC<AddUserProps> = ({ onPageChange }) => {
               alignItems: 'center',
               gap: '0.5rem'
             }}
-            onMouseOver={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#7c3aed')}
-            onMouseOut={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#8b5cf6')}
+            onMouseOver={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#1d4ed8')}
+            onMouseOut={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#2563eb')}
           >
             {isSubmitting ? (
               <>
                 <span style={{
-                  display: 'inline-block',
-                  width: '16px',
-                  height: '16px',
-                  border: '2px solid rgba(255, 255, 255, 0.3)',
-                  borderTopColor: 'white',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite'
-                }}></span>
-                Creating User...
+                  display: 'inline-block', width: '16px', height: '16px',
+                  border: '2px solid rgba(255, 255, 255, 0.3)', borderTopColor: 'white',
+                  borderRadius: '50%', animation: 'spin 1s linear infinite'
+                }} />
+                Creating...
               </>
-            ) : (
-              'Create User'
-            )}
+            ) : 'Create User'}
           </button>
         </div>
       </form>
 
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            backgroundColor: 'rgba(15, 23, 42, 0.95)', borderRadius: '16px',
+            padding: '2rem', width: '90%', maxWidth: '450px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+            animation: 'slideDown 0.3s ease-out'
+          }}>
+            {/* Success Icon */}
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+              <div style={{
+                width: '56px', height: '56px', borderRadius: '50%',
+                backgroundColor: 'rgba(34, 197, 94, 0.2)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'
+              }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', color: '#e2e8f0' }}>
+                User Created Successfully!
+              </h3>
+              <p style={{ margin: '0.5rem 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
+                Account created for <span style={{ color: '#38bdf8' }}>{createdEmail}</span>
+              </p>
+            </div>
+
+            {/* Temporary Password */}
+            {tempPassword && (
+              <div style={{
+                backgroundColor: 'rgba(2, 6, 23, 0.5)', borderRadius: '8px',
+                padding: '1rem', border: '1px solid rgba(245, 158, 11, 0.3)', marginBottom: '1.5rem'
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: '600', marginBottom: '0.5rem' }}>
+                  TEMPORARY PASSWORD
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <code style={{
+                    flex: 1, padding: '0.625rem 0.75rem', backgroundColor: 'rgba(0,0,0,0.3)',
+                    borderRadius: '6px', color: '#f8fafc', fontSize: '1rem', fontFamily: 'monospace',
+                    letterSpacing: '0.05em', border: '1px solid rgba(255,255,255,0.1)'
+                  }}>
+                    {tempPassword}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(tempPassword);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    style={{
+                      padding: '0.625rem 1rem', backgroundColor: copied ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 182, 255, 0.1)',
+                      color: copied ? '#10b981' : '#38bdf8',
+                      border: copied ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(56, 182, 255, 0.2)',
+                      borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem',
+                      fontWeight: '500', transition: 'all 0.2s', whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <p style={{ margin: '0.5rem 0 0', color: '#94a3b8', fontSize: '0.75rem' }}>
+                  Share this password with the user. They will be prompted to change it on first login.
+                </p>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              onClick={() => { setShowSuccessModal(false); onPageChange('users'); }}
+              style={{
+                width: '100%', padding: '0.75rem', backgroundColor: '#2563eb',
+                color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer',
+                fontSize: '0.95rem', fontWeight: '500', transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        
-        input:focus, select:focus {
-          border-color: #3b82f6 !important;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-        
-        input::placeholder {
-          color: #64748b;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        input:focus, select:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        input::placeholder { color: #64748b; }
       `}</style>
     </div>
   );

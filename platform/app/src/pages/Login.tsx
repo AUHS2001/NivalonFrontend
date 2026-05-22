@@ -49,23 +49,25 @@ const LoginPage: React.FC = () => {
       // Save token in local storage
       localStorage.setItem('token', data.access_token || data.token);
 
-      // Role-based routing using known users
-      const validUsers = [
-        { email: 'hassanafnan20@gmail.com', role: 'analyst' },
-        { email: 'ateeb@gmail.com', role: 'signs' },
-        { email: 'admin@nivalon.com', role: 'admin' }
-      ];
-
-      const user = validUsers.find(u => u.email === email);
-      const role = user?.role || data.role || 'analyst';
+      // Store user info from API response
+      const role = data.user?.role?.slug || 'analyst';
       localStorage.setItem('userRole', role);
+      localStorage.setItem('userName', data.user?.name || '');
+      localStorage.setItem('userEmail', data.user?.email || '');
 
-      if (role === 'admin') {
+      // Store user permissions
+      const permissions = (data.user?.permissions || []).map((p: any) =>
+        typeof p === 'string' ? p : p?.slug || String(p)
+      );
+      localStorage.setItem('userPermissions', JSON.stringify(permissions));
+
+      // Check if user must change password first
+      if (data.user?.must_change_password) {
+        navigate('/change-password');
+      } else if (role === 'admin' || role === 'super_admin' || role === 'registry_admin' || role === 'user_admin') {
         navigate('/admin');
-      } else if(role === 'analyst') {
-        navigate('/localWorklist');
       } else {
-        navigate('/sso')
+        navigate('/localWorklist');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during login');

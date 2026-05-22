@@ -136,19 +136,7 @@ const SignonStlPanel: React.FC<SignonStlPanelProps> = ({
         </div>
       )}
 
-      {/* Error state */}
-      {error && (
-        <div style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.15)',
-          color: '#ef4444',
-          padding: '10px',
-          borderRadius: '6px',
-          marginBottom: '10px',
-          fontSize: '12px'
-        }}>
-          {error}
-        </div>
-      )}
+      {/* Error state - hidden, only logged to console */}
 
       {/* Show All / Hide All buttons */}
       {stlFiles.length > 0 && (
