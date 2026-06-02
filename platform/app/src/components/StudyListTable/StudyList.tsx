@@ -57,6 +57,9 @@ export default function StudyList() {
     const [selectedSeries2, setSelectedSeries2] = useState<Series | null>(null);
     const [comparisonError, setComparisonError] = useState<string>('');
 
+    const [loadingSeriesUid, setLoadingSeriesUid] = useState<string | null>(null);
+    const [seriesLoadProgress, setSeriesLoadProgress] = useState(0);
+
     const toggleRow = (studyInstanceUid: string) => {
       setExpandedStudyId(expandedStudyId === studyInstanceUid ? null : studyInstanceUid);
     };
@@ -75,6 +78,111 @@ export default function StudyList() {
         // Pass the entire array now
     };
 
+
+    const handleLoadSeries = async (series: Series, study: Study) => {
+        try {
+            setLoadingSeriesUid(series.series_instance_uid);
+            setSeriesLoadProgress(0);
+
+            updateStlInstanceId(series.series_instance_uid);
+            updateSeriesName(series.description);
+            updateSeriesList(study.series);
+            updateParentStudyId(study.study_instance_uid);
+
+            cleanupPreviousStudy();
+
+            setSeriesLoadProgress(10);
+
+            // Fetch all instance URLs for this series
+            let urls: string[] = [];
+            if (series.instance_url) {
+                urls = [series.instance_url];
+            }
+            try {
+                const fetchedUrls = await fetchInitialBatch(series.series_instance_uid, 999999);
+                if (fetchedUrls.length > 0) urls = fetchedUrls;
+            } catch (err) {
+                console.warn('[LoadSeries] Failed to fetch URLs, using instance_url fallback:', err);
+            }
+
+            if (urls.length === 0) {
+                throw new Error('No instance URLs found for this series');
+            }
+
+            setSeriesLoadProgress(20);
+
+            // Download all files for this series
+            const totalFiles = urls.length;
+            let completed = 0;
+
+            const downloadFile = async (url: string): Promise<File | null> => {
+                for (let retries = 0; retries < 3; retries++) {
+                    try {
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const blob = await res.blob();
+                        if (study.study_instance_uid) cacheBlob(url, blob);
+                        completed++;
+                        setSeriesLoadProgress(20 + Math.round((completed / totalFiles) * 70));
+                        return new File([blob], url.split('/').pop() || 'dicom.dcm', {
+                            type: blob.type || 'application/dicom',
+                        });
+                    } catch {
+                        if (retries === 2) {
+                            completed++;
+                            setSeriesLoadProgress(20 + Math.round((completed / totalFiles) * 70));
+                            return null;
+                        }
+                        await new Promise(r => setTimeout(r, 1000 * (retries + 1)));
+                    }
+                }
+                return null;
+            };
+
+            const files = await Promise.all(urls.map(url => downloadFile(url)));
+            const validFiles = files.filter((f): f is File => f !== null);
+
+            if (validFiles.length === 0) {
+                throw new Error('No valid DICOM files were fetched');
+            }
+
+            // Determine mode path
+            const userPermissions: string[] = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+            const hasEdit = userPermissions.includes('case:edit');
+
+            let modePath = "viewer/dicomlocal";
+            if (userRole === 'admin' || userRole === 'super_admin') {
+                modePath = "segmentation/dicomlocal";
+            } else if (userRole === 'analyst') {
+                modePath = hasEdit ? "segmentation/dicomlocal" : "signons/dicomlocal";
+            } else if (userRole === 'patient' || userRole === 'signer') {
+                modePath = "signons/dicomlocal";
+            }
+
+            const dataSourceModules = extensionManager.modules[MODULE_TYPES.DATA_SOURCE];
+            const localDataSources = dataSourceModules.reduce((acc, curr) => {
+                const mods = [];
+                curr.module.forEach(mod => { if (mod.type === 'localApi') mods.push(mod); });
+                return acc.concat(mods);
+            }, []);
+            const dataSource = localDataSources[0].createDataSource({});
+
+            const studies = await filesToStudies(validFiles, dataSource);
+            setSeriesLoadProgress(100);
+
+            const query = new URLSearchParams();
+            studies.forEach(id => query.append('StudyInstanceUIDs', id));
+            query.append('datasources', 'dicomlocal');
+            query.append('t', Date.now().toString());
+            navigate(`/${modePath}?${decodeURIComponent(query.toString())}`);
+
+        } catch (err) {
+            console.error('[LoadSeries] Failed:', err);
+        } finally {
+            setLoadingSeriesUid(null);
+            setSeriesLoadProgress(0);
+        }
+    };
 
     useEffect(() => {
         console.log("role => ",userRole);
@@ -686,18 +794,63 @@ export default function StudyList() {
                             {/* Sub Table */}
                             <div className="rounded" style={{ backgroundColor: "#0a0e17", border: '1px solid white' }}>
                                 <div className="d-flex p-2 border-bottom border-dark">
-                                    <div style={{ width: '40%' }} className="fw-bold">Description</div>
-                                    <div style={{ width: '20%' }} className="fw-bold">Series</div>
-                                    <div style={{ width: '20%' }} className="fw-bold">Modality</div>
-                                    <div style={{ width: '20%' }} className="fw-bold">Instances</div>
+                                    <div style={{ width: '30%' }} className="fw-bold">Description</div>
+                                    <div style={{ width: '15%' }} className="fw-bold">Series</div>
+                                    <div style={{ width: '15%' }} className="fw-bold">Modality</div>
+                                    <div style={{ width: '15%' }} className="fw-bold">Instances</div>
+                                    <div style={{ width: '25%' }} className="fw-bold">Action</div>
                                 </div>
                                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                                     {study.series.map((item, index) => (
-                                        <div key={index} className="d-flex p-2 border-bottom border-dark">
-                                            <div style={{ width: '40%' }}>{item.description || 'N/A'}</div>
-                                            <div style={{ width: '20%' }}>{item.series_number || 'N/A'}</div>
-                                            <div style={{ width: '20%' }}>{item.modality || 'N/A'}</div>
-                                            <div style={{ width: '20%' }}>{item.num_series_instances || 'N/A'}</div>
+                                        <div key={index} className="d-flex p-2 border-bottom border-dark align-items-center">
+                                            <div style={{ width: '30%' }}>{item.description || 'N/A'}</div>
+                                            <div style={{ width: '15%' }}>{item.series_number || 'N/A'}</div>
+                                            <div style={{ width: '15%' }}>{item.modality || 'N/A'}</div>
+                                            <div style={{ width: '15%' }}>{item.num_series_instances || 'N/A'}</div>
+                                            <div style={{ width: '25%' }}>
+                                                <button
+                                                    className={`btn btn-sm me-1 ${loadingSeriesUid === item.series_instance_uid ? '' : 'btn-primary'}`}
+                                                    onClick={() => handleLoadSeries(item, study)}
+                                                    disabled={loadingSeriesUid !== null || loadingStudyIndex !== null}
+                                                    style={{
+                                                        minWidth: 100,
+                                                        position: 'relative',
+                                                        overflow: 'hidden',
+                                                        ...(loadingSeriesUid === item.series_instance_uid ? {
+                                                            backgroundColor: '#1a1f2e',
+                                                            border: '2px solid #0d6efd',
+                                                            color: '#fff',
+                                                        } : {}),
+                                                    }}
+                                                >
+                                                    {loadingSeriesUid === item.series_instance_uid && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: 0,
+                                                            left: 0,
+                                                            height: '100%',
+                                                            width: `${seriesLoadProgress}%`,
+                                                            background: 'linear-gradient(90deg, #0d6efd, #3d8bfd)',
+                                                            transition: 'width 0.3s ease',
+                                                            zIndex: 0,
+                                                            borderRadius: 'inherit',
+                                                        }} />
+                                                    )}
+                                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: loadingSeriesUid === item.series_instance_uid ? 700 : 400 }}>
+                                                        {loadingSeriesUid === item.series_instance_uid ? (
+                                                            <>
+                                                                <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 14, height: 14 }}></span>
+                                                                {seriesLoadProgress}%
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="me-1">→</span>
+                                                                View
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
