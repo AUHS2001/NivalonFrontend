@@ -7,6 +7,7 @@ export interface ToolDef {
   active: boolean;
   disabled?: boolean;
   danger?: boolean;
+  hidden?: boolean;
   onClick: () => void;
 }
 

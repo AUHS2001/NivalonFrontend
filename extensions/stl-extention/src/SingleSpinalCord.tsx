@@ -77,6 +77,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [removing, setRemoving] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
+  const undoOrderRef = useRef<('bone' | 'click')[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -1964,6 +1965,14 @@ const createAutomaticSegmentation = async () => {
 // Helper function to get active display sets
 
 
+  const setUndoStackTracked: typeof setUndoStack = (action) => {
+    setUndoStack(prev => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next.length > prev.length) undoOrderRef.current.push('bone');
+      return next;
+    });
+  };
+
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
     removalMode,
     leftRendererRef,
@@ -1972,7 +1981,7 @@ const createAutomaticSegmentation = async () => {
     meshRefs,
     removalCanvasRef,
     setRemoving,
-    setUndoStack,
+    setUndoStack: setUndoStackTracked,
     setRemovalOutline,
     removalOutline
   });
@@ -2278,6 +2287,7 @@ const createAutomaticSegmentation = async () => {
             ...stack,
             { leftMesh, rightMesh, index: idx }
           ]);
+          undoOrderRef.current.push('click');
         }
       }
     };
@@ -2427,6 +2437,7 @@ const createAutomaticSegmentation = async () => {
     setRemovalOutline([]);
     setUndoStack([]);
     setClickRemovalUndoStack([]);
+    undoOrderRef.current = [];
     setRemovalMode(false);
     setRemoving(false);
     toggleBrightness();
@@ -2584,6 +2595,18 @@ const createAutomaticSegmentation = async () => {
     setUndoStack(stack => stack.slice(0, -1));
   };
 
+  const handleUnifiedUndo = () => {
+    const order = undoOrderRef.current;
+    if (order.length === 0) return;
+    const lastType = order[order.length - 1];
+    order.pop();
+    if (lastType === 'bone') {
+      handleUndo();
+    } else {
+      undoClickRemoval();
+    }
+  };
+
   // Extracted toggle handlers for 3D tool bridge registration
   const handleToggleRotation = useCallback(() => {
     setRotationMode(prev => !prev);
@@ -2647,7 +2670,7 @@ const createAutomaticSegmentation = async () => {
   toolCallbacksRef.current = {
     fileSelect: () => document.getElementById('stl-file-input')?.click(),
     boneRemoval: () => setRemovalMode(!removalMode),
-    undoRemoval: handleUndo,
+    undo: handleUnifiedUndo,
     linking: toggleLinking,
     alignment: toggleCenterLine,
     download: downloadGenerated3D,
@@ -2663,7 +2686,6 @@ const createAutomaticSegmentation = async () => {
     screenshot: handleScreenshot,
     merge: showMerge ? removeBoneAndRainbowFromAllViewports : applyBoneAndRainbowToAllViewports,
     clickRemoval: () => onToggleClickRemoval(!clickRemovalMode),
-    undoClickRemoval: undoClickRemoval,
     labelView: () => onToggleRightView(!labelViewEnabled),
     spineLabeling: toggleSpineLabelingMode,
     colorMode: toggleColorMode,
@@ -2680,7 +2702,6 @@ const createAutomaticSegmentation = async () => {
     const toolDefs: ToolDef[] = [
       { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, disabled: loading, onClick: makeOnClick('fileSelect') },
       { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
-      { id: 'undoRemoval', label: 'Undo Removal', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0, onClick: makeOnClick('undoRemoval') },
       { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking') },
       { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment') },
       { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
@@ -2696,7 +2717,6 @@ const createAutomaticSegmentation = async () => {
       { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
       { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
       { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
-      { id: 'undoClickRemoval', label: 'Undo Click Removal', icon: 'fa-undo-alt', active: false, disabled: clickRemovalUndoStack.length === 0, onClick: makeOnClick('undoClickRemoval') },
       { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
       { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
       { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
@@ -2705,6 +2725,7 @@ const createAutomaticSegmentation = async () => {
         : []),
       { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
       { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
+      { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0 && clickRemovalUndoStack.length === 0, onClick: makeOnClick('undo'), hidden: true },
     ];
     registerTools(toolDefs);
   }, [
