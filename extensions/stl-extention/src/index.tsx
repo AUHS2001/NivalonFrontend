@@ -5,6 +5,7 @@ import SignonStlPanel from './SignonStlPanel';
 import React from 'react';
 import { toggleSpineLabelOverlay } from './utils/spineLabelOverlayManager';
 import ThreeDToolsDropdown from './components/ThreeDToolsDropdown';
+import ThreeDUndoButton from './components/ThreeDUndoButton';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -116,6 +117,10 @@ export default {
       {
         name: 'stl.threeDToolsDropdown',
         defaultComponent: ThreeDToolsDropdown,
+      },
+      {
+        name: 'stl.threeDUndoButton',
+        defaultComponent: ThreeDUndoButton,
       },
     ];
   },

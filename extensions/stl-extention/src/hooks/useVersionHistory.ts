@@ -35,7 +35,8 @@ export const useVersionHistory = ({
             headers: {
               Authorization: `Bearer ${userToken}`,
               "Content-Type": "application/json"
-            }
+            },
+            credentials: 'include',
           }
         );
 

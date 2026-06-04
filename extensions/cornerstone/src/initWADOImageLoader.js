@@ -26,6 +26,7 @@ export default function initWADOImageLoader(
       appConfig.maxNumberOfWebWorkers
     ),
     beforeSend: function (xhr) {
+      xhr.withCredentials = true;
       //TODO should be removed in the future and request emitted by DicomWebDataSource
       const sourceConfig = extensionManager.getActiveDataSource()?.[0].getConfig() ?? {};
       const headers = userAuthenticationService.getAuthorizationHeader();

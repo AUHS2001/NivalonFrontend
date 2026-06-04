@@ -41,6 +41,7 @@ const CreateRegistry: React.FC<{ onPageChange: (page: string) => void }> = ({ on
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           name,
           email,

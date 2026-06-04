@@ -58,7 +58,8 @@ const SingleSignOnPage: React.FC = () => {
         headers: {
           Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwicm9sZSI6ImFuYWx5c3QiLCJleHAiOjE3OTYyMDMxNDF9.cLkGlpxslfYOe_ZKuseyCiuP7jsr3m8XXZyyrUU5B1Y',
           'Content-Type': 'application/json'
-        }
+        },
+        withCredentials: true
       });
       const studies = response.data?.data || [];
 
@@ -127,7 +128,23 @@ const SingleSignOnPage: React.FC = () => {
           let retries = 0;
           while (retries < 3) {
             try {
-              const res = await fetch(url);
+              const res = await fetch(url, { credentials: 'include' });
+              if (res.status === 403) {
+                console.warn(`[SSO] 403 on ${url}, refreshing cookies...`);
+                try {
+                  await fetch(`${SERVER_URL}/imaging/studies`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+                    credentials: 'include',
+                  });
+                } catch (_) {}
+                const retry = await fetch(url, { credentials: 'include' });
+                if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
+                const blob = await retry.blob();
+                const fileName = url.split('/').pop();
+                return new File([blob], fileName || `dicom-${idx}.dcm`, {
+                  type: blob.type || 'application/dicom',
+                });
+              }
               if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
               const blob = await res.blob();
               const fileName = url.split('/').pop();
@@ -136,8 +153,8 @@ const SingleSignOnPage: React.FC = () => {
               });
             } catch (error) {
               retries++;
+              console.error(`[SSO] Attempt ${retries}/3 failed for ${url}:`, error);
               if (retries === 3) {
-                console.error(`Failed to fetch ${url} after ${retries} attempts`);
                 return null;
               }
               await new Promise((resolve) => setTimeout(resolve, 1000 * retries));

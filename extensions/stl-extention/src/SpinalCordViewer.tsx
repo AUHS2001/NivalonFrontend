@@ -282,7 +282,8 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
             headers: {
               Authorization: `Bearer ${userToken}`,
               "Content-Type": "application/json"
-            }
+            },
+            credentials: 'include',
           }
         );
 

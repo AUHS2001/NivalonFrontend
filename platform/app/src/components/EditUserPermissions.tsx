@@ -45,6 +45,7 @@ const EditUserPermissions: React.FC<EditUserPermissionsProps> = ({ user, onPageC
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
@@ -103,7 +104,7 @@ const EditUserPermissions: React.FC<EditUserPermissionsProps> = ({ user, onPageC
       if (addPermissions.length > 0) {
         const addBody = { add_permissions: addPermissions, remove_permissions: [] };
         console.log('PATCH add:', JSON.stringify(addBody));
-        const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(addBody) });
+        const res = await fetch(url, { method: 'PATCH', headers, credentials: 'include' as RequestCredentials, body: JSON.stringify(addBody) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || data.error || data.detail || `HTTP ${res.status}`);
       }
@@ -111,7 +112,7 @@ const EditUserPermissions: React.FC<EditUserPermissionsProps> = ({ user, onPageC
       if (removePermissions.length > 0) {
         const removeBody = { add_permissions: [], remove_permissions: removePermissions };
         console.log('PATCH remove:', JSON.stringify(removeBody));
-        const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(removeBody) });
+        const res = await fetch(url, { method: 'PATCH', headers, credentials: 'include' as RequestCredentials, body: JSON.stringify(removeBody) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || data.error || data.detail || `HTTP ${res.status}`);
       }

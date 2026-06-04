@@ -107,6 +107,7 @@ const DicomUploadPage: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${userToken}`,
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 

@@ -10,7 +10,8 @@ import {
 } from '@ohif/ui-next';
 
 const ThreeDToolsDropdown: React.FC = () => {
-  const tools = useThreeDTools();
+  const allTools = useThreeDTools();
+  const tools = allTools.filter(t => !t.hidden);
   const disabled = tools.length === 0;
 
   return (

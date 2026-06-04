@@ -179,8 +179,8 @@ const ComparisonPage: React.FC = () => {
           : `${SERVER_URL}/analyst/meshes?series_instance_uid=${series2Uid}&_t=${timestamp + 1}`;
 
         const [response1, response2] = await Promise.all([
-          fetch(url1, { headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" }, cache: 'no-store' }),
-          fetch(url2, { headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" }, cache: 'no-store' })
+          fetch(url1, { headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" }, credentials: 'include', cache: 'no-store' }),
+          fetch(url2, { headers: { Authorization: `Bearer ${userToken}`, "Content-Type": "application/json" }, credentials: 'include', cache: 'no-store' })
         ]);
 
         if (!response1.ok || !response2.ok) throw new Error('Failed to fetch 3D models');
@@ -353,7 +353,17 @@ const ComparisonPage: React.FC = () => {
       const fetchWithProgress = async (url: string): Promise<ArrayBuffer | null> => {
         if (cancelled) return null;
         try {
-          const response = await fetch(url, { cache: 'no-store' });
+          let response = await fetch(url, { credentials: 'include', cache: 'no-store' });
+          if (response.status === 403) {
+            console.warn(`[ComparisonPage] 403 on ${url}, refreshing cookies...`);
+            try {
+              await fetch(`${SERVER_URL}/imaging/studies`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+                credentials: 'include',
+              });
+            } catch (_) {}
+            response = await fetch(url, { credentials: 'include', cache: 'no-store' });
+          }
           if (!response.ok) return null;
 
           const contentLength = response.headers.get('content-length');

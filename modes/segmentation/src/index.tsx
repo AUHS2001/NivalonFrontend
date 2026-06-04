@@ -130,6 +130,7 @@ function modeFactory({ modeConfiguration }) {
         'MoreTools',
         'SpineLabel',
         '3DTools',
+        '3DUndo',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topLeft, [

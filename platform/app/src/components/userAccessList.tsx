@@ -40,6 +40,7 @@ const UserAccess: React.FC = ({ onPageChange }) => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
         });
         if (!response.ok) throw new Error('Failed to fetch users');
         const data = await response.json();

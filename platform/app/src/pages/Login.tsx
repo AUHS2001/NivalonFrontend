@@ -37,6 +37,7 @@ const LoginPage: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
@@ -60,6 +61,16 @@ const LoginPage: React.FC = () => {
         typeof p === 'string' ? p : p?.slug || String(p)
       );
       localStorage.setItem('userPermissions', JSON.stringify(permissions));
+
+      // Set CloudFront cookies upfront by hitting a backend endpoint
+      try {
+        await fetch(`${SERVER_URL}/imaging/studies`, {
+          headers: { Authorization: `Bearer ${data.access_token || data.token}` },
+          credentials: 'include',
+        });
+      } catch (_) {
+        // Non-fatal: cookies may be set by login response already
+      }
 
       // Check if user must change password first
       if (data.user?.must_change_password) {
