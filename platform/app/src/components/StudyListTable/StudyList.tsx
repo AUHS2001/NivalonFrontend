@@ -115,29 +115,15 @@ export default function StudyList() {
             const totalFiles = urls.length;
             let completed = 0;
 
+            const isCloudFrontUrl = (u: string) => !u.startsWith(SERVER_URL);
+
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        const res = await fetch(url, { credentials: 'include' });
-                        if (res.status === 403) {
-                            // Cookie may have expired — refresh and retry
-                            console.warn(`[downloadFile] 403 on ${url}, refreshing cookies...`);
-                            try {
-                                await fetch(`${SERVER_URL}/imaging/studies`, {
-                                    headers: { Authorization: `Bearer ${userToken}` },
-                                    credentials: 'include',
-                                });
-                            } catch (_) {}
-                            const retry = await fetch(url, { credentials: 'include' });
-                            if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
-                            const blob = await retry.blob();
-                            if (study.study_instance_uid) cacheBlob(url, blob);
-                            completed++;
-                            setSeriesLoadProgress(20 + Math.round((completed / totalFiles) * 70));
-                            return new File([blob], url.split('/').pop() || 'dicom.dcm', {
-                                type: blob.type || 'application/dicom',
-                            });
-                        }
+                        // CloudFront URLs: no credentials (CORS doesn't support it)
+                        // Backend URLs: always use credentials
+                        const fetchOpts: RequestInit = isCloudFrontUrl(url) ? {} : { credentials: 'include' };
+                        const res = await fetch(url, fetchOpts);
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
                         if (study.study_instance_uid) cacheBlob(url, blob);
@@ -159,8 +145,18 @@ export default function StudyList() {
                 return null;
             };
 
-            const files = await Promise.all(urls.map(url => downloadFile(url)));
-            const validFiles = files.filter((f): f is File => f !== null);
+            // Download with concurrency limit to avoid overwhelming the browser
+            const CONCURRENCY = 6;
+            const results: (File | null)[] = new Array(urls.length);
+            let nextIdx = 0;
+            const worker = async () => {
+                while (nextIdx < urls.length) {
+                    const i = nextIdx++;
+                    results[i] = await downloadFile(urls[i]);
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urls.length) }, () => worker()));
+            const validFiles = results.filter((f): f is File => f !== null);
 
             if (validFiles.length === 0) {
                 throw new Error('No valid DICOM files were fetched');
@@ -345,52 +341,22 @@ export default function StudyList() {
                 }
             });
 
-            console.log(`[StudyList] URLs to download (${urlsToDownload.length}):`, urlsToDownload.slice(0, 3));
-
             setLoadingProgress(15);
 
             // ── PHASE 2: Download all files ──
             const totalFiles = urlsToDownload.length;
             let completed = 0;
+            const isCloudFrontUrl = (u: string) => !u.startsWith(SERVER_URL);
 
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        console.log(`[downloadFile] Attempt ${retries + 1} fetching: ${url.substring(0, 80)}...`);
-                        const res = await fetch(url, { credentials: 'include' });
-                        console.log(`[downloadFile] Response: status=${res.status}, type=${res.type}, headers=`, {
-                            contentType: res.headers.get('content-type'),
-                            contentLength: res.headers.get('content-length'),
-                            cors: res.headers.get('access-control-allow-origin'),
-                        });
-                        if (res.status === 403) {
-                            // Cookie may have expired — refresh and retry
-                            console.warn(`[downloadFile] 403 on ${url}, refreshing cookies...`);
-                            try {
-                                await fetch(`${SERVER_URL}/imaging/studies`, {
-                                    headers: { Authorization: `Bearer ${userToken}` },
-                                    credentials: 'include',
-                                });
-                            } catch (_) {}
-                            const retry = await fetch(url, { credentials: 'include' });
-                            console.log(`[downloadFile] After refresh: status=${retry.status}`);
-                            if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
-                            const blob = await retry.blob();
-                            if (studyUID) cacheBlob(url, blob);
-                            const fileName = url.split('/').pop();
-                            completed++;
-                            setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
-                            return new File([blob], fileName || 'dicom.dcm', {
-                                type: blob.type || 'application/dicom',
-                            });
-                        }
+                        // CloudFront URLs: no credentials (CORS doesn't support it)
+                        // Backend URLs: always use credentials
+                        const fetchOpts: RequestInit = isCloudFrontUrl(url) ? {} : { credentials: 'include' };
+                        const res = await fetch(url, fetchOpts);
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
-                        console.log(`[downloadFile] Blob: size=${blob.size}, type=${blob.type}`);
-                        if (blob.size === 0) {
-                            console.warn(`[downloadFile] Empty blob for ${url}`);
-                            throw new Error('Empty response body');
-                        }
                         if (studyUID) cacheBlob(url, blob);
                         const fileName = url.split('/').pop();
                         completed++;
@@ -411,10 +377,18 @@ export default function StudyList() {
                 return null;
             };
 
-            const files = await Promise.all(urlsToDownload.map(url => downloadFile(url)));
-            const validFiles = files.filter((f): f is File => f !== null);
-
-            console.log(`[StudyList] Download results: ${validFiles.length}/${files.length} valid files`);
+            // Download with concurrency limit to avoid overwhelming the browser
+            const CONCURRENCY = 6;
+            const downloadResults: (File | null)[] = new Array(urlsToDownload.length);
+            let nextDlIdx = 0;
+            const dlWorker = async () => {
+                while (nextDlIdx < urlsToDownload.length) {
+                    const i = nextDlIdx++;
+                    downloadResults[i] = await downloadFile(urlsToDownload[i]);
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urlsToDownload.length) }, () => dlWorker()));
+            const validFiles = downloadResults.filter((f): f is File => f !== null);
 
             if (validFiles.length === 0) {
                 throw new Error("No valid DICOM files were fetched");
