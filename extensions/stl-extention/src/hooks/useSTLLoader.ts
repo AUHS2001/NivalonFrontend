@@ -7,7 +7,7 @@ import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useMeshVisibility } from '../hooks/useMeshVisibility';
 import { storeVertebraData } from '../utils/spineLabelOverlayManager';
 import { storeMeshDataForContours } from '../utils/vertebraContourOverlayManager';
-import { SERVER_URL } from '../../../../config/server';
+import { fetchFile } from '../../../../config/server';
 
 interface UseSTLLoaderProps {
   stlUrls: string[];
@@ -242,10 +242,7 @@ export const useSTLLoader = ({
 
     const loadPromises = stlUrls.map(async (url, index) => {
       try {
-        // CloudFront URLs: fetch without credentials (CORS doesn't support credentials)
-        // Backend URLs: always use credentials
-        const isCF = !url.startsWith(SERVER_URL);
-        const response = await fetch(url, isCF ? {} : { credentials: 'include' });
+        const response = await fetchFile(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }

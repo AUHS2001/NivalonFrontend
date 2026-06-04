@@ -3,7 +3,7 @@ import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import * as cornerstone from '@cornerstonejs/core';
 import FileLoaderService from '../routes/Local/fileLoaderService';
 import { getCachedBlob, cacheBlob, markCacheComplete } from '../utils/dicomCache';
-import { SERVER_URL } from '../../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../../config/server';
 
 interface SeriesLoadState {
   allUrls: string[];
@@ -60,14 +60,9 @@ async function downloadAndProcessBlob(
   blob = await getCachedBlob(url);
 
   if (!blob) {
-    const isCF = !url.startsWith(SERVER_URL);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        // CloudFront: no credentials (CORS doesn't support it)
-        // Backend: always use credentials
-        const fetchOpts: RequestInit = { signal };
-        if (!isCF) fetchOpts.credentials = 'include';
-        const res = await fetch(url, fetchOpts);
+        const res = await fetchFile(url, { signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         blob = await res.blob();
         cacheBlob(url, blob);

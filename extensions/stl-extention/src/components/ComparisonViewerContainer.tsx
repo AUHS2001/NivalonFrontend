@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
-import { SERVER_URL } from '../../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { LPS_UP } from '../utils/coordinateSystem';
 
 interface Series {
@@ -288,9 +288,7 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
           if (cancelled) return null;
 
           try {
-            // CloudFront URLs: no credentials (CORS doesn't support it)
-            const isCF = !url.startsWith(SERVER_URL);
-            const response = await fetch(url, isCF ? { cache: 'no-store' } : { credentials: 'include', cache: 'no-store' });
+            const response = await fetchFile(url, { cache: 'no-store' });
             if (!response.ok) continue;
 
             const arrayBuffer = await response.arrayBuffer();

@@ -5,7 +5,7 @@ import axios from 'axios';
 import { MODULE_TYPES } from '@ohif/core';
 import filesToStudies from '../routes/Local/filesToStudies';
 import { extensionManager } from '../App';
-import { SERVER_URL } from '../../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { StlInstanceContext } from '../context/StlInstanceContext';
 import { StlInstanceListDataContext } from '../context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from '../context/parentStudyIdContext';
@@ -128,9 +128,7 @@ const SingleSignOnPage: React.FC = () => {
           let retries = 0;
           while (retries < 3) {
             try {
-              // CloudFront URLs: no credentials (CORS doesn't support it)
-              const isCF = !url.startsWith(SERVER_URL);
-              const res = await fetch(url, isCF ? {} : { credentials: 'include' });
+              const res = await fetchFile(url);
               if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
               const blob = await res.blob();
               const fileName = url.split('/').pop();
