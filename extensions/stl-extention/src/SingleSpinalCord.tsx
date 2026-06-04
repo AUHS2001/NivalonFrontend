@@ -2041,7 +2041,8 @@ const createAutomaticSegmentation = async () => {
             headers: {
               Authorization: `Bearer ${userToken}`,
               "Content-Type": "application/json"
-            }
+            },
+            credentials: 'include',
           }
         );
 
@@ -2482,7 +2483,8 @@ const createAutomaticSegmentation = async () => {
           headers: {
             Authorization: `Bearer ${userToken}`,
             "Content-Type": "application/json"
-          }
+          },
+          credentials: 'include',
         }
       );
 
@@ -2549,6 +2551,7 @@ const createAutomaticSegmentation = async () => {
         headers: {
           Authorization: `Bearer ${userToken}`,
         },
+        credentials: 'include',
         body: formData,
       });
 

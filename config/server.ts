@@ -4,6 +4,29 @@
  * Supports two environments: local and production
  */
 
+import axios from 'axios';
+
+// Enable cookies on all axios requests globally
+axios.defaults.withCredentials = true;
+
+/**
+ * Fetch wrapper that retries once on 403 by calling a refresh function.
+ * Use this for CloudFront URLs that may need cookie renewal.
+ */
+export async function fetchWithCookieRefresh(
+  url: string,
+  refreshFn: () => Promise<void>,
+  init?: RequestInit
+): Promise<Response> {
+  const opts: RequestInit = { ...init, credentials: 'include' };
+  let res = await fetch(url, opts);
+  if (res.status === 403) {
+    await refreshFn();
+    res = await fetch(url, opts);
+  }
+  return res;
+}
+
 type Environment = 'local' | 'production';
 
 interface EnvironmentConfig {

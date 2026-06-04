@@ -30,6 +30,7 @@ async function fetchInstanceUrls(seriesUID: string): Promise<string[]> {
         Authorization: `Bearer ${getToken()}`,
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       signal: abortController?.signal,
     }
   );
@@ -58,12 +59,28 @@ async function downloadAndProcessBlob(
   if (!blob) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(url, { signal });
+        const res = await fetch(url, { signal, credentials: 'include' });
+        if (res.status === 403) {
+          // Cookie may have expired — refresh and retry
+          console.warn(`[lazyLoadService] 403 on ${url}, refreshing cookies...`);
+          try {
+            await fetch(`${SERVER_URL}/imaging/studies`, {
+              headers: { Authorization: `Bearer ${getToken()}` },
+              credentials: 'include',
+            });
+          } catch (_) {}
+          const retry = await fetch(url, { signal, credentials: 'include' });
+          if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
+          blob = await retry.blob();
+          cacheBlob(url, blob);
+          break;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         blob = await res.blob();
         cacheBlob(url, blob);
         break;
       } catch (err) {
+        console.error(`[lazyLoadService] Attempt ${attempt + 1}/3 failed for ${url}:`, err);
         if (signal?.aborted) return null;
         if (attempt === 2) return null;
         await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));

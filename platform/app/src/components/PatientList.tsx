@@ -32,6 +32,7 @@ const PatientList: React.FC = ({ onPageChange }) => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
         });
         if (!response.ok) throw new Error('Failed to fetch patients');
         const data = await response.json();

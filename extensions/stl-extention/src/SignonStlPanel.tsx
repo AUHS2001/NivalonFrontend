@@ -50,7 +50,8 @@ const SignonStlPanel: React.FC<SignonStlPanelProps> = ({
             headers: {
               Authorization: `Bearer ${SIGNON_TOKEN}`,
               "Content-Type": "application/json"
-            }
+            },
+            credentials: 'include',
           }
         );
 

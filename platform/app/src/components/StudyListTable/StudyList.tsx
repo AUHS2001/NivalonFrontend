@@ -118,7 +118,26 @@ export default function StudyList() {
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        const res = await fetch(url);
+                        const res = await fetch(url, { credentials: 'include' });
+                        if (res.status === 403) {
+                            // Cookie may have expired — refresh and retry
+                            console.warn(`[downloadFile] 403 on ${url}, refreshing cookies...`);
+                            try {
+                                await fetch(`${SERVER_URL}/imaging/studies`, {
+                                    headers: { Authorization: `Bearer ${userToken}` },
+                                    credentials: 'include',
+                                });
+                            } catch (_) {}
+                            const retry = await fetch(url, { credentials: 'include' });
+                            if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
+                            const blob = await retry.blob();
+                            if (study.study_instance_uid) cacheBlob(url, blob);
+                            completed++;
+                            setSeriesLoadProgress(20 + Math.round((completed / totalFiles) * 70));
+                            return new File([blob], url.split('/').pop() || 'dicom.dcm', {
+                                type: blob.type || 'application/dicom',
+                            });
+                        }
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
                         if (study.study_instance_uid) cacheBlob(url, blob);
@@ -127,7 +146,8 @@ export default function StudyList() {
                         return new File([blob], url.split('/').pop() || 'dicom.dcm', {
                             type: blob.type || 'application/dicom',
                         });
-                    } catch {
+                    } catch (err) {
+                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${url}:`, err);
                         if (retries === 2) {
                             completed++;
                             setSeriesLoadProgress(20 + Math.round((completed / totalFiles) * 70));
@@ -334,7 +354,27 @@ export default function StudyList() {
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        const res = await fetch(url);
+                        const res = await fetch(url, { credentials: 'include' });
+                        if (res.status === 403) {
+                            // Cookie may have expired — refresh and retry
+                            console.warn(`[downloadFile] 403 on ${url}, refreshing cookies...`);
+                            try {
+                                await fetch(`${SERVER_URL}/imaging/studies`, {
+                                    headers: { Authorization: `Bearer ${userToken}` },
+                                    credentials: 'include',
+                                });
+                            } catch (_) {}
+                            const retry = await fetch(url, { credentials: 'include' });
+                            if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
+                            const blob = await retry.blob();
+                            if (studyUID) cacheBlob(url, blob);
+                            const fileName = url.split('/').pop();
+                            completed++;
+                            setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
+                            return new File([blob], fileName || 'dicom.dcm', {
+                                type: blob.type || 'application/dicom',
+                            });
+                        }
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
                         if (studyUID) cacheBlob(url, blob);
@@ -344,7 +384,8 @@ export default function StudyList() {
                         return new File([blob], fileName || 'dicom.dcm', {
                             type: blob.type || 'application/dicom',
                         });
-                    } catch {
+                    } catch (err) {
+                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${url}:`, err);
                         if (retries === 2) {
                             completed++;
                             setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));

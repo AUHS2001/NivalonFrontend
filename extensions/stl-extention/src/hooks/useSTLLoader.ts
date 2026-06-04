@@ -7,6 +7,7 @@ import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useMeshVisibility } from '../hooks/useMeshVisibility';
 import { storeVertebraData } from '../utils/spineLabelOverlayManager';
 import { storeMeshDataForContours } from '../utils/vertebraContourOverlayManager';
+import { SERVER_URL } from '../../../../config/server';
 
 interface UseSTLLoaderProps {
   stlUrls: string[];
@@ -237,9 +238,22 @@ export const useSTLLoader = ({
     startMeshRefs.current = [];
     clearStlFiles();
 
+    const userToken = localStorage.getItem('token') || '';
+
     const loadPromises = stlUrls.map(async (url, index) => {
       try {
-        const response = await fetch(url);
+        let response = await fetch(url, { credentials: 'include' });
+        if (response.status === 403) {
+          // Cookie may have expired — refresh and retry
+          console.warn(`[useSTLLoader] 403 on ${url}, refreshing cookies...`);
+          try {
+            await fetch(`${SERVER_URL}/imaging/studies`, {
+              headers: { Authorization: `Bearer ${userToken}` },
+              credentials: 'include',
+            });
+          } catch (_) {}
+          response = await fetch(url, { credentials: 'include' });
+        }
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }

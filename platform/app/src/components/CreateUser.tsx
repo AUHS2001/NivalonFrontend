@@ -31,6 +31,7 @@ const AddUser: React.FC = ({ onPageChange }) => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
         });
         if (!response.ok) throw new Error('Failed to fetch roles');
         const data = await response.json();
@@ -77,6 +78,7 @@ const AddUser: React.FC = ({ onPageChange }) => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ name, email, role: selectedRole }),
       });
 

@@ -27,6 +27,7 @@ const Registeries: React.FC<{ onPageChange: (page: string) => void }> = ({ onPag
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
         });
         if (!response.ok) throw new Error('Failed to fetch registeries');
         const data = await response.json();
@@ -51,6 +52,7 @@ const Registeries: React.FC<{ onPageChange: (page: string) => void }> = ({ onPag
         headers: {
           'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
       });
       console.log(`[Delete Registry] Status: ${response.status} ${response.statusText}`);
       const data = await response.json().catch(() => ({}));
