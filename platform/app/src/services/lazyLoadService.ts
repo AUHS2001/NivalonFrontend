@@ -36,15 +36,21 @@ async function fetchInstanceUrls(seriesUID: string): Promise<string[]> {
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
+  console.log('[lazyLoadService] /imaging/instances raw response:', JSON.stringify(json).substring(0, 500));
 
   const payload = json.data;
-  if (Array.isArray(payload)) return payload;
-  if (payload?.items && Array.isArray(payload.items)) return payload.items;
-  if (payload?.instance_urls && Array.isArray(payload.instance_urls)) return payload.instance_urls;
-  if (Array.isArray(json.instance_urls)) return json.instance_urls;
-  if (Array.isArray(json)) return json;
-  console.warn('[lazyLoadService] Unexpected /imaging/instances response:', json);
-  return [];
+  let urls: string[] = [];
+  if (Array.isArray(payload)) urls = payload;
+  else if (payload?.items && Array.isArray(payload.items)) urls = payload.items;
+  else if (payload?.instance_urls && Array.isArray(payload.instance_urls)) urls = payload.instance_urls;
+  else if (Array.isArray(json.instance_urls)) urls = json.instance_urls;
+  else if (Array.isArray(json)) urls = json;
+  else {
+    console.warn('[lazyLoadService] Unexpected /imaging/instances response:', json);
+    return [];
+  }
+  console.log(`[lazyLoadService] Parsed ${urls.length} URLs, first:`, urls[0]);
+  return urls;
 }
 
 async function downloadAndProcessBlob(

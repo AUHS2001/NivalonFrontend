@@ -345,6 +345,8 @@ export default function StudyList() {
                 }
             });
 
+            console.log(`[StudyList] URLs to download (${urlsToDownload.length}):`, urlsToDownload.slice(0, 3));
+
             setLoadingProgress(15);
 
             // ── PHASE 2: Download all files ──
@@ -354,7 +356,13 @@ export default function StudyList() {
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
+                        console.log(`[downloadFile] Attempt ${retries + 1} fetching: ${url.substring(0, 80)}...`);
                         const res = await fetch(url, { credentials: 'include' });
+                        console.log(`[downloadFile] Response: status=${res.status}, type=${res.type}, headers=`, {
+                            contentType: res.headers.get('content-type'),
+                            contentLength: res.headers.get('content-length'),
+                            cors: res.headers.get('access-control-allow-origin'),
+                        });
                         if (res.status === 403) {
                             // Cookie may have expired — refresh and retry
                             console.warn(`[downloadFile] 403 on ${url}, refreshing cookies...`);
@@ -365,6 +373,7 @@ export default function StudyList() {
                                 });
                             } catch (_) {}
                             const retry = await fetch(url, { credentials: 'include' });
+                            console.log(`[downloadFile] After refresh: status=${retry.status}`);
                             if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
                             const blob = await retry.blob();
                             if (studyUID) cacheBlob(url, blob);
@@ -377,6 +386,11 @@ export default function StudyList() {
                         }
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
+                        console.log(`[downloadFile] Blob: size=${blob.size}, type=${blob.type}`);
+                        if (blob.size === 0) {
+                            console.warn(`[downloadFile] Empty blob for ${url}`);
+                            throw new Error('Empty response body');
+                        }
                         if (studyUID) cacheBlob(url, blob);
                         const fileName = url.split('/').pop();
                         completed++;
@@ -399,6 +413,8 @@ export default function StudyList() {
 
             const files = await Promise.all(urlsToDownload.map(url => downloadFile(url)));
             const validFiles = files.filter((f): f is File => f !== null);
+
+            console.log(`[StudyList] Download results: ${validFiles.length}/${files.length} valid files`);
 
             if (validFiles.length === 0) {
                 throw new Error("No valid DICOM files were fetched");
