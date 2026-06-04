@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
-import { SERVER_URL } from '../../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { LPS_UP } from '../../../../extensions/stl-extention/src/utils/coordinateSystem';
 
 interface PointCloudData {
@@ -353,9 +353,7 @@ const ComparisonPage: React.FC = () => {
       const fetchWithProgress = async (url: string): Promise<ArrayBuffer | null> => {
         if (cancelled) return null;
         try {
-          // CloudFront URLs: no credentials (CORS doesn't support it)
-          const isCF = !url.startsWith(SERVER_URL);
-          const response = await fetch(url, isCF ? { cache: 'no-store' } : { credentials: 'include', cache: 'no-store' });
+          const response = await fetchFile(url, { cache: 'no-store' });
           if (!response.ok) return null;
 
           const contentLength = response.headers.get('content-length');

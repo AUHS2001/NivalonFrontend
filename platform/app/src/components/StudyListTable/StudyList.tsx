@@ -8,7 +8,7 @@ import { extensionManager } from '../../App';
 import { StlInstanceContext } from '../../context/StlInstanceContext';
 import { StlInstanceListDataContext } from '../../../../app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from '../../../../app/src/context/parentStudyIdContext';
-import { SERVER_URL } from '../../../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../../../config/server';
 import { isCached, getAllCachedBlobs, cacheBlob, initCacheForStudy } from '../../utils/dicomCache';
 import { startSeriesLoad, fetchInitialBatch, cleanupPreviousStudy } from '../../services/lazyLoadService';
 
@@ -115,15 +115,10 @@ export default function StudyList() {
             const totalFiles = urls.length;
             let completed = 0;
 
-            const isCloudFrontUrl = (u: string) => !u.startsWith(SERVER_URL);
-
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        // CloudFront URLs: no credentials (CORS doesn't support it)
-                        // Backend URLs: always use credentials
-                        const fetchOpts: RequestInit = isCloudFrontUrl(url) ? {} : { credentials: 'include' };
-                        const res = await fetch(url, fetchOpts);
+                        const res = await fetchFile(url);
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
                         if (study.study_instance_uid) cacheBlob(url, blob);
@@ -346,15 +341,10 @@ export default function StudyList() {
             // ── PHASE 2: Download all files ──
             const totalFiles = urlsToDownload.length;
             let completed = 0;
-            const isCloudFrontUrl = (u: string) => !u.startsWith(SERVER_URL);
-
             const downloadFile = async (url: string): Promise<File | null> => {
                 for (let retries = 0; retries < 3; retries++) {
                     try {
-                        // CloudFront URLs: no credentials (CORS doesn't support it)
-                        // Backend URLs: always use credentials
-                        const fetchOpts: RequestInit = isCloudFrontUrl(url) ? {} : { credentials: 'include' };
-                        const res = await fetch(url, fetchOpts);
+                        const res = await fetchFile(url);
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const blob = await res.blob();
                         if (studyUID) cacheBlob(url, blob);
@@ -365,7 +355,7 @@ export default function StudyList() {
                             type: blob.type || 'application/dicom',
                         });
                     } catch (err) {
-                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${url}:`, err);
+                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${fileUrl}:`, err);
                         if (retries === 2) {
                             completed++;
                             setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
