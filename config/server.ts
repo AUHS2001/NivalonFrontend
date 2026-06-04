@@ -79,35 +79,16 @@ export const ENV_NAME: string = ENV_CONFIG[CURRENT_ENV].name;
 export const isDevelopment = (): boolean => CURRENT_ENV === 'local';
 export const isProduction = (): boolean => CURRENT_ENV === 'production';
 
-// CloudFront domain → custom domain rewriter
-// Cookies are set on the custom domain, so file URLs must use it too.
-// Only rewrite in production where the page is served from the custom domain (same-origin).
-// On localhost the CloudFront URLs work directly without cookies.
-const CLOUDFRONT_RAW_DOMAIN = 'https://d3d2u901ogi7fa.cloudfront.net';
-const CUSTOM_DOMAIN = SERVER_URL.replace(/\/api$/, ''); // e.g. https://planning.nivalonmedical.com
-
-const isLocalhost =
-  typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-export function rewriteFileUrl(url: string): string {
-  if (!isLocalhost && url.startsWith(CLOUDFRONT_RAW_DOMAIN)) {
-    return url.replace(CLOUDFRONT_RAW_DOMAIN, CUSTOM_DOMAIN);
-  }
-  return url;
-}
-
 /**
  * Fetch a file URL with the correct credentials strategy.
- * Production: rewrites CloudFront → custom domain (same-origin), sends cookies.
- * Localhost: keeps original CloudFront URL (cross-origin), no cookies (avoids CORS).
+ * Backend URLs (SERVER_URL): include credentials (cookies).
+ * CloudFront URLs: no credentials (cross-origin, no CORS support for cookies).
  */
 export function fetchFile(url: string, extra?: RequestInit): Promise<Response> {
-  const fileUrl = rewriteFileUrl(url);
   const opts: RequestInit = { ...extra };
-  if (!isLocalhost) {
+  if (url.startsWith(SERVER_URL)) {
     opts.credentials = 'include';
   }
-  return fetch(fileUrl, opts);
+  return fetch(url, opts);
 }
 
