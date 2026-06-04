@@ -128,23 +128,9 @@ const SingleSignOnPage: React.FC = () => {
           let retries = 0;
           while (retries < 3) {
             try {
-              const res = await fetch(url, { credentials: 'include' });
-              if (res.status === 403) {
-                console.warn(`[SSO] 403 on ${url}, refreshing cookies...`);
-                try {
-                  await fetch(`${SERVER_URL}/imaging/studies`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-                    credentials: 'include',
-                  });
-                } catch (_) {}
-                const retry = await fetch(url, { credentials: 'include' });
-                if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
-                const blob = await retry.blob();
-                const fileName = url.split('/').pop();
-                return new File([blob], fileName || `dicom-${idx}.dcm`, {
-                  type: blob.type || 'application/dicom',
-                });
-              }
+              // CloudFront URLs: no credentials (CORS doesn't support it)
+              const isCF = !url.startsWith(SERVER_URL);
+              const res = await fetch(url, isCF ? {} : { credentials: 'include' });
               if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
               const blob = await res.blob();
               const fileName = url.split('/').pop();

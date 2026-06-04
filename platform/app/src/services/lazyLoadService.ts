@@ -36,8 +36,6 @@ async function fetchInstanceUrls(seriesUID: string): Promise<string[]> {
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  console.log('[lazyLoadService] /imaging/instances raw response:', JSON.stringify(json).substring(0, 500));
-
   const payload = json.data;
   let urls: string[] = [];
   if (Array.isArray(payload)) urls = payload;
@@ -49,7 +47,6 @@ async function fetchInstanceUrls(seriesUID: string): Promise<string[]> {
     console.warn('[lazyLoadService] Unexpected /imaging/instances response:', json);
     return [];
   }
-  console.log(`[lazyLoadService] Parsed ${urls.length} URLs, first:`, urls[0]);
   return urls;
 }
 
@@ -63,24 +60,14 @@ async function downloadAndProcessBlob(
   blob = await getCachedBlob(url);
 
   if (!blob) {
+    const isCF = !url.startsWith(SERVER_URL);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(url, { signal, credentials: 'include' });
-        if (res.status === 403) {
-          // Cookie may have expired — refresh and retry
-          console.warn(`[lazyLoadService] 403 on ${url}, refreshing cookies...`);
-          try {
-            await fetch(`${SERVER_URL}/imaging/studies`, {
-              headers: { Authorization: `Bearer ${getToken()}` },
-              credentials: 'include',
-            });
-          } catch (_) {}
-          const retry = await fetch(url, { signal, credentials: 'include' });
-          if (!retry.ok) throw new Error(`HTTP ${retry.status} after cookie refresh`);
-          blob = await retry.blob();
-          cacheBlob(url, blob);
-          break;
-        }
+        // CloudFront: no credentials (CORS doesn't support it)
+        // Backend: always use credentials
+        const fetchOpts: RequestInit = { signal };
+        if (!isCF) fetchOpts.credentials = 'include';
+        const res = await fetch(url, fetchOpts);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         blob = await res.blob();
         cacheBlob(url, blob);

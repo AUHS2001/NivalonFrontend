@@ -353,17 +353,9 @@ const ComparisonPage: React.FC = () => {
       const fetchWithProgress = async (url: string): Promise<ArrayBuffer | null> => {
         if (cancelled) return null;
         try {
-          let response = await fetch(url, { credentials: 'include', cache: 'no-store' });
-          if (response.status === 403) {
-            console.warn(`[ComparisonPage] 403 on ${url}, refreshing cookies...`);
-            try {
-              await fetch(`${SERVER_URL}/imaging/studies`, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-                credentials: 'include',
-              });
-            } catch (_) {}
-            response = await fetch(url, { credentials: 'include', cache: 'no-store' });
-          }
+          // CloudFront URLs: no credentials (CORS doesn't support it)
+          const isCF = !url.startsWith(SERVER_URL);
+          const response = await fetch(url, isCF ? { cache: 'no-store' } : { credentials: 'include', cache: 'no-store' });
           if (!response.ok) return null;
 
           const contentLength = response.headers.get('content-length');

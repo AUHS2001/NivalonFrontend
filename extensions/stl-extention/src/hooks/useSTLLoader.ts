@@ -242,18 +242,10 @@ export const useSTLLoader = ({
 
     const loadPromises = stlUrls.map(async (url, index) => {
       try {
-        let response = await fetch(url, { credentials: 'include' });
-        if (response.status === 403) {
-          // Cookie may have expired — refresh and retry
-          console.warn(`[useSTLLoader] 403 on ${url}, refreshing cookies...`);
-          try {
-            await fetch(`${SERVER_URL}/imaging/studies`, {
-              headers: { Authorization: `Bearer ${userToken}` },
-              credentials: 'include',
-            });
-          } catch (_) {}
-          response = await fetch(url, { credentials: 'include' });
-        }
+        // CloudFront URLs: fetch without credentials (CORS doesn't support credentials)
+        // Backend URLs: always use credentials
+        const isCF = !url.startsWith(SERVER_URL);
+        const response = await fetch(url, isCF ? {} : { credentials: 'include' });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }
