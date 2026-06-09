@@ -79,16 +79,31 @@ export const ENV_NAME: string = ENV_CONFIG[CURRENT_ENV].name;
 export const isDevelopment = (): boolean => CURRENT_ENV === 'local';
 export const isProduction = (): boolean => CURRENT_ENV === 'production';
 
+// CloudFront raw domain → custom CDN domain (same parent domain as cookies)
+const CLOUDFRONT_RAW = 'https://d3d2u901ogi7fa.cloudfront.net';
+const CDN_DOMAIN = 'https://cdn.nivalonmedical.com';
+
 /**
- * Fetch a file URL with the correct credentials strategy.
- * Backend URLs (SERVER_URL): include credentials (cookies).
- * CloudFront URLs: no credentials (cross-origin, no CORS support for cookies).
+ * Fetch a file URL with credentials.
+ * - Backend URLs (SERVER_URL): include credentials.
+ * - CDN URLs (cdn.nivalonmedical.com): include credentials so browser sends
+ *   CloudFront signed cookies (Domain=.nivalonmedical.com).
+ * - Legacy raw CloudFront URLs: rewrite to CDN domain + include credentials.
+ * - Other URLs: fetched as-is.
  */
 export function fetchFile(url: string, extra?: RequestInit): Promise<Response> {
   const opts: RequestInit = { ...extra };
+  let finalUrl = url;
+
   if (url.startsWith(SERVER_URL)) {
     opts.credentials = 'include';
+  } else if (url.startsWith(CDN_DOMAIN)) {
+    opts.credentials = 'include';
+  } else if (url.startsWith(CLOUDFRONT_RAW)) {
+    finalUrl = url.replace(CLOUDFRONT_RAW, CDN_DOMAIN);
+    opts.credentials = 'include';
   }
-  return fetch(url, opts);
+
+  return fetch(finalUrl, opts);
 }
 

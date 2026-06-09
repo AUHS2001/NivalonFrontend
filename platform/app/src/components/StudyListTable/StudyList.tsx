@@ -355,7 +355,7 @@ export default function StudyList() {
                             type: blob.type || 'application/dicom',
                         });
                     } catch (err) {
-                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${fileUrl}:`, err);
+                        console.error(`[downloadFile] Attempt ${retries + 1}/3 failed for ${url}:`, err);
                         if (retries === 2) {
                             completed++;
                             setLoadingProgress(15 + Math.round((completed / totalFiles) * 80));
