@@ -84,24 +84,16 @@ const CLOUDFRONT_RAW = 'https://d3d2u901ogi7fa.cloudfront.net';
 const CDN_DOMAIN = 'https://cdn.nivalonmedical.com';
 
 /**
- * Fetch a file URL with credentials.
- * - Backend URLs (SERVER_URL): include credentials.
- * - CDN URLs (cdn.nivalonmedical.com): include credentials so browser sends
- *   CloudFront signed cookies (Domain=.nivalonmedical.com).
- * - Legacy raw CloudFront URLs: rewrite to CDN domain + include credentials.
- * - Other URLs: fetched as-is.
+ * Fetch a file URL with credentials included on ALL requests.
+ * Rewrites legacy raw CloudFront URLs to the CDN domain.
  */
 export function fetchFile(url: string, extra?: RequestInit): Promise<Response> {
-  const opts: RequestInit = { ...extra };
+  const opts: RequestInit = { ...extra, credentials: 'include' };
   let finalUrl = url;
 
-  if (url.startsWith(SERVER_URL)) {
-    opts.credentials = 'include';
-  } else if (url.startsWith(CDN_DOMAIN)) {
-    opts.credentials = 'include';
-  } else if (url.startsWith(CLOUDFRONT_RAW)) {
+  // Rewrite legacy raw CloudFront URLs to CDN domain
+  if (url.startsWith(CLOUDFRONT_RAW)) {
     finalUrl = url.replace(CLOUDFRONT_RAW, CDN_DOMAIN);
-    opts.credentials = 'include';
   }
 
   return fetch(finalUrl, opts);
