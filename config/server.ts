@@ -75,6 +75,9 @@ export const SERVER_URL: string = ENV_CONFIG[CURRENT_ENV].serverUrl;
 // Export environment name (useful for debugging/display)
 export const ENV_NAME: string = ENV_CONFIG[CURRENT_ENV].name;
 
+// Debug: log resolved config on startup
+console.log(`[server config] env=${CURRENT_ENV} SERVER_URL=${SERVER_URL}`);
+
 // Export helper to check environment
 export const isDevelopment = (): boolean => CURRENT_ENV === 'local';
 export const isProduction = (): boolean => CURRENT_ENV === 'production';
@@ -82,20 +85,30 @@ export const isProduction = (): boolean => CURRENT_ENV === 'production';
 // CloudFront raw domain → custom CDN domain (same parent domain as cookies)
 const CLOUDFRONT_RAW = 'https://d3d2u901ogi7fa.cloudfront.net';
 const CDN_DOMAIN = 'https://cdn.nivalonmedical.com';
+const DEV_S3_DOMAIN = 'https://nivalon-dev-medical-data.s3.us-east-2.amazonaws.com';
 
 /**
  * Fetch a file URL with credentials included on ALL requests.
  * Rewrites legacy raw CloudFront URLs to the CDN domain.
  */
 export function fetchFile(url: string, extra?: RequestInit): Promise<Response> {
-  const opts: RequestInit = { ...extra, credentials: 'include' };
   let finalUrl = url;
 
-  // Rewrite legacy raw CloudFront URLs to CDN domain
+  if (isDevelopment()) {
+    // In local dev, rewrite CDN/CloudFront URLs to the dev S3 bucket
+    if (url.startsWith(CDN_DOMAIN)) {
+      finalUrl = url.replace(CDN_DOMAIN, DEV_S3_DOMAIN);
+    } else if (url.startsWith(CLOUDFRONT_RAW)) {
+      finalUrl = url.replace(CLOUDFRONT_RAW, DEV_S3_DOMAIN);
+    }
+    return fetch(finalUrl, extra);
+  }
+
+  // Production: rewrite raw CloudFront URLs to CDN domain for cookie auth
+  const opts: RequestInit = { ...extra, credentials: 'include' };
   if (url.startsWith(CLOUDFRONT_RAW)) {
     finalUrl = url.replace(CLOUDFRONT_RAW, CDN_DOMAIN);
   }
-
   return fetch(finalUrl, opts);
 }
 
