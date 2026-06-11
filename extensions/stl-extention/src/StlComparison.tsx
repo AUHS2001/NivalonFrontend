@@ -32,7 +32,18 @@ import { useClickRemoveContext } from './context/ClickRemoveContext';
 import { useStlVisibilityContext } from './context/StlVisibilityContext';
 import { useSTLToDICOMLinking } from './hooks/useSTLToDICOMLinking';
 import { STLToDICOMConfig } from './types/three.types';
-import { useVersionHistoryContext } from './context/VersionHistoryContext'
+import { useVersionHistoryContext } from './context/VersionHistoryContext';
+import {
+  maskVoxelsForRemovedVertices,
+  restoreVoxels,
+  forceRerenderMPRViewports,
+  extractRemovedVerticesFromClick,
+  computeSTLBounds,
+  VoxelUndoSnapshot,
+  markRemovedVoxelsRed,
+  clearRemovedVoxelsRed,
+  clearAllBoneRemovalOverlay,
+} from './utils/voxelMaskingManager';
 import { useCenterLine } from './hooks/useCenterLine';
 import { CenterLineProvider } from './context/CenterLineContext';
 import { servicesManager, commandsManager } from '../../../platform/app/src/App';
@@ -66,6 +77,7 @@ const StlComparison: React.FC<StlComparisonProps> = ({
   const [removing, setRemoving] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
+  const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -727,6 +739,17 @@ const createAutomaticSegmentation = async () => {
 // Helper function to get active display sets
 
 
+  const performVoxelMasking = useCallback((removedVertices: THREE.Vector3[], preComputedBounds?: { min: THREE.Vector3; max: THREE.Vector3 }) => {
+    if (removedVertices.length === 0) return;
+    const stlBounds = preComputedBounds || computeSTLBounds(meshRefs.current.left);
+    const snapshot = maskVoxelsForRemovedVertices(removedVertices, stlBounds, servicesManager);
+    if (snapshot) {
+      voxelUndoStackRef.current.push(snapshot);
+      forceRerenderMPRViewports(servicesManager);
+      markRemovedVoxelsRed(snapshot, servicesManager);
+    }
+  }, [servicesManager]);
+
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
     removalMode,
     leftRendererRef,
@@ -737,7 +760,10 @@ const createAutomaticSegmentation = async () => {
     setRemoving,
     setUndoStack,
     setRemovalOutline,
-    removalOutline
+    removalOutline,
+    onRemovalComplete: (removedVertices, preRemovalBounds) => {
+      performVoxelMasking(removedVertices, preRemovalBounds);
+    },
   });
 
   const {
@@ -1090,6 +1116,9 @@ const createAutomaticSegmentation = async () => {
           const leftMesh = meshRefs.current.left[idx];
           const rightMesh = meshRefs.current.right[idx];
 
+          // Compute bounds BEFORE removing mesh so STL→DICOM transform is correct
+          const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
+
           // Remove from scene
           leftGroupRef.current.remove(leftMesh);
           rightGroupRef.current.remove(rightMesh);
@@ -1103,6 +1132,10 @@ const createAutomaticSegmentation = async () => {
             ...stack,
             { leftMesh, rightMesh, index: idx }
           ]);
+
+          // Mask corresponding DICOM voxels
+          const removedVertices = extractRemovedVerticesFromClick(leftMesh);
+          performVoxelMasking(removedVertices, preRemovalBounds);
         }
       }
     };
@@ -1153,6 +1186,11 @@ const createAutomaticSegmentation = async () => {
     setRemovalOutline([]);
     setUndoStack([]);
     setClickRemovalUndoStack([]);
+    while (voxelUndoStackRef.current.length > 0) {
+      const snapshot = voxelUndoStackRef.current.pop()!;
+      restoreVoxels(snapshot, servicesManager);
+    }
+    clearAllBoneRemovalOverlay(servicesManager);
     setRemovalMode(false);
     setRemoving(false);
     toggleBrightness();
@@ -1294,6 +1332,11 @@ const createAutomaticSegmentation = async () => {
 
       return stack.slice(0, -1);
     });
+    const voxelSnapshot = voxelUndoStackRef.current.pop();
+    if (voxelSnapshot) {
+      restoreVoxels(voxelSnapshot, servicesManager);
+      clearRemovedVoxelsRed(voxelSnapshot, servicesManager);
+    }
   };
 
   const handleUndo = () => {
@@ -1308,6 +1351,11 @@ const createAutomaticSegmentation = async () => {
       mesh.visible = true;
     });
     setUndoStack(stack => stack.slice(0, -1));
+    const voxelSnapshot = voxelUndoStackRef.current.pop();
+    if (voxelSnapshot) {
+      restoreVoxels(voxelSnapshot, servicesManager);
+      clearRemovedVoxelsRed(voxelSnapshot, servicesManager);
+    }
   };
 
   console.log('🔍 Debug - STL-DICOM Linking Status:', {

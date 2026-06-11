@@ -37,6 +37,17 @@ import { useVersionHistoryContext } from './context/VersionHistoryContext';
 import { useImplantContext } from './context/ImplantContext';
 import { useAngleMeasurementContext } from './context/AngleMeasurementContext';
 import { AngleMeasurementPanel } from './components/AngleMeasurementPanel';
+import {
+  maskVoxelsForRemovedVertices,
+  restoreVoxels,
+  forceRerenderMPRViewports,
+  extractRemovedVerticesFromClick,
+  computeSTLBounds,
+  VoxelUndoSnapshot,
+  markRemovedVoxelsRed,
+  clearRemovedVoxelsRed,
+  clearAllBoneRemovalOverlay,
+} from './utils/voxelMaskingManager';
 
 
 interface SpinalCordViewerProps {
@@ -66,6 +77,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalMode, setClickRemovalMode] = useState(false);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
+  const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -221,6 +233,17 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     });
   }, [ohifServices, hasSegmentationService, propServicesManager]);
 
+  const performVoxelMasking = useCallback((removedVertices: THREE.Vector3[], preComputedBounds?: { min: THREE.Vector3; max: THREE.Vector3 }) => {
+    if (removedVertices.length === 0) return;
+    const stlBounds = preComputedBounds || computeSTLBounds(meshRefs.current.left);
+    const snapshot = maskVoxelsForRemovedVertices(removedVertices, stlBounds, propServicesManager);
+    if (snapshot) {
+      voxelUndoStackRef.current.push(snapshot);
+      forceRerenderMPRViewports(propServicesManager);
+      markRemovedVoxelsRed(snapshot, propServicesManager);
+    }
+  }, [propServicesManager]);
+
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
     removalMode,
     leftRendererRef,
@@ -231,7 +254,10 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     setRemoving,
     setUndoStack,
     setRemovalOutline,
-    removalOutline
+    removalOutline,
+    onRemovalComplete: (removedVertices, preRemovalBounds) => {
+      performVoxelMasking(removedVertices, preRemovalBounds);
+    },
   });
 
   const {
@@ -471,6 +497,9 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
           const leftMesh = meshRefs.current.left[idx];
           const rightMesh = meshRefs.current.right[idx];
 
+          // Compute bounds BEFORE removing mesh so STL→DICOM transform is correct
+          const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
+
           // Remove from scene
           leftGroupRef.current.remove(leftMesh);
           rightGroupRef.current.remove(rightMesh);
@@ -484,6 +513,10 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
             ...stack,
             { leftMesh, rightMesh, index: idx }
           ]);
+
+          // Mask corresponding DICOM voxels
+          const removedVertices = extractRemovedVerticesFromClick(leftMesh);
+          performVoxelMasking(removedVertices, preRemovalBounds);
         }
       }
     };

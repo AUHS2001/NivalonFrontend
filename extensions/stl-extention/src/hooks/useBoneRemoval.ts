@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { computeSTLBounds } from '../utils/voxelMaskingManager';
 
 interface UseBoneRemovalProps {
   removalMode: boolean;
@@ -12,6 +13,7 @@ interface UseBoneRemovalProps {
   setUndoStack: React.Dispatch<React.SetStateAction<THREE.BufferGeometry[][]>>;
   setRemovalOutline: React.Dispatch<React.SetStateAction<{ x: number, y: number }[]>>;
   removalOutline: { x: number, y: number }[];
+  onRemovalComplete?: (removedWorldVertices: THREE.Vector3[], preRemovalBounds: { min: THREE.Vector3; max: THREE.Vector3 }) => void;
 }
 
 export const useBoneRemoval = ({
@@ -24,7 +26,8 @@ export const useBoneRemoval = ({
   setRemoving,
   setUndoStack,
   setRemovalOutline,
-  removalOutline
+  removalOutline,
+  onRemovalComplete
 }: UseBoneRemovalProps) => {
   const removalOutlinePoints = useRef<{ x: number, y: number }[]>([]);
 
@@ -48,6 +51,9 @@ export const useBoneRemoval = ({
       if (!cam) { setRemoving(false); return; }
       const prevGeometries = meshRefs.current.left.map(mesh => mesh.geometry.clone());
       setUndoStack(stack => [...stack, prevGeometries]);
+      // Compute STL bounds BEFORE geometry clipping so the STL→DICOM transform is correct
+      const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
+      const removedWorldVertices: THREE.Vector3[] = [];
       meshRefs.current.left.forEach((mesh, idx) => {
         if (!mesh.visible) return;
         const geometry = mesh.geometry as THREE.BufferGeometry;
@@ -81,8 +87,19 @@ export const useBoneRemoval = ({
           if (meshRefs.current.right[idx]) {
             meshRefs.current.right[idx].geometry = newGeometry.clone();
           }
+          // Collect world positions of removed (inside) vertices
+          mesh.updateMatrixWorld(true);
+          for (let i = 0; i < vertexCount; i++) {
+            if (inside[i]) {
+              const v3 = new THREE.Vector3(
+                position.getX(i), position.getY(i), position.getZ(i)
+              ).applyMatrix4(mesh.matrixWorld);
+              removedWorldVertices.push(v3);
+            }
+          }
         }
       });
+      onRemovalComplete?.(removedWorldVertices, preRemovalBounds);
       setRemoving(false);
     }, 10);
   };
