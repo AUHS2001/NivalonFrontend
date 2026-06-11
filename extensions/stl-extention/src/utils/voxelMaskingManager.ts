@@ -22,12 +22,17 @@ interface VolumeInfo {
 
 const BONE_HU_THRESHOLD = 250;
 const AIR_HU = -1000;
+let transformLogged = false;
 
 // ---- Red overlay state ----
 const BONE_REMOVAL_SEG_ID = 'boneRemovalOverlay';
 const LABELMAP = csToolsEnums.SegmentationRepresentations.Labelmap;
 let overlayInitialized = false;
 let overlayImageIds: string[] = [];
+
+// Cache the original full-spine STL bounds so the STL→DICOM transform
+// stays stable across multiple removals (each removal shrinks mesh bounds).
+let cachedOriginalSTLBounds: { min: THREE.Vector3; max: THREE.Vector3 } | null = null;
 
 // ---- Volume access (reuses pattern from vertebraContourOverlayManager.ts) ----
 
@@ -232,7 +237,7 @@ export function maskVoxelsForRemovedVertices(
   removedVertices: THREE.Vector3[],
   stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
   servicesManager: any,
-  maskRadiusMM: number = 2.0
+  maskRadiusMM: number = 3.5
 ): VoxelUndoSnapshot | null {
   if (removedVertices.length === 0) return null;
 
@@ -245,33 +250,83 @@ export function maskVoxelsForRemovedVertices(
   const { volume, dims, spacing, origin, direction, vtkImageData, volumeId } = volumeInfo;
 
   // Get per-slice scalar arrays — these ARE the buffers the GPU texture reads from.
-  // In Cornerstone3D v2 streaming volumes, vtkStreamingOpenGLTexture reads from
-  // cache.getImage(imageIds[k]).voxelManager.getScalarData() for each slice k.
-  // Writing directly to these arrays means the GPU will see our changes.
   const sliceArrays = getSliceScalarArrays(volume, dims[2]);
   const loadedSlices = sliceArrays.filter(a => a !== null).length;
   if (loadedSlices === 0) {
     console.warn('VoxelMasking: no slice data loaded from image cache');
     return null;
   }
-  console.log(`VoxelMasking: ${loadedSlices}/${dims[2]} slices loaded from image cache`);
 
   const sliceSize = dims[0] * dims[1];
 
-  // STL→DICOM transform (replicating transformSTLToDICOMWorld from useCenterLine.ts)
-  const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
-  const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
-  const volumeSize = [
-    dims[0] * spacing[0],
-    dims[1] * spacing[1],
-    dims[2] * spacing[2],
-  ];
-  const volumeCenter = [
-    origin[0] + volumeSize[0] / 2,
-    origin[1] + volumeSize[1] / 2,
-    origin[2] + volumeSize[2] / 2,
-  ];
-  const uniformScale = stlSize.z > 0.001 ? volumeSize[2] / stlSize.z : 1;
+  // Cache the FIRST (full-spine) STL bounds so the transform stays stable
+  // across multiple removals — subsequent bounds shrink as geometry is clipped.
+  if (!cachedOriginalSTLBounds) {
+    cachedOriginalSTLBounds = {
+      min: stlBounds.min.clone(),
+      max: stlBounds.max.clone(),
+    };
+  }
+  const effectiveBounds = cachedOriginalSTLBounds;
+
+  // STL→DICOM transform: center-to-center mapping with uniform Z-based scaling.
+  // Use vtkImageData.getBounds() for correct world-space volume extent.
+  // Simple (origin + dims*spacing) fails when direction matrix ≠ identity (e.g. dir[8]=-1
+  // flips Z, shifting the center by the entire volume height).
+  const stlSize = new THREE.Vector3().subVectors(effectiveBounds.max, effectiveBounds.min);
+  const stlCenter = new THREE.Vector3().addVectors(effectiveBounds.min, effectiveBounds.max).multiplyScalar(0.5);
+
+  let volumeCenter: number[];
+  let uniformScale: number;
+
+  if (vtkImageData && typeof vtkImageData.getBounds === 'function') {
+    const bounds: number[] = vtkImageData.getBounds(); // [xmin, xmax, ymin, ymax, zmin, zmax]
+    volumeCenter = [
+      (bounds[0] + bounds[1]) / 2,
+      (bounds[2] + bounds[3]) / 2,
+      (bounds[4] + bounds[5]) / 2,
+    ];
+    const volumeZExtent = Math.abs(bounds[5] - bounds[4]);
+    uniformScale = stlSize.z > 0.001 ? volumeZExtent / stlSize.z : 1;
+
+    if (!transformLogged) {
+      transformLogged = true;
+      const simpleCenter = [
+        origin[0] + dims[0] * spacing[0] / 2,
+        origin[1] + dims[1] * spacing[1] / 2,
+        origin[2] + dims[2] * spacing[2] / 2,
+      ];
+      console.log('[VoxelMasking] Transform diagnostics:', {
+        stlCenter: { x: stlCenter.x.toFixed(1), y: stlCenter.y.toFixed(1), z: stlCenter.z.toFixed(1) },
+        stlSize: { x: stlSize.x.toFixed(1), y: stlSize.y.toFixed(1), z: stlSize.z.toFixed(1) },
+        volumeBounds: bounds.map((v: number) => v.toFixed(1)),
+        volumeCenter_getBounds: volumeCenter.map(v => v.toFixed(1)),
+        volumeCenter_simple: simpleCenter.map(v => v.toFixed(1)),
+        volumeZExtent: volumeZExtent.toFixed(1),
+        uniformScale: uniformScale.toFixed(4),
+        perAxisScale: {
+          x: (Math.abs(bounds[1] - bounds[0]) / stlSize.x).toFixed(4),
+          y: (Math.abs(bounds[3] - bounds[2]) / stlSize.y).toFixed(4),
+          z: uniformScale.toFixed(4),
+        },
+        origin, dims, spacing,
+        direction: direction.map(d => d.toFixed(3)),
+      });
+    }
+  } else {
+    // Fallback when vtkImageData unavailable: use direction-aware formula
+    const vd = direction;
+    const halfI = ((dims[0] - 1) / 2) * spacing[0];
+    const halfJ = ((dims[1] - 1) / 2) * spacing[1];
+    const halfK = ((dims[2] - 1) / 2) * spacing[2];
+    volumeCenter = [
+      origin[0] + vd[0] * halfI + vd[1] * halfJ + vd[2] * halfK,
+      origin[1] + vd[3] * halfI + vd[4] * halfJ + vd[5] * halfK,
+      origin[2] + vd[6] * halfI + vd[7] * halfJ + vd[8] * halfK,
+    ];
+    const volumeZSize = dims[2] * spacing[2];
+    uniformScale = stlSize.z > 0.001 ? volumeZSize / stlSize.z : 1;
+  }
 
   const maskedVoxels = new Map<number, number>();
 
@@ -293,7 +348,7 @@ export function maskVoxelsForRemovedVertices(
     const offset = new THREE.Vector3().subVectors(vertex, stlCenter);
     const dicomWorld: [number, number, number] = [
       volumeCenter[0] + offset.x * uniformScale,
-      volumeCenter[1] - offset.y * uniformScale, // Negate Y
+      volumeCenter[1] + offset.y * uniformScale, // NO Y negation — both STL and DICOM are LPS
       volumeCenter[2] + offset.z * uniformScale,
     ];
 
@@ -352,7 +407,7 @@ export function maskVoxelsForRemovedVertices(
 
   // Flood fill interior: BFS from masked voxels into neighboring bone within AABB
   if (maskedVoxels.size > 0) {
-    const pad = 3;
+    const pad = 8;
     minI = Math.max(0, minI - pad); maxI = Math.min(dims[0] - 1, maxI + pad);
     minJ = Math.max(0, minJ - pad); maxJ = Math.min(dims[1] - 1, maxJ + pad);
     minK = Math.max(0, minK - pad); maxK = Math.min(dims[2] - 1, maxK + pad);
@@ -435,6 +490,13 @@ export function forceRerenderMPRViewports(servicesManager: any): void {
   } catch (e) {
     console.warn('VoxelMasking: render error', e);
   }
+}
+
+// ---- Reset cached state ----
+
+export function resetCachedSTLBounds(): void {
+  cachedOriginalSTLBounds = null;
+  transformLogged = false;
 }
 
 // ---- Undo ----
@@ -529,6 +591,23 @@ async function ensureBoneRemovalOverlay(servicesManager: any): Promise<boolean> 
   }
 }
 
+/**
+ * Get per-slice scalar data arrays for the overlay labelmap.
+ * Caches lookups to avoid repeated cache.getImage() calls.
+ */
+function getOverlaySliceArrays(): (any | null)[] {
+  const arrays: (any | null)[] = new Array(overlayImageIds.length);
+  for (let k = 0; k < overlayImageIds.length; k++) {
+    try {
+      const img = (cache as any).getImage?.(overlayImageIds[k]);
+      arrays[k] = img?.voxelManager?.getScalarData?.() || null;
+    } catch {
+      arrays[k] = null;
+    }
+  }
+  return arrays;
+}
+
 export async function markRemovedVoxelsRed(
   snapshot: VoxelUndoSnapshot,
   servicesManager: any
@@ -541,32 +620,20 @@ export async function markRemovedVoxelsRed(
 
   const { dims } = volumeInfo;
   const sliceSize = dims[0] * dims[1];
+  const overlayArrays = getOverlaySliceArrays();
   const modifiedSlices = new Set<number>();
 
   snapshot.maskedVoxels.forEach((_, linearIdx) => {
     const k = Math.floor(linearIdx / sliceSize);
     const pixelIdx = linearIdx % sliceSize;
-    if (k < 0 || k >= overlayImageIds.length) return;
-
-    try {
-      const img = (cache as any).getImage?.(overlayImageIds[k]);
-      if (img?.voxelManager) {
-        const scalarData = img.voxelManager.getScalarData?.();
-        if (scalarData) {
-          scalarData[pixelIdx] = 1; // segment 1 = red
-          modifiedSlices.add(k);
-        }
-      }
-    } catch {}
+    if (k < 0 || k >= overlayArrays.length || !overlayArrays[k]) return;
+    overlayArrays[k][pixelIdx] = 1;
+    modifiedSlices.add(k);
   });
 
   if (modifiedSlices.size > 0) {
-    // Don't pass modifiedSlicesToUse — a full update ensures sagittal/coronal
-    // views fully reconstruct the segmentation overlay (partial slice updates
-    // can miss the extremities in reformatted orientations).
-    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID);
+    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID, Array.from(modifiedSlices));
   }
-  console.log(`BoneRemovalOverlay: marked ${snapshot.maskedVoxels.size} voxels red on ${modifiedSlices.size} slices`);
 }
 
 export async function clearRemovedVoxelsRed(
@@ -580,56 +647,42 @@ export async function clearRemovedVoxelsRed(
 
   const { dims } = volumeInfo;
   const sliceSize = dims[0] * dims[1];
+  const overlayArrays = getOverlaySliceArrays();
   const modifiedSlices = new Set<number>();
 
   snapshot.maskedVoxels.forEach((_, linearIdx) => {
     const k = Math.floor(linearIdx / sliceSize);
     const pixelIdx = linearIdx % sliceSize;
-    if (k < 0 || k >= overlayImageIds.length) return;
-
-    try {
-      const img = (cache as any).getImage?.(overlayImageIds[k]);
-      if (img?.voxelManager) {
-        const scalarData = img.voxelManager.getScalarData?.();
-        if (scalarData) {
-          scalarData[pixelIdx] = 0; // clear segment
-          modifiedSlices.add(k);
-        }
-      }
-    } catch {}
+    if (k < 0 || k >= overlayArrays.length || !overlayArrays[k]) return;
+    overlayArrays[k][pixelIdx] = 0;
+    modifiedSlices.add(k);
   });
 
   if (modifiedSlices.size > 0) {
-    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID);
+    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID, Array.from(modifiedSlices));
   }
-  console.log(`BoneRemovalOverlay: cleared ${snapshot.maskedVoxels.size} voxels on ${modifiedSlices.size} slices`);
 }
 
 export async function clearAllBoneRemovalOverlay(servicesManager: any): Promise<void> {
   if (!overlayInitialized) return;
 
+  const overlayArrays = getOverlaySliceArrays();
   const modifiedSlices: number[] = [];
-  for (let k = 0; k < overlayImageIds.length; k++) {
-    try {
-      const img = (cache as any).getImage?.(overlayImageIds[k]);
-      if (img?.voxelManager) {
-        const scalarData = img.voxelManager.getScalarData?.();
-        if (scalarData) {
-          let modified = false;
-          for (let i = 0; i < scalarData.length; i++) {
-            if (scalarData[i] !== 0) {
-              scalarData[i] = 0;
-              modified = true;
-            }
-          }
-          if (modified) modifiedSlices.push(k);
-        }
+
+  for (let k = 0; k < overlayArrays.length; k++) {
+    const arr = overlayArrays[k];
+    if (!arr) continue;
+    let modified = false;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] !== 0) {
+        arr[i] = 0;
+        modified = true;
       }
-    } catch {}
+    }
+    if (modified) modifiedSlices.push(k);
   }
 
   if (modifiedSlices.length > 0) {
-    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID);
+    triggerSegmentationDataModified(BONE_REMOVAL_SEG_ID, modifiedSlices);
   }
-  console.log(`BoneRemovalOverlay: cleared all overlay on ${modifiedSlices.length} slices`);
 }

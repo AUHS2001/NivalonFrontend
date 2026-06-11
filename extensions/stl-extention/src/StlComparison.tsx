@@ -43,6 +43,7 @@ import {
   markRemovedVoxelsRed,
   clearRemovedVoxelsRed,
   clearAllBoneRemovalOverlay,
+  resetCachedSTLBounds,
 } from './utils/voxelMaskingManager';
 import { useCenterLine } from './hooks/useCenterLine';
 import { CenterLineProvider } from './context/CenterLineContext';
@@ -1191,6 +1192,7 @@ const createAutomaticSegmentation = async () => {
       restoreVoxels(snapshot, servicesManager);
     }
     clearAllBoneRemovalOverlay(servicesManager);
+    resetCachedSTLBounds();
     setRemovalMode(false);
     setRemoving(false);
     toggleBrightness();

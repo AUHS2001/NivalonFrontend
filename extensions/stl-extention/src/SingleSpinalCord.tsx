@@ -62,6 +62,7 @@ import {
   markRemovedVoxelsRed,
   clearRemovedVoxelsRed,
   clearAllBoneRemovalOverlay,
+  resetCachedSTLBounds,
 } from './utils/voxelMaskingManager';
 
 interface SingleSpinalCordProps {
@@ -2477,6 +2478,7 @@ const createAutomaticSegmentation = async () => {
       restoreVoxels(snapshot, servicesManager);
     }
     clearAllBoneRemovalOverlay(servicesManager);
+    resetCachedSTLBounds();
     setRemovalMode(false);
     setRemoving(false);
     toggleBrightness();
