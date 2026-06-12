@@ -297,6 +297,7 @@ const SidePanel = ({
             className={classnames('text-primary', side === 'left' && 'rotate-180 transform')}
           />
         </div>
+        {side !== 'left' && (
         <div className={classnames('mt-3 flex flex-col space-y-3')}>
           {_childComponents.map((childComponent, index) => (
             <Tooltip key={index}>
@@ -334,6 +335,7 @@ const SidePanel = ({
             </Tooltip>
           ))}
         </div>
+        )}
       </>
     );
   };
@@ -364,7 +366,7 @@ const SidePanel = ({
     return (
       <>
         {getCloseIcon()}
-        <div className={classnames('flex grow justify-center')}>
+        <div className={classnames('flex grow justify-center', side === 'left' && 'invisible')}>
           <div className={classnames('bg-[#0a0e17] text-primary flex flex-wrap')}>
             {tabs.map((tab, tabIndex) => {
               const { disabled } = tab;
@@ -441,6 +443,15 @@ const SidePanel = ({
   };
 
   const getOpenStateComponent = () => {
+    if (side === 'left') {
+      // Left panel: show only the close button, no tab icons
+      return (
+        <>
+          <div className="bg-[#0a0e17] flex h-[0px] flex-shrink-0 select-none rounded-t overflow-hidden" />
+          <Separator orientation="horizontal" className="bg-[#0a0e17]" thickness="0px" />
+        </>
+      );
+    }
     return (
       <>
         <div className={tabs.length === 1 && side === "right" ? "bg-[#0a0e17] flex h-[0px] flex-shrink-0 select-none rounded-t": "bg-[#0a0e17] flex h-[40px] flex-shrink-0 select-none rounded-t"}>
@@ -467,13 +478,20 @@ const SidePanel = ({
             if (tabIndex === activeTabIndex) {
               return <div key={tabIndex} className="relative flex-1 min-h-0 overflow-hidden">
               <tab.content />
-              {/* Overlay icon - only shown on active tab */}
-              {
-              tabs.length === 1 && side === 'right' ?
+              {/* Overlay close icon */}
+              {tabs.length === 1 && side === 'right' && (
                 <div className="absolute top-6 right-4 z-10" onClick={() => updatePanelOpen(!panelOpen)}>
-                 <Icons.ArrowRight className="text-blue-500 w-5 h-5 hover:text-blue-300 transition-colors"/>
-                </div> : <></>
-              }
+                  <Icons.ArrowRight className="text-blue-500 w-5 h-5 hover:text-blue-300 transition-colors"/>
+                </div>
+              )}
+              {side === 'left' && (
+                <div
+                  className="absolute top-[8px] left-2 z-10 cursor-pointer"
+                  onClick={() => updatePanelOpen(false)}
+                >
+                  <Icons.SidePanelCloseLeft className="text-primary w-5 h-5 hover:text-blue-300 transition-colors" />
+                </div>
+              )}
             </div>;
             }
             return null;
