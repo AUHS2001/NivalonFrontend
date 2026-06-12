@@ -152,7 +152,12 @@ export function useViewportSegmentations({
 
       const representations = segmentationService.getSegmentationRepresentations(viewportId);
 
-      const newSegmentationsWithRepresentations = representations.map(representation => {
+      // Hide internal overlays (e.g. bone removal red highlight) from the panel
+      const visibleRepresentations = representations.filter(
+        rep => rep.segmentationId !== 'boneRemovalOverlay'
+      );
+
+      const newSegmentationsWithRepresentations = visibleRepresentations.map(representation => {
         const segmentation = segmentationService.getSegmentation(representation.segmentationId);
         const mappedSegmentation = mapSegmentationToDisplay(segmentation, customizationService);
         return {

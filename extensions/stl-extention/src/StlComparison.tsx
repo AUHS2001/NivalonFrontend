@@ -32,7 +32,19 @@ import { useClickRemoveContext } from './context/ClickRemoveContext';
 import { useStlVisibilityContext } from './context/StlVisibilityContext';
 import { useSTLToDICOMLinking } from './hooks/useSTLToDICOMLinking';
 import { STLToDICOMConfig } from './types/three.types';
-import { useVersionHistoryContext } from './context/VersionHistoryContext'
+import { useVersionHistoryContext } from './context/VersionHistoryContext';
+import {
+  maskVoxelsForRemovedVertices,
+  restoreVoxels,
+  forceRerenderMPRViewports,
+  extractRemovedVerticesFromClick,
+  computeSTLBounds,
+  VoxelUndoSnapshot,
+  markRemovedVoxelsRed,
+  clearRemovedVoxelsRed,
+  clearAllBoneRemovalOverlay,
+  resetCachedSTLBounds,
+} from './utils/voxelMaskingManager';
 import { useCenterLine } from './hooks/useCenterLine';
 import { CenterLineProvider } from './context/CenterLineContext';
 import { servicesManager, commandsManager } from '../../../platform/app/src/App';
@@ -66,6 +78,7 @@ const StlComparison: React.FC<StlComparisonProps> = ({
   const [removing, setRemoving] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
+  const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -727,6 +740,17 @@ const createAutomaticSegmentation = async () => {
 // Helper function to get active display sets
 
 
+  const performVoxelMasking = useCallback((removedVertices: THREE.Vector3[], preComputedBounds?: { min: THREE.Vector3; max: THREE.Vector3 }) => {
+    if (removedVertices.length === 0) return;
+    const stlBounds = preComputedBounds || computeSTLBounds(meshRefs.current.left);
+    const snapshot = maskVoxelsForRemovedVertices(removedVertices, stlBounds, servicesManager);
+    if (snapshot) {
+      voxelUndoStackRef.current.push(snapshot);
+      forceRerenderMPRViewports(servicesManager);
+      markRemovedVoxelsRed(snapshot, servicesManager);
+    }
+  }, [servicesManager]);
+
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
     removalMode,
     leftRendererRef,
@@ -737,7 +761,10 @@ const createAutomaticSegmentation = async () => {
     setRemoving,
     setUndoStack,
     setRemovalOutline,
-    removalOutline
+    removalOutline,
+    onRemovalComplete: (removedVertices, preRemovalBounds) => {
+      performVoxelMasking(removedVertices, preRemovalBounds);
+    },
   });
 
   const {
@@ -1090,6 +1117,9 @@ const createAutomaticSegmentation = async () => {
           const leftMesh = meshRefs.current.left[idx];
           const rightMesh = meshRefs.current.right[idx];
 
+          // Compute bounds BEFORE removing mesh so STL→DICOM transform is correct
+          const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
+
           // Remove from scene
           leftGroupRef.current.remove(leftMesh);
           rightGroupRef.current.remove(rightMesh);
@@ -1103,6 +1133,10 @@ const createAutomaticSegmentation = async () => {
             ...stack,
             { leftMesh, rightMesh, index: idx }
           ]);
+
+          // Mask corresponding DICOM voxels
+          const removedVertices = extractRemovedVerticesFromClick(leftMesh);
+          performVoxelMasking(removedVertices, preRemovalBounds);
         }
       }
     };
@@ -1153,6 +1187,12 @@ const createAutomaticSegmentation = async () => {
     setRemovalOutline([]);
     setUndoStack([]);
     setClickRemovalUndoStack([]);
+    while (voxelUndoStackRef.current.length > 0) {
+      const snapshot = voxelUndoStackRef.current.pop()!;
+      restoreVoxels(snapshot, servicesManager);
+    }
+    clearAllBoneRemovalOverlay(servicesManager);
+    resetCachedSTLBounds();
     setRemovalMode(false);
     setRemoving(false);
     toggleBrightness();
@@ -1294,6 +1334,11 @@ const createAutomaticSegmentation = async () => {
 
       return stack.slice(0, -1);
     });
+    const voxelSnapshot = voxelUndoStackRef.current.pop();
+    if (voxelSnapshot) {
+      restoreVoxels(voxelSnapshot, servicesManager);
+      clearRemovedVoxelsRed(voxelSnapshot, servicesManager);
+    }
   };
 
   const handleUndo = () => {
@@ -1308,6 +1353,11 @@ const createAutomaticSegmentation = async () => {
       mesh.visible = true;
     });
     setUndoStack(stack => stack.slice(0, -1));
+    const voxelSnapshot = voxelUndoStackRef.current.pop();
+    if (voxelSnapshot) {
+      restoreVoxels(voxelSnapshot, servicesManager);
+      clearRemovedVoxelsRed(voxelSnapshot, servicesManager);
+    }
   };
 
   console.log('🔍 Debug - STL-DICOM Linking Status:', {
@@ -1371,12 +1421,62 @@ const createAutomaticSegmentation = async () => {
             position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
             display: "flex", alignItems: "center", justifyContent: "center"
           }}>
+            <style>{`
+              @keyframes stl-bar-fill {
+                0%   { transform: scaleX(0); }
+                15%  { transform: scaleX(0.2); }
+                40%  { transform: scaleX(0.5); }
+                70%  { transform: scaleX(0.75); }
+                90%  { transform: scaleX(0.88); }
+                100% { transform: scaleX(0.95); }
+              }
+              @keyframes stl-pct-show { to { opacity: 1; } }
+              @keyframes stl-pct-hide { to { opacity: 0; } }
+            `}</style>
             <div style={{
               background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
-              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008", display: "flex", alignItems: "center"
+              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
+              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "300px"
             }}>
-              <span className="spinner-border spinner-border-lg" style={{marginRight: 16}}/>
-              Removing ...
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                <span className="spinner-border spinner-border-lg" style={{marginRight: 16}}/>
+                Removing ...
+              </div>
+              <div style={{
+                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
+              }}>
+                <div style={{
+                  width: "100%", height: "100%",
+                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
+                  borderRadius: "4px",
+                  transformOrigin: "left",
+                  transform: "scaleX(0)",
+                  animation: "stl-bar-fill 6s ease-out forwards",
+                }} />
+              </div>
+              <div style={{ position: "relative", height: 22, width: 50, marginTop: 10 }}>
+                {[
+                  { pct: 0,  show: 0,   hide: 0.8 },
+                  { pct: 15, show: 0.8, hide: 1.6 },
+                  { pct: 30, show: 1.6, hide: 2.4 },
+                  { pct: 50, show: 2.4, hide: 3.2 },
+                  { pct: 65, show: 3.2, hide: 4.0 },
+                  { pct: 80, show: 4.0, hide: 4.8 },
+                  { pct: 90, show: 4.8, hide: 5.5 },
+                  { pct: 95, show: 5.5, hide: -1  },
+                ].map(({ pct, show, hide }) => (
+                  <span key={pct} style={{
+                    position: "absolute", left: 0, right: 0, textAlign: "center",
+                    fontSize: "16px", fontWeight: 600, color: "#4FC3F7",
+                    opacity: pct === 0 ? 1 : 0,
+                    animation: pct === 0
+                      ? `stl-pct-hide 0.1s ${hide}s forwards`
+                      : hide > 0
+                        ? `stl-pct-show 0.1s ${show}s forwards, stl-pct-hide 0.1s ${hide}s forwards`
+                        : `stl-pct-show 0.1s ${show}s forwards`,
+                  }}>{pct}%</span>
+                ))}
+              </div>
             </div>
           </div>
         )}

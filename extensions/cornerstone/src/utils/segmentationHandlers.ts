@@ -16,6 +16,11 @@ export function setupSegmentationDataModifiedHandler({
   const { unsubscribe: debouncedUnsubscribe } = segmentationService.subscribeDebounced(
     segmentationService.EVENTS.SEGMENTATION_DATA_MODIFIED,
     async ({ segmentationId }) => {
+      // Skip internal overlays — no stats computation needed
+      if (segmentationId === 'boneRemovalOverlay') {
+        return;
+      }
+
       const segmentation = segmentationService.getSegmentation(segmentationId);
 
       if (!segmentation) {

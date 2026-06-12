@@ -1820,6 +1820,10 @@ class SegmentationService extends PubSubService {
 
   private _onSegmentationDataModifiedFromSource = evt => {
     const { segmentationId } = evt.detail;
+    // Skip broadcasting for internal overlays to avoid expensive stats/re-render cascades
+    if (segmentationId === 'boneRemovalOverlay') {
+      return;
+    }
     this._broadcastEvent(this.EVENTS.SEGMENTATION_DATA_MODIFIED, {
       segmentationId,
     });
