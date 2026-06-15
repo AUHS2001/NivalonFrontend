@@ -192,35 +192,53 @@ function getVolumeData(servicesManager: any) {
 
 /**
  * Compute DICOM world positions using the EXACT same transform as
- * spineLabelOverlayManager's transformSTLToDICOM (proven working).
+ * voxelMaskingManager: vtkImageData.getBounds() for correct world-space
+ * volume extent, NO Y negation (both STL and DICOM are LPS).
  */
-function computeDicomPositions(volumeBounds: any) {
+function computeDicomPositions(volumeBounds: any, vtkImgData?: any) {
   if (state.dicomZComputed || state.vertebrae.length === 0) return;
 
-  // STL bounding box center and size (same as spineLabelOverlayManager)
+  // STL bounding box center and size
   const stlSize = new THREE.Vector3().subVectors(state.stlBoundsMax, state.stlBoundsMin);
   const stlCenter = new THREE.Vector3().addVectors(state.stlBoundsMin, state.stlBoundsMax).multiplyScalar(0.5);
 
-  // Volume center and size
-  const volumeSize = [
-    volumeBounds.dimensions[0] * volumeBounds.spacing[0],
-    volumeBounds.dimensions[1] * volumeBounds.spacing[1],
-    volumeBounds.dimensions[2] * volumeBounds.spacing[2],
-  ];
-  const volumeCenter = [
-    volumeBounds.origin[0] + volumeSize[0] / 2,
-    volumeBounds.origin[1] + volumeSize[1] / 2,
-    volumeBounds.origin[2] + volumeSize[2] / 2,
-  ];
+  let volumeCenter: number[];
+  let uniformScale: number;
 
-  // Uniform scale based on Z axis (same as spineLabelOverlayManager)
-  const uniformScale = stlSize.z > 0.001 ? volumeSize[2] / stlSize.z : 1;
+  if (vtkImgData && typeof vtkImgData.getBounds === 'function') {
+    // Use vtkImageData.getBounds() for correct world-space extent
+    // (handles non-identity direction matrices correctly)
+    const bounds: number[] = vtkImgData.getBounds();
+    volumeCenter = [
+      (bounds[0] + bounds[1]) / 2,
+      (bounds[2] + bounds[3]) / 2,
+      (bounds[4] + bounds[5]) / 2,
+    ];
+    const volumeZExtent = Math.abs(bounds[5] - bounds[4]);
+    uniformScale = stlSize.z > 0.001 ? volumeZExtent / stlSize.z : 1;
+  } else {
+    // Fallback: direction-aware formula
+    const dir = volumeBounds.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const dims = volumeBounds.dimensions;
+    const sp = volumeBounds.spacing;
+    const ori = volumeBounds.origin;
+    const halfI = ((dims[0] - 1) / 2) * sp[0];
+    const halfJ = ((dims[1] - 1) / 2) * sp[1];
+    const halfK = ((dims[2] - 1) / 2) * sp[2];
+    volumeCenter = [
+      ori[0] + dir[0] * halfI + dir[1] * halfJ + dir[2] * halfK,
+      ori[1] + dir[3] * halfI + dir[4] * halfJ + dir[5] * halfK,
+      ori[2] + dir[6] * halfI + dir[7] * halfJ + dir[8] * halfK,
+    ];
+    const volumeZSize = dims[2] * sp[2];
+    uniformScale = stlSize.z > 0.001 ? volumeZSize / stlSize.z : 1;
+  }
 
   state.vertebrae.forEach(v => {
     const offset = new THREE.Vector3().subVectors(v.stlCenter, stlCenter);
     v.dicomCenter = [
       volumeCenter[0] + offset.x * uniformScale,
-      volumeCenter[1] - offset.y * uniformScale,  // Negate Y: STL +Y = anterior, DICOM LPS +Y = posterior
+      volumeCenter[1] + offset.y * uniformScale,  // NO Y negation — both STL and DICOM are LPS
       volumeCenter[2] + offset.z * uniformScale,
     ];
   });
@@ -305,7 +323,7 @@ function drawContoursOnViewport(viewportId: string, viewport: any) {
 
   // Compute DICOM positions using the exact same volume data used for rendering
   if (!state.dicomZComputed) {
-    computeDicomPositions({ origin: ori, dimensions: dims, spacing: sp });
+    computeDicomPositions({ origin: ori, dimensions: dims, spacing: sp, direction: dir }, vtkImgData);
   }
 
   const camera = viewport.getCamera?.();
@@ -534,28 +552,55 @@ function drawContoursOnViewport(viewportId: string, viewport: any) {
     }
   }
 
-  // ===== STEP 6: Draw boundary pixels directly on canvas =====
-  // Thin 1.5px dot — light clean outline
-  const dotW = 1.5;
-  const dotH = 1.5;
+  // ===== STEP 6: Draw filled regions + boundary on canvas =====
 
-  // Group boundary pixels by vertebra label for efficient rendering
-  const buckets = new Map<number, number[]>(); // label → [u,v, u,v, ...]
+  // Group ALL filled bone pixels by vertebra label (for semi-transparent fill)
+  const fillBuckets = new Map<number, number[]>();
+  for (let v2 = 0; v2 < h; v2++) {
+    for (let u2 = 0; u2 < w; u2++) {
+      const lab = labelMap[u2 + v2 * w];
+      if (lab < 0) continue;
+      let arr = fillBuckets.get(lab);
+      if (!arr) { arr = []; fillBuckets.set(lab, arr); }
+      arr.push(u2, v2);
+    }
+  }
+
+  // Group boundary pixels by vertebra label (for solid outline)
+  const boundaryBuckets = new Map<number, number[]>();
   for (let v2 = 0; v2 < h; v2++) {
     for (let u2 = 0; u2 < w; u2++) {
       if (!boundary[u2 + v2 * w]) continue;
       const lab = labelMap[u2 + v2 * w];
       if (lab < 0) continue;
-      let arr = buckets.get(lab);
-      if (!arr) { arr = []; buckets.set(lab, arr); }
+      let arr = boundaryBuckets.get(lab);
+      if (!arr) { arr = []; boundaryBuckets.set(lab, arr); }
       arr.push(u2, v2);
     }
   }
 
-  // Draw each vertebra's boundary
-  buckets.forEach((coords, lab) => {
+  // Draw filled interior — solid color tint
+  fillBuckets.forEach((coords, lab) => {
     if (lab < 0 || lab >= state.vertebrae.length) return;
-    ctx.fillStyle = state.vertebrae[lab].cssColor;
+    const c = state.vertebrae[lab].color;
+    const r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+    ctx.fillStyle = `rgba(${r},${g},${b},0.45)`;
+    for (let i = 0; i < coords.length; i += 2) {
+      const u = coords[i], v = coords[i + 1];
+      const cx = cxA + cxB * u + cxC * v;
+      const cy = cyA + cyB * u + cyC * v;
+      ctx.fillRect(cx - 0.5, cy - 0.5, 1.5, 1.5);
+    }
+  });
+
+  // Draw boundary outline — thick and fully opaque
+  const dotW = 2;
+  const dotH = 2;
+  boundaryBuckets.forEach((coords, lab) => {
+    if (lab < 0 || lab >= state.vertebrae.length) return;
+    const c = state.vertebrae[lab].color;
+    const r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+    ctx.fillStyle = `rgba(${r},${g},${b},1.0)`;
     for (let i = 0; i < coords.length; i += 2) {
       const u = coords[i], v = coords[i + 1];
       const cx = cxA + cxB * u + cxC * v;
@@ -572,7 +617,12 @@ function redrawAll() {
 
   const { viewports, volumeBounds } = getViewportsAndBounds(servicesManagerRef);
   if (volumeBounds && !state.dicomZComputed) {
-    computeDicomPositions(volumeBounds);
+    // Try to get vtkImageData for accurate bounds
+    const volData = getVolumeData(servicesManagerRef);
+    computeDicomPositions(
+      { origin: volData?.ori || volumeBounds.origin, dimensions: volData?.dims || volumeBounds.dimensions, spacing: volData?.sp || volumeBounds.spacing, direction: volData?.dir },
+      volData?.vtkImgData
+    );
   }
 
   viewports.forEach(({ viewportId, viewport }) => {
