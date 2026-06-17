@@ -90,7 +90,7 @@ async function loadSTLsWithMaterials(
     stlUrls.map(async (url) => {
       if (cancelled.current) return null;
       try {
-        const res = await fetchFile(url, { cache: 'no-store' });
+        const res = await fetchFile(url);
         if (!res.ok) {
           completedCount++;
           onProgress?.(Math.round((completedCount / stlUrls.length) * 100));
@@ -436,6 +436,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
     const loader = new STLLoader();
     const group = rightGroupRef.current;
+    group.clear();
 
     let filesLoaded = 0;
     const totalFiles = files.length;
@@ -473,7 +474,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     e.target.value = '';
   }, []);
 
-  // ─── RIGHT PANEL: add STLs from URL list (appends to existing) ───
+  // ─── RIGHT PANEL: add STLs from URL list (appends to existing, parallel fetch) ───
   const addRightFromUrls = useCallback(async (urls: string[], label: string) => {
     setRightLoading(true);
     setRightProgress(0);
@@ -481,27 +482,41 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
     const loader = new STLLoader();
     const group = rightGroupRef.current;
+    group.clear();
     let completedCount = 0;
 
-    for (const url of urls) {
-      try {
-        const res = await fetchFile(url, { cache: 'no-store' });
-        if (!res.ok) { completedCount++; continue; }
-        const arrayBuffer = await res.arrayBuffer();
-        const geometry = loader.parse(arrayBuffer);
-        geometry.computeBoundingBox();
-        const fileName = url.substring(url.lastIndexOf('/') + 1);
-        const info = getVertebraInfo(fileName, url);
-        const material = createLeftMaterial(info.type);
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.userData = info;
-        group.add(mesh);
-      } catch (err) {
-        console.error('Failed to load STL:', url, err);
-      }
-      completedCount++;
-      setRightProgress(Math.round((completedCount / urls.length) * 100));
-    }
+    const results = await Promise.all(
+      urls.map(async (url) => {
+        try {
+          const res = await fetchFile(url);
+          if (!res.ok) {
+            completedCount++;
+            setRightProgress(Math.round((completedCount / urls.length) * 100));
+            return null;
+          }
+          const arrayBuffer = await res.arrayBuffer();
+          const geometry = loader.parse(arrayBuffer);
+          geometry.computeBoundingBox();
+          const fileName = url.substring(url.lastIndexOf('/') + 1);
+
+          completedCount++;
+          setRightProgress(Math.round((completedCount / urls.length) * 100));
+
+          return { geometry, ...getVertebraInfo(fileName, url) };
+        } catch (err) {
+          completedCount++;
+          setRightProgress(Math.round((completedCount / urls.length) * 100));
+          console.error('Failed to load STL:', url, err);
+          return null;
+        }
+      })
+    );
+
+    results.filter(Boolean).forEach((obj: any) => {
+      const mesh = new THREE.Mesh(obj.geometry, createLeftMaterial(obj.type));
+      mesh.userData = obj;
+      group.add(mesh);
+    });
 
     if (group.children.length > 0 && rightCameraRef.current && rightControlsRef.current) {
       positionCameraForGroup(rightCameraRef.current, rightControlsRef.current, group);
@@ -563,7 +578,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       backgroundColor: '#0a0e17', position: 'relative',
     }}>
       {/* ─── Left Panel ─── */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #1a2030' }}>
+      <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #ffffff' }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
@@ -631,7 +646,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         }}
       >
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#00ffff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#ffffff', zIndex: 100,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px',
         }}>
