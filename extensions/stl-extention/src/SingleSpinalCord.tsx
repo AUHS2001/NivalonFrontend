@@ -92,6 +92,9 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const undoOrderRef = useRef<('bone' | 'click')[]>([]);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
@@ -2516,6 +2519,17 @@ const createAutomaticSegmentation = async () => {
   const downloadGenerated3D = async () => {
     try {
       setIsDownloading(true);
+      setDownloadProgress(0);
+      setDownloadedBytes(0);
+      setDownloadTotalBytes(0);
+
+      // Simulated progress: ramps from 0→90% over ~15s while waiting
+      let simulated = 0;
+      const simInterval = setInterval(() => {
+        simulated += (90 - simulated) * 0.04; // ease-out curve
+        setDownloadProgress(Math.round(simulated));
+      }, 200);
+
       const response = await fetch(
         `${SERVER_URL}/analyst/meshes/processed/download?series_instance_uid=${stlInstanceId}`,
         {
@@ -2529,13 +2543,18 @@ const createAutomaticSegmentation = async () => {
       );
 
       if (!response.ok) {
+        clearInterval(simInterval);
         throw new Error(`Download failed: ${response.status} ${response.statusText}`);
       }
 
-      const blob = await response.blob();
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let fileName = 'downloaded_3d_file';
+      const contentLength = response.headers.get('Content-Length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      setDownloadTotalBytes(total);
 
+      const contentType = response.headers.get('Content-Type') || 'application/zip';
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let fileName = 'downloaded_3d_file.zip';
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
         if (fileNameMatch && fileNameMatch[1]) {
@@ -2543,6 +2562,33 @@ const createAutomaticSegmentation = async () => {
         }
       }
 
+      const reader = response.body!.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        setDownloadedBytes(received);
+        if (total > 0) {
+          // Use real progress when Content-Length is known
+          const realPct = Math.round((received / total) * 100);
+          simulated = Math.max(simulated, realPct);
+          setDownloadProgress(simulated);
+        }
+      }
+
+      // Stop simulation, jump to 100%
+      clearInterval(simInterval);
+      setDownloadProgress(100);
+      setDownloadedBytes(received);
+
+      // Hold at 100% briefly so user sees completion
+      await new Promise(r => setTimeout(r, 600));
+
+      const blob = new Blob(chunks, { type: contentType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -2951,6 +2997,43 @@ const createAutomaticSegmentation = async () => {
                         : `stl-pct-show 0.1s ${show}s forwards`,
                   }}>{pct}%</span>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isDownloading && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
+              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
+              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "320px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                <span className="spinner-border spinner-border-lg" style={{ marginRight: 16 }} />
+                Downloading 3D Model...
+              </div>
+              <div style={{
+                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
+              }}>
+                <div style={{
+                  width: `${downloadProgress}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
+                  borderRadius: "4px",
+                  transition: "width 0.3s ease-out",
+                }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: "16px", fontWeight: 600, color: "#4FC3F7" }}>
+                {downloadTotalBytes > 0
+                  ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB / ${(downloadTotalBytes / (1024 * 1024)).toFixed(1)} MB — ${downloadProgress}%`
+                  : downloadedBytes > 0
+                    ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB downloaded — ${downloadProgress}%`
+                    : `Downloading... ${downloadProgress}%`
+                }
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 // hooks/useSTLToDICOMLinking.tsx
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
+import { cache } from '@cornerstonejs/core';
 import { STLToDICOMConfig } from '../types/three.types';
 
 export const useSTLToDICOMLinking = (config: STLToDICOMConfig) => {
@@ -691,6 +692,133 @@ const calculateSpinalPosition = useCallback((meshData: any, viewportHeight: numb
     console.log(`🎯 Placed ${indicatorsPlaced} indicators for ${meshData.type}${meshData.number}`);
   }, [convertSTLToDICOMPosition, createPositionIndicator, updateIndicatorPosition, clearDICOMHighlights, detectViewportType]);
 
+  // ─── Scroll DICOM viewports to exact slice matching the clicked STL point ───
+  const scrollViewportsToPoint = useCallback((stlPoint: THREE.Vector3) => {
+    const { cornerstoneViewportService, viewportGridService } = servicesManager?.services || {};
+    if (!cornerstoneViewportService || !viewportGridService) return;
+
+    // Compute STL bounds (vertebrae only, fallback to all meshes)
+    const allMeshes = meshRefs.current?.left || [];
+    if (allMeshes.length === 0) return;
+
+    const vertebrae = allMeshes.filter(mesh => {
+      const t = mesh.userData?.type;
+      return t && ['C', 'T', 'L', 'S'].includes(t);
+    });
+    const bounded = vertebrae.length > 0 ? vertebrae : allMeshes;
+
+    const stlBounds = {
+      min: new THREE.Vector3(Infinity, Infinity, Infinity),
+      max: new THREE.Vector3(-Infinity, -Infinity, -Infinity),
+    };
+    bounded.forEach(mesh => {
+      if (mesh.geometry) {
+        mesh.geometry.computeBoundingBox();
+        const bb = mesh.geometry.boundingBox;
+        if (bb) {
+          stlBounds.min.min(bb.min.clone().applyMatrix4(mesh.matrixWorld));
+          stlBounds.max.max(bb.max.clone().applyMatrix4(mesh.matrixWorld));
+        }
+      }
+    });
+
+    // Gather cornerstone viewports
+    const viewportState = viewportGridService.getState();
+    const viewports = viewportState?.viewports;
+    if (!viewports) return;
+
+    const entries = viewports instanceof Map
+      ? Array.from(viewports.entries())
+      : Object.entries(viewports);
+
+    let volumeCenter: number[] | null = null;
+    let uniformScale = 1;
+    const csViewports: any[] = [];
+
+    entries.forEach(([vpId, vpInfo]: [string, any]) => {
+      const opts = vpInfo?.viewportOptions || {};
+      if (opts.customLayout === 'karachi' || vpId === 'karachiViewport') return;
+      try {
+        const vp = cornerstoneViewportService.getCornerstoneViewport(vpId);
+        if (!vp?.element) return;
+        csViewports.push(vp);
+
+        if (!volumeCenter) {
+          // Prefer vtkImageData.getBounds()
+          try {
+            const actors = vp.getActors?.();
+            if (actors?.length) {
+              const vol = (cache as any).getVolume?.((actors[0] as any).referencedId || actors[0].uid);
+              if (vol?.imageData && typeof vol.imageData.getBounds === 'function') {
+                const b: number[] = vol.imageData.getBounds();
+                volumeCenter = [(b[0]+b[1])/2, (b[2]+b[3])/2, (b[4]+b[5])/2];
+                const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
+                uniformScale = stlSize.z > 0.001 ? Math.abs(b[5]-b[4]) / stlSize.z : 1;
+              }
+            }
+          } catch (_) {}
+          // Fallback: imageData origin/dimensions/spacing
+          if (!volumeCenter) {
+            try {
+              const img = vp.getImageData?.();
+              if (img) {
+                const vd = img.direction ? Array.from(img.direction) as number[] : [1,0,0,0,1,0,0,0,1];
+                const hI = ((img.dimensions[0]-1)/2)*img.spacing[0];
+                const hJ = ((img.dimensions[1]-1)/2)*img.spacing[1];
+                const hK = ((img.dimensions[2]-1)/2)*img.spacing[2];
+                volumeCenter = [
+                  img.origin[0]+vd[0]*hI+vd[1]*hJ+vd[2]*hK,
+                  img.origin[1]+vd[3]*hI+vd[4]*hJ+vd[5]*hK,
+                  img.origin[2]+vd[6]*hI+vd[7]*hJ+vd[8]*hK,
+                ];
+                const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
+                uniformScale = stlSize.z > 0.001 ? (img.dimensions[2]*img.spacing[2]) / stlSize.z : 1;
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    });
+
+    if (!volumeCenter || csViewports.length === 0) return;
+
+    // STL → DICOM transform (inverse of crosshair sync's DICOM→STL)
+    const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
+    const dicomPoint: [number, number, number] = [
+      volumeCenter[0] + (stlPoint.x - stlCenter.x) * uniformScale,
+      volumeCenter[1] + (stlPoint.y - stlCenter.y) * uniformScale,
+      volumeCenter[2] + (stlPoint.z - stlCenter.z) * uniformScale,
+    ];
+
+    // Update Crosshairs tool center if it's active
+    try {
+      const { toolGroupService } = servicesManager?.services || {};
+      if (toolGroupService) {
+        const tg = toolGroupService.getToolGroup('mpr');
+        const ct = (tg as any)?.getToolInstance?.('Crosshairs');
+        if (ct) ct.toolCenter = dicomPoint;
+      }
+    } catch (_) {}
+
+    // Scroll each viewport to the correct slice (only update scroll axis, preserve pan)
+    csViewports.forEach(vp => {
+      try {
+        const cam = vp.getCamera();
+        if (!cam?.focalPoint || !cam?.viewPlaneNormal) return;
+        const vpn = cam.viewPlaneNormal;
+        const absVpn = [Math.abs(vpn[0]), Math.abs(vpn[1]), Math.abs(vpn[2])];
+        const scrollAxis = absVpn.indexOf(Math.max(...absVpn));
+
+        const newFP = [...cam.focalPoint] as [number, number, number];
+        newFP[scrollAxis] = dicomPoint[scrollAxis];
+        vp.setCamera({ focalPoint: newFP });
+        vp.render();
+      } catch (_) {}
+    });
+
+    console.log('[LinkingTool] Scrolled viewports to DICOM:', dicomPoint.map(v => v.toFixed(1)));
+  }, [servicesManager, meshRefs]);
+
   const handleSTLClick = useCallback((event: MouseEvent) => {
     if (!isLinkingActive || !leftRendererRef.current || !cameraRef.current) return;
 
@@ -718,12 +846,17 @@ const calculateSpinalPosition = useCallback((meshData: any, viewportHeight: numb
 
       const worldPosition = highlightSTLMesh(clickedMesh, intersectPoint);
       highlightDICOMAtPosition(meshData, worldPosition, clickedMesh);
+
+      // Use mesh center (not surface hit point) for accurate anatomical positioning
+      const meshCenter = new THREE.Vector3();
+      new THREE.Box3().setFromObject(clickedMesh).getCenter(meshCenter);
+      scrollViewportsToPoint(meshCenter);
     } else {
       setSelectedMesh(null);
       clearDICOMHighlights();
       resetAllMeshColors();
     }
-  }, [isLinkingActive, highlightSTLMesh, highlightDICOMAtPosition, meshRefs, clearDICOMHighlights, resetAllMeshColors]);
+  }, [isLinkingActive, highlightSTLMesh, highlightDICOMAtPosition, scrollViewportsToPoint, meshRefs, clearDICOMHighlights, resetAllMeshColors]);
 
   useEffect(() => {
     if (!document.querySelector('#stl-dicom-styles')) {
