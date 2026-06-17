@@ -521,7 +521,8 @@ function _mapDisplaySets(displaySets, _displaySetLoadingState, thumbnailImageSrc
         dragData: {
           type: 'displayset',
           displaySetInstanceUID,
-          // .. Any other data to pass
+          StudyInstanceUID: ds.StudyInstanceUID,
+          SeriesDescription: ds.SeriesDescription || '',
         },
         isHydratedForDerivedDisplaySet: ds.isHydrated,
       });

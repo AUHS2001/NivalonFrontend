@@ -63,6 +63,17 @@ export default {
         })
         .filter(preset => preset !== null);
 
+      // Add custom layout presets that aren't hanging protocols
+      protocolPresets.push({
+        icon: 'layout-common-1x2',
+        title: '3D Compare',
+        commandOptions: {
+          protocolId: '3d-compare',
+          customLayout: '3d-compare',
+        },
+        disabled: false,
+      });
+
       return [...protocolPresets];
     };
 

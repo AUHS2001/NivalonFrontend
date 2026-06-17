@@ -51,13 +51,19 @@ const Thumbnail = ({
 
   const [collectedProps, drag, dragPreview] = useDrag({
     type: 'displayset',
-    item: { ...dragData },
+    item: { ...dragData, myIndex, studyID },
     canDrag: function (monitor) {
       return Object.keys(dragData).length !== 0;
     },
     end: (item, monitor) => {
       console.log("item", item)
       if (monitor.didDrop()) {
+        const dropResult = monitor.getDropResult() as any;
+        // If dropped on 3D Compare panel, don't switch the main series
+        if (dropResult?.handled3dCompare) {
+          console.log('[Thumbnail] Dropped on 3D Compare panel — skipping series switch');
+          return;
+        }
         console.log("selected index ==> ",myIndex)
         console.log("selected parent index ==> ", parentStudyId)
         console.log("datat =>",stlInstanceListData)
