@@ -20,7 +20,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
   show,
   children
 }) => {
-  const { previousViewLoading } = useVersionHistoryContext();
+  const { previousViewLoading, isApproving, approveProgress, isDownloading, downloadProgress } = useVersionHistoryContext();
   return (
     <div style={{
         flex: 1, // Change from flex: 6 to flex: 1
@@ -101,6 +101,76 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
         }}>Labelling View</div>
         <div ref={rightMountRef} style={{ width: '100%', height: '70%' }} />
       </div>
+
+      {/* Download progress bar */}
+      {isDownloading && (
+        <div style={{
+          position: 'absolute',
+          bottom: isApproving ? 80 : 20,
+          left: 20,
+          right: 20,
+          zIndex: 200,
+          backgroundColor: 'rgba(10, 14, 23, 0.9)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          border: '1px solid #333',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#87dbfc', fontSize: '13px', fontWeight: 600 }}>
+              Downloading 3D Model...
+            </span>
+            <span style={{ color: '#4FC3F7', fontSize: '13px', fontWeight: 700 }}>
+              {downloadProgress}%
+            </span>
+          </div>
+          <div style={{
+            width: '100%', height: '6px', backgroundColor: '#333', borderRadius: '3px', overflow: 'hidden'
+          }}>
+            <div style={{
+              width: `${downloadProgress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #4FC3F7, #2196F3)',
+              borderRadius: '3px',
+              transition: 'width 0.3s ease-out',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* Approve progress bar */}
+      {isApproving && (
+        <div style={{
+          position: 'absolute',
+          bottom: 20,
+          left: 20,
+          right: 20,
+          zIndex: 200,
+          backgroundColor: 'rgba(10, 14, 23, 0.9)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          border: '1px solid #333',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#87dbfc', fontSize: '13px', fontWeight: 600 }}>
+              Approving 3D Files...
+            </span>
+            <span style={{ color: '#4FC3F7', fontSize: '13px', fontWeight: 700 }}>
+              {approveProgress}%
+            </span>
+          </div>
+          <div style={{
+            width: '100%', height: '6px', backgroundColor: '#333', borderRadius: '3px', overflow: 'hidden'
+          }}>
+            <div style={{
+              width: `${approveProgress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #4FC3F7, #2196F3)',
+              borderRadius: '3px',
+              transition: 'width 0.3s ease-out',
+            }} />
+          </div>
+        </div>
+      )}
 
       {children}
     </div>
