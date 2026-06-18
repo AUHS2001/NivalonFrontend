@@ -186,10 +186,26 @@ function ToolbarLayoutSelectorWithServices({
 
 
       if (isPreset) {
-        // Advanced preset selection
+        // If we're leaving a custom layout (karachi, 3d-compare, comparison),
+        // force a reset so reuseCachedLayouts doesn't cache corrupt empty-UID state
+        const currentState = viewportGridService.getState();
+        const currentViewports = currentState?.viewports;
+        let leavingCustomLayout = false;
+        if (currentViewports) {
+          currentViewports.forEach((vp) => {
+            const cl = vp?.viewportOptions?.customLayout;
+            if (cl === 'karachi' || cl === '3d-compare' || cl === 'comparison') {
+              leavingCustomLayout = true;
+            }
+          });
+        }
+
         commandsManager.run({
           commandName: 'setHangingProtocol',
-          commandOptions,
+          commandOptions: {
+            ...commandOptions,
+            ...(leavingCustomLayout ? { reset: true } : {}),
+          },
         });
       } else {
         // Common preset or custom grid selection
