@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {
   Enums,
   eventTarget,
+  cache,
 } from '@cornerstonejs/core';
 import { Enums as ToolEnums } from '@cornerstonejs/tools';
 import { CrosshairSyncConfig } from '../types/three.types';
@@ -95,10 +96,10 @@ function createSVGLine(svg: SVGSVGElement, color: string): SVGLineElement {
 function createCenterCircle(svg: SVGSVGElement): SVGCircleElement {
   const ns = 'http://www.w3.org/2000/svg';
   const circle = document.createElementNS(ns, 'circle');
-  circle.setAttribute('r', '6');
-  circle.setAttribute('fill', 'none');
+  circle.setAttribute('r', '8');
+  circle.setAttribute('fill', 'rgba(255, 0, 0, 0.15)');
   circle.setAttribute('stroke', 'rgb(255, 0, 0)'); // red center pointer
-  circle.setAttribute('stroke-width', String(CROSSHAIR_LINE_WIDTH));
+  circle.setAttribute('stroke-width', '2');
   circle.setAttribute('visibility', 'hidden');
   svg.appendChild(circle);
   return circle;
@@ -176,6 +177,14 @@ function updateSVGCrosshair(
   // Camera forward direction — analogous to viewPlaneNormal in the 2D CrosshairsTool.
   const cameraForward = camera.getWorldDirection(new THREE.Vector3());
 
+  // Hide the plane most face-on to camera (show only 2 crosshair lines in 3D)
+  const hideDots = [
+    Math.abs(cameraForward.dot(new THREE.Vector3(0, 0, 1))),  // axial
+    Math.abs(cameraForward.dot(new THREE.Vector3(1, 0, 0))),  // sagittal
+    Math.abs(cameraForward.dot(new THREE.Vector3(0, 1, 0))),  // coronal
+  ];
+  const hidePlaneIdx = hideDots.indexOf(Math.max(...hideDots));
+
   // For each reference plane, compute the intersection direction using the SAME
   // cross-product algorithm as the 2D CrosshairsTool:
   //   direction = cross(viewPlaneNormal, otherPlaneNormal)
@@ -200,37 +209,61 @@ function updateSVGCrosshair(
     { planeNormal: new THREE.Vector3(0, 1, 0), posLine: lines.coronalPos, negLine: lines.coronalNeg },
   ];
 
-  planesDef.forEach(({ planeNormal, posLine, negLine }) => {
+  planesDef.forEach(({ planeNormal, posLine, negLine }, planeIdx) => {
+    // Hide the plane most aligned with camera direction
+    if (planeIdx === hidePlaneIdx) {
+      posLine.setAttribute('visibility', 'hidden');
+      negLine.setAttribute('visibility', 'hidden');
+      return;
+    }
+
     // cross(cameraForward, planeNormal) = world-space intersection direction
     const worldDir = new THREE.Vector3().crossVectors(cameraForward, planeNormal);
     const dirLen = worldDir.length();
+
+    let dx: number, dy: number;
+
     if (dirLen < 0.001) {
-      // Camera looking along this plane's normal — plane is face-on, no visible line
-      posLine.setAttribute('visibility', 'hidden');
-      negLine.setAttribute('visibility', 'hidden');
-      return;
-    }
-    worldDir.divideScalar(dirLen);
+      // Camera looking along this plane's normal — plane is face-on.
+      // Fall back to a perpendicular screen direction so the line stays visible.
+      const arbAxis = Math.abs(planeNormal.x) < 0.9
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+      const fallback = new THREE.Vector3().crossVectors(cameraForward, arbAxis).normalize();
+      const worldEnd = crosshairPos.clone().add(fallback);
+      const screenEnd = projectToScreen(worldEnd, camera, width, height);
+      if (!screenEnd) {
+        posLine.setAttribute('visibility', 'hidden');
+        negLine.setAttribute('visibility', 'hidden');
+        return;
+      }
+      dx = screenEnd[0] - cx;
+      dy = screenEnd[1] - cy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.001) { posLine.setAttribute('visibility', 'hidden'); negLine.setAttribute('visibility', 'hidden'); return; }
+      dx /= len; dy /= len;
+      posLine.setAttribute('stroke-opacity', '0.4');
+      negLine.setAttribute('stroke-opacity', '0.4');
+    } else {
+      worldDir.divideScalar(dirLen);
 
-    // Project the intersection direction to screen space
-    const worldEnd = crosshairPos.clone().add(worldDir);
-    const screenEnd = projectToScreen(worldEnd, camera, width, height);
-    if (!screenEnd) {
-      posLine.setAttribute('visibility', 'hidden');
-      negLine.setAttribute('visibility', 'hidden');
-      return;
-    }
+      // Project the intersection direction to screen space
+      const worldEnd = crosshairPos.clone().add(worldDir);
+      const screenEnd = projectToScreen(worldEnd, camera, width, height);
+      if (!screenEnd) {
+        posLine.setAttribute('visibility', 'hidden');
+        negLine.setAttribute('visibility', 'hidden');
+        return;
+      }
 
-    let dx = screenEnd[0] - cx;
-    let dy = screenEnd[1] - cy;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 0.001) {
-      posLine.setAttribute('visibility', 'hidden');
-      negLine.setAttribute('visibility', 'hidden');
-      return;
+      dx = screenEnd[0] - cx;
+      dy = screenEnd[1] - cy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.001) { posLine.setAttribute('visibility', 'hidden'); negLine.setAttribute('visibility', 'hidden'); return; }
+      dx /= len; dy /= len;
+      posLine.setAttribute('stroke-opacity', '1');
+      negLine.setAttribute('stroke-opacity', '1');
     }
-    dx /= len;
-    dy /= len;
 
     // Positive arm: from center+gap to viewport edge
     const [edgePosX, edgePosY] = extendToEdge(cx, cy, dx, dy, width, height);
@@ -288,6 +321,7 @@ export const useCrosshairSync = ({
   // Cached bounds
   const cachedSTLBoundsRef = useRef<{ min: THREE.Vector3; max: THREE.Vector3 } | null>(null);
   const cachedVolumeBoundsRef = useRef<{ origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] } | null>(null);
+  const cachedVtkImageDataRef = useRef<any>(null);
 
   // Target marker position for lerp
   const targetMarkerPosRef = useRef(new THREE.Vector3());
@@ -300,17 +334,21 @@ export const useCrosshairSync = ({
   const currentOrientationRef = useRef<ViewOrientation | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
+  // Drag state for 3D crosshair interaction
+  const isDraggingRef = useRef(false);
+  const dragPlaneRef = useRef<THREE.Plane | null>(null);
+
   // ─── Viewport enumeration ───
 
   const getCornerstoneViewportsAndBounds = useCallback(() => {
     const { cornerstoneViewportService, viewportGridService } = servicesManager?.services || {};
     if (!cornerstoneViewportService || !viewportGridService) {
-      return { viewports: [], volumeBounds: null };
+      return { viewports: [], volumeBounds: null, vtkImageData: null };
     }
 
     const viewportState = viewportGridService.getState();
     const viewports = viewportState?.viewports;
-    if (!viewports) return { viewports: [], volumeBounds: null };
+    if (!viewports) return { viewports: [], volumeBounds: null, vtkImageData: null };
 
     const result: Array<{
       viewportId: string;
@@ -320,6 +358,7 @@ export const useCrosshairSync = ({
     }> = [];
 
     let volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] } | null = null;
+    let vtkImageData: any = null;
 
     const viewportEntries = viewports instanceof Map
       ? Array.from(viewports.entries())
@@ -347,12 +386,21 @@ export const useCrosshairSync = ({
                 };
               }
             } catch (_) {}
+
+            // Get vtkImageData for accurate getBounds()
+            try {
+              const actors = viewport.getActors?.();
+              if (actors?.length) {
+                const vol = (cache as any).getVolume?.((actors[0] as any).referencedId || actors[0].uid);
+                if (vol?.imageData) vtkImageData = vol.imageData;
+              }
+            } catch (_) {}
           }
         }
       } catch (_) {}
     });
 
-    return { viewports: result, volumeBounds };
+    return { viewports: result, volumeBounds, vtkImageData };
   }, [servicesManager]);
 
   // ─── STL bounding box ───
@@ -391,45 +439,51 @@ export const useCrosshairSync = ({
     return bounds;
   }, [meshRefs]);
 
-  // ─── DICOM LPS → STL (exact inverse of transformSTLToDICOMWorld in useCenterLine.ts) ───
-  // Forward transform: dicomPt = volumeCenter + (stlPt - stlCenter) * scale  (Y negated)
-  // Inverse:           stlPt  = stlCenter + (dicomPt - volumeCenter) / scale  (Y negated)
+  // ─── DICOM LPS → STL ───
+  // Uses vtkImageData.getBounds() for correct world-space volume center/extent
+  // (same approach as voxelMaskingManager and vertebraContourOverlayManager).
+  // NO Y negation — both STL and DICOM are LPS.
 
   const transformLoggedRef = useRef(false);
 
   const transformDICOMToSTL = useCallback((
     dicomPoint: [number, number, number],
     stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
-    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] }
+    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] },
+    vtkImgData?: any
   ): THREE.Vector3 => {
     const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
     const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
 
-    // Volume center in world space — must use direction matrix for correct mapping.
-    // Without direction, volumes with flipped Z (dir[8]=-1) compute a center that's
-    // off by the entire volume height, causing all positions to map near the sacrum.
-    const vd = volumeBounds.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1];
-    const halfI = ((volumeBounds.dimensions[0] - 1) / 2) * volumeBounds.spacing[0];
-    const halfJ = ((volumeBounds.dimensions[1] - 1) / 2) * volumeBounds.spacing[1];
-    const halfK = ((volumeBounds.dimensions[2] - 1) / 2) * volumeBounds.spacing[2];
+    let volumeCenter: number[];
+    let uniformScale: number;
 
-    const volumeCenter = [
-      volumeBounds.origin[0] + vd[0] * halfI + vd[1] * halfJ + vd[2] * halfK,
-      volumeBounds.origin[1] + vd[3] * halfI + vd[4] * halfJ + vd[5] * halfK,
-      volumeBounds.origin[2] + vd[6] * halfI + vd[7] * halfJ + vd[8] * halfK,
-    ];
+    if (vtkImgData && typeof vtkImgData.getBounds === 'function') {
+      // Use vtkImageData.getBounds() for correct world-space extent
+      const bounds: number[] = vtkImgData.getBounds();
+      volumeCenter = [
+        (bounds[0] + bounds[1]) / 2,
+        (bounds[2] + bounds[3]) / 2,
+        (bounds[4] + bounds[5]) / 2,
+      ];
+      const volumeZExtent = Math.abs(bounds[5] - bounds[4]);
+      uniformScale = stlSize.z > 0.001 ? volumeZExtent / stlSize.z : 1;
+    } else {
+      // Fallback: direction-aware formula
+      const vd = volumeBounds.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1];
+      const halfI = ((volumeBounds.dimensions[0] - 1) / 2) * volumeBounds.spacing[0];
+      const halfJ = ((volumeBounds.dimensions[1] - 1) / 2) * volumeBounds.spacing[1];
+      const halfK = ((volumeBounds.dimensions[2] - 1) / 2) * volumeBounds.spacing[2];
+      volumeCenter = [
+        volumeBounds.origin[0] + vd[0] * halfI + vd[1] * halfJ + vd[2] * halfK,
+        volumeBounds.origin[1] + vd[3] * halfI + vd[4] * halfJ + vd[5] * halfK,
+        volumeBounds.origin[2] + vd[6] * halfI + vd[7] * halfJ + vd[8] * halfK,
+      ];
+      const volumeZSize = volumeBounds.dimensions[2] * volumeBounds.spacing[2];
+      uniformScale = stlSize.z > 0.001 ? volumeZSize / stlSize.z : 1;
+    }
 
-    const volumeSize = [
-      volumeBounds.dimensions[0] * volumeBounds.spacing[0],
-      volumeBounds.dimensions[1] * volumeBounds.spacing[1],
-      volumeBounds.dimensions[2] * volumeBounds.spacing[2],
-    ];
-
-    // Uniform scale based on Z axis (volumeHeight / stlHeight)
-    const uniformScale = volumeSize[2] / stlSize.z;
-
-    // Map center-to-center with uniform scale. NO Y negation — both systems are LPS,
-    // and the STL camera orientations now match DICOM conventions exactly.
+    // Inverse transform: stlPt = stlCenter + (dicomPt - volumeCenter) / scale
     const stlX = stlCenter.x + (dicomPoint[0] - volumeCenter[0]) / uniformScale;
     const stlY = stlCenter.y + (dicomPoint[1] - volumeCenter[1]) / uniformScale;
     const stlZ = stlCenter.z + (dicomPoint[2] - volumeCenter[2]) / uniformScale;
@@ -437,32 +491,63 @@ export const useCrosshairSync = ({
     // One-time diagnostic log
     if (!transformLoggedRef.current) {
       transformLoggedRef.current = true;
-      // Per-axis scale factors — if these differ significantly, uniform scale is inaccurate
-      const perAxisScale = {
-        x: volumeSize[0] / stlSize.x,
-        y: volumeSize[1] / stlSize.y,
-        z: volumeSize[2] / stlSize.z,
-      };
       console.log('[CrosshairSync] TRANSFORM DIAGNOSTICS:', {
-        stlBounds: {
-          min: { x: stlBounds.min.x, y: stlBounds.min.y, z: stlBounds.min.z },
-          max: { x: stlBounds.max.x, y: stlBounds.max.y, z: stlBounds.max.z },
-        },
+        usedBounds: !!(vtkImgData && typeof vtkImgData.getBounds === 'function'),
         stlCenter: { x: stlCenter.x, y: stlCenter.y, z: stlCenter.z },
         stlSize: { x: stlSize.x, y: stlSize.y, z: stlSize.z },
-        volumeOrigin: volumeBounds.origin,
-        volumeDimensions: volumeBounds.dimensions,
-        volumeSpacing: volumeBounds.spacing,
-        volumeSize,
         volumeCenter,
         uniformScale,
-        perAxisScale,
         dicomPoint,
         result: { x: stlX, y: stlY, z: stlZ },
       });
     }
 
     return new THREE.Vector3(stlX, stlY, stlZ);
+  }, []);
+
+  // ─── STL → DICOM (inverse of transformDICOMToSTL) ───
+
+  const transformSTLToDICOM = useCallback((
+    stlPoint: THREE.Vector3,
+    stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
+    volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[]; direction?: number[] },
+    vtkImgData?: any
+  ): [number, number, number] => {
+    const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
+    const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
+
+    let volumeCenter: number[];
+    let uniformScale: number;
+
+    if (vtkImgData && typeof vtkImgData.getBounds === 'function') {
+      const bounds: number[] = vtkImgData.getBounds();
+      volumeCenter = [
+        (bounds[0] + bounds[1]) / 2,
+        (bounds[2] + bounds[3]) / 2,
+        (bounds[4] + bounds[5]) / 2,
+      ];
+      const volumeZExtent = Math.abs(bounds[5] - bounds[4]);
+      uniformScale = stlSize.z > 0.001 ? volumeZExtent / stlSize.z : 1;
+    } else {
+      const vd = volumeBounds.direction || [1, 0, 0, 0, 1, 0, 0, 0, 1];
+      const halfI = ((volumeBounds.dimensions[0] - 1) / 2) * volumeBounds.spacing[0];
+      const halfJ = ((volumeBounds.dimensions[1] - 1) / 2) * volumeBounds.spacing[1];
+      const halfK = ((volumeBounds.dimensions[2] - 1) / 2) * volumeBounds.spacing[2];
+      volumeCenter = [
+        volumeBounds.origin[0] + vd[0] * halfI + vd[1] * halfJ + vd[2] * halfK,
+        volumeBounds.origin[1] + vd[3] * halfI + vd[4] * halfJ + vd[5] * halfK,
+        volumeBounds.origin[2] + vd[6] * halfI + vd[7] * halfJ + vd[8] * halfK,
+      ];
+      const volumeZSize = volumeBounds.dimensions[2] * volumeBounds.spacing[2];
+      uniformScale = stlSize.z > 0.001 ? volumeZSize / stlSize.z : 1;
+    }
+
+    // Inverse: dicomPt = volumeCenter + (stlPt - stlCenter) * scale
+    return [
+      volumeCenter[0] + (stlPoint.x - stlCenter.x) * uniformScale,
+      volumeCenter[1] + (stlPoint.y - stlCenter.y) * uniformScale,
+      volumeCenter[2] + (stlPoint.z - stlCenter.z) * uniformScale,
+    ];
   }, []);
 
   // ─── Compute and cache bounds ───
@@ -472,12 +557,14 @@ export const useCrosshairSync = ({
       cachedSTLBoundsRef.current = getSTLBounds();
     }
     if (!cachedVolumeBoundsRef.current) {
-      const { volumeBounds } = getCornerstoneViewportsAndBounds();
+      const { volumeBounds, vtkImageData } = getCornerstoneViewportsAndBounds();
       cachedVolumeBoundsRef.current = volumeBounds;
+      cachedVtkImageDataRef.current = vtkImageData;
     }
     return {
       stlBounds: cachedSTLBoundsRef.current,
       volumeBounds: cachedVolumeBoundsRef.current,
+      vtkImageData: cachedVtkImageDataRef.current,
     };
   }, [getSTLBounds, getCornerstoneViewportsAndBounds]);
 
@@ -503,15 +590,10 @@ export const useCrosshairSync = ({
   const startAnimation = useCallback(() => {
     if (animFrameRef.current !== null) return;
 
-    const controls = leftControlsRef?.current as OrbitControls | undefined;
-    if (controls) controls.enabled = false;
-
     const animate = () => {
-      const cam = cameraRef.current;
-      const ctrl = leftControlsRef?.current as OrbitControls | undefined;
       let stillMoving = false;
 
-      // ── Lerp crosshair 3D position ──
+      // ── Lerp crosshair 3D position (camera stays fixed, only crosshair moves) ──
       if (crosshairVisibleRef.current) {
         const md = currentCrosshairPosRef.current.distanceTo(targetMarkerPosRef.current);
         if (md > 0.05) {
@@ -522,24 +604,6 @@ export const useCrosshairSync = ({
         }
       }
 
-      // ── Lerp camera (offset-based) ──
-      if (cam && ctrl) {
-        const td = ctrl.target.distanceTo(targetControlsTargetRef.current);
-        const od = currentCamOffsetRef.current.distanceTo(targetCamOffsetRef.current);
-        const ud = cam.up.distanceTo(targetCamUpRef.current);
-
-        if (td > 0.05 || od > 0.05 || ud > 0.001) {
-          ctrl.target.lerp(targetControlsTargetRef.current, CAMERA_LERP_FACTOR);
-          currentCamOffsetRef.current.lerp(targetCamOffsetRef.current, CAMERA_LERP_FACTOR);
-          cam.position.copy(ctrl.target).add(currentCamOffsetRef.current);
-          cam.up.lerp(targetCamUpRef.current, CAMERA_LERP_FACTOR);
-          cam.up.normalize();
-          cam.lookAt(ctrl.target);
-          cam.updateMatrixWorld(); // ensure matrixWorldInverse is fresh for SVG projection
-          stillMoving = true;
-        }
-      }
-
       // ── Update SVG projection every frame during animation ──
       refreshSVG();
 
@@ -547,12 +611,11 @@ export const useCrosshairSync = ({
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
         animFrameRef.current = null;
-        if (ctrl) ctrl.enabled = true;
       }
     };
 
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [cameraRef, leftControlsRef, refreshSVG]);
+  }, [refreshSVG]);
 
   const stopAnimation = useCallback(() => {
     if (animFrameRef.current !== null) {
@@ -573,10 +636,10 @@ export const useCrosshairSync = ({
     if (!isActiveRef.current) return;
     if (!latestPositionRef.current) return;
 
-    const { stlBounds, volumeBounds } = ensureCachedBounds();
+    const { stlBounds, volumeBounds, vtkImageData } = ensureCachedBounds();
     if (!stlBounds || !volumeBounds) return;
 
-    const stlPos = transformDICOMToSTL(latestPositionRef.current, stlBounds, volumeBounds);
+    const stlPos = transformDICOMToSTL(latestPositionRef.current, stlBounds, volumeBounds, vtkImageData);
 
     // --- Create SVG overlay on first update ---
     if (!svgOverlayRef.current) {
@@ -587,33 +650,12 @@ export const useCrosshairSync = ({
       currentCrosshairPosRef.current.copy(stlPos);
     }
     targetMarkerPosRef.current.copy(stlPos);
+    currentCrosshairPosRef.current.copy(stlPos);
     crosshairVisibleRef.current = true;
 
-    // --- Camera orientation + zoom ---
-    const vpn = latestViewPlaneNormalRef.current;
-    if (vpn) {
-      const orientation = detectOrientation(vpn);
-      const preset = ORIENTATION_OFFSETS[orientation];
-
-      let distance = 400;
-      const ps = latestParallelScaleRef.current;
-      if (ps != null) {
-        const zoomScale = orientation === 'axial' ? 1.8 : 1.0;
-        distance = THREE.MathUtils.clamp(
-          (ps / TAN_HALF_FOV) * zoomScale,
-          MIN_CAMERA_DISTANCE,
-          MAX_CAMERA_DISTANCE,
-        );
-      }
-
-      targetCamOffsetRef.current.copy(preset.dir).multiplyScalar(distance);
-      targetCamUpRef.current.copy(preset.up);
-      targetControlsTargetRef.current.copy(stlPos);
-      currentOrientationRef.current = orientation;
-    }
-
-    startAnimation();
-  }, [leftRendererRef, ensureCachedBounds, transformDICOMToSTL, startAnimation]);
+    // Directly update SVG projection (no animation needed since camera is fixed)
+    refreshSVG();
+  }, [leftRendererRef, ensureCachedBounds, transformDICOMToSTL, refreshSVG]);
 
   // ──��� Event: CAMERA_MODIFIED (fires on viewport elements) ───
   //
@@ -699,7 +741,89 @@ export const useCrosshairSync = ({
       element.addEventListener(eventName, onCameraModified);
       listenersRef.current.push({ element, event: eventName, handler: onCameraModified });
     });
-  }, [getCornerstoneViewportsAndBounds]);
+
+    // ─── 3D canvas drag listeners (move crosshair by dragging in 3D view) ───
+    const canvas = leftRendererRef.current?.domElement;
+    if (canvas) {
+      canvas.style.cursor = 'crosshair';
+
+      const onPointerDown = (e: PointerEvent) => {
+        if (!isActiveRef.current) return;
+        const cam = cameraRef.current as THREE.PerspectiveCamera | undefined;
+        if (!cam || !crosshairVisibleRef.current) return;
+
+        isDraggingRef.current = true;
+        const cameraDir = cam.getWorldDirection(new THREE.Vector3());
+        dragPlaneRef.current = new THREE.Plane();
+        dragPlaneRef.current.setFromNormalAndCoplanarPoint(cameraDir, currentCrosshairPosRef.current.clone());
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      };
+
+      const onPointerMove = (e: PointerEvent) => {
+        if (!isDraggingRef.current || !isActiveRef.current) return;
+        const cam = cameraRef.current as THREE.PerspectiveCamera | undefined;
+        if (!cam || !dragPlaneRef.current) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, cam);
+
+        const intersection = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(dragPlaneRef.current, intersection)) return;
+
+        // Update 3D crosshair immediately
+        currentCrosshairPosRef.current.copy(intersection);
+        targetMarkerPosRef.current.copy(intersection);
+        refreshSVG();
+
+        // Transform STL → DICOM and update cornerstone viewports
+        const { stlBounds, volumeBounds, vtkImageData } = ensureCachedBounds();
+        if (!stlBounds || !volumeBounds) return;
+
+        const dicomPoint = transformSTLToDICOM(intersection, stlBounds, volumeBounds, vtkImageData);
+
+        // Update Crosshairs tool center so the tool stays in sync
+        try {
+          const { toolGroupService } = servicesManager?.services || {};
+          if (toolGroupService) {
+            const toolGroup = toolGroupService.getToolGroup('mpr');
+            const crosshairsTool = (toolGroup as any)?.getToolInstance?.('Crosshairs');
+            if (crosshairsTool) {
+              crosshairsTool.toolCenter = dicomPoint;
+            }
+          }
+        } catch (_) {}
+
+        // Update all viewport cameras with full DICOM point (matches Crosshairs tool behavior)
+        const { viewports: csViewports } = getCornerstoneViewportsAndBounds();
+        csViewports.forEach(({ viewport }) => {
+          try {
+            viewport.setCamera({ focalPoint: dicomPoint as [number, number, number] });
+            viewport.render();
+          } catch (_) {}
+        });
+      };
+
+      const onPointerUp = () => {
+        isDraggingRef.current = false;
+        dragPlaneRef.current = null;
+      };
+
+      canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointermove', onPointerMove);
+      canvas.addEventListener('pointerup', onPointerUp);
+
+      listenersRef.current.push({ element: canvas, event: 'pointerdown', handler: onPointerDown as any });
+      listenersRef.current.push({ element: canvas, event: 'pointermove', handler: onPointerMove as any });
+      listenersRef.current.push({ element: canvas, event: 'pointerup', handler: onPointerUp as any });
+    }
+  }, [getCornerstoneViewportsAndBounds, cameraRef, leftRendererRef, ensureCachedBounds, transformSTLToDICOM, refreshSVG]);
 
   // ─── Read current viewport state immediately (for initial sync on activation) ───
 
@@ -759,6 +883,16 @@ export const useCrosshairSync = ({
 
     stopAnimation();
 
+    // Re-enable OrbitControls on cleanup
+    const controls = leftControlsRef?.current as OrbitControls | undefined;
+    if (controls) controls.enabled = true;
+
+    // Reset 3D canvas cursor and drag state
+    const canvas = leftRendererRef.current?.domElement;
+    if (canvas) canvas.style.cursor = '';
+    isDraggingRef.current = false;
+    dragPlaneRef.current = null;
+
     // Remove SVG overlay
     if (svgOverlayRef.current) {
       svgOverlayRef.current.parentElement?.removeChild(svgOverlayRef.current);
@@ -773,8 +907,9 @@ export const useCrosshairSync = ({
     latestParallelScaleRef.current = null;
     cachedSTLBoundsRef.current = null;
     cachedVolumeBoundsRef.current = null;
+    cachedVtkImageDataRef.current = null;
     currentOrientationRef.current = null;
-  }, [stopAnimation]);
+  }, [stopAnimation, leftControlsRef]);
 
   // ─── Tool activation listener ───
 
@@ -786,10 +921,17 @@ export const useCrosshairSync = ({
         isActiveRef.current = true;
         cachedSTLBoundsRef.current = null;
         cachedVolumeBoundsRef.current = null;
+        cachedVtkImageDataRef.current = null;
+        // Disable OrbitControls so dragging doesn't move bones
+        const controls = leftControlsRef?.current as OrbitControls | undefined;
+        if (controls) controls.enabled = false;
         attachListeners();
         initialSync();
       } else if (isActiveRef.current) {
         isActiveRef.current = false;
+        // Re-enable OrbitControls
+        const controls = leftControlsRef?.current as OrbitControls | undefined;
+        if (controls) controls.enabled = true;
         cleanup();
       }
     };
@@ -800,6 +942,9 @@ export const useCrosshairSync = ({
       const { toolName } = evt?.detail || {};
       if (toolName === 'Crosshairs' && isActiveRef.current) {
         isActiveRef.current = false;
+        // Re-enable OrbitControls
+        const controls = leftControlsRef?.current as OrbitControls | undefined;
+        if (controls) controls.enabled = true;
         cleanup();
       }
     };

@@ -92,9 +92,16 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const undoOrderRef = useRef<('bone' | 'click')[]>([]);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
   const [showRightView, setShowRightView] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [approveProgress, setApproveProgress] = useState(0);
+  const [approveUploadedBytes, setApproveUploadedBytes] = useState(0);
+  const [approveTotalBytes, setApproveTotalBytes] = useState(0);
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
+  const [approveFailed, setApproveFailed] = useState<string | null>(null);
   const [showMerge, setShowMergeView] = useState(false);
 
   // Refs
@@ -310,6 +317,19 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   }, [labelViewEnabled, LABEL_COLORS]);
 
   // Effect to apply/remove label colors when label view is toggled
+  // Auto-dismiss approve success/failure toasts after 4 seconds
+  useEffect(() => {
+    if (!approveSuccess) return;
+    const t = setTimeout(() => setApproveSuccess(null), 4000);
+    return () => clearTimeout(t);
+  }, [approveSuccess]);
+
+  useEffect(() => {
+    if (!approveFailed) return;
+    const t = setTimeout(() => setApproveFailed(null), 6000);
+    return () => clearTimeout(t);
+  }, [approveFailed]);
+
   useEffect(() => {
     // Skip if color mode is enabled (color mode takes priority)
     if (colorModeRef.current) return;
@@ -2516,6 +2536,17 @@ const createAutomaticSegmentation = async () => {
   const downloadGenerated3D = async () => {
     try {
       setIsDownloading(true);
+      setDownloadProgress(0);
+      setDownloadedBytes(0);
+      setDownloadTotalBytes(0);
+
+      // Simulated progress: ramps from 0→90% over ~15s while waiting
+      let simulated = 0;
+      const simInterval = setInterval(() => {
+        simulated += (90 - simulated) * 0.04; // ease-out curve
+        setDownloadProgress(Math.round(simulated));
+      }, 200);
+
       const response = await fetch(
         `${SERVER_URL}/analyst/meshes/processed/download?series_instance_uid=${stlInstanceId}`,
         {
@@ -2529,13 +2560,18 @@ const createAutomaticSegmentation = async () => {
       );
 
       if (!response.ok) {
+        clearInterval(simInterval);
         throw new Error(`Download failed: ${response.status} ${response.statusText}`);
       }
 
-      const blob = await response.blob();
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let fileName = 'downloaded_3d_file';
+      const contentLength = response.headers.get('Content-Length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      setDownloadTotalBytes(total);
 
+      const contentType = response.headers.get('Content-Type') || 'application/zip';
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let fileName = 'downloaded_3d_file.zip';
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
         if (fileNameMatch && fileNameMatch[1]) {
@@ -2543,6 +2579,33 @@ const createAutomaticSegmentation = async () => {
         }
       }
 
+      const reader = response.body!.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        setDownloadedBytes(received);
+        if (total > 0) {
+          // Use real progress when Content-Length is known
+          const realPct = Math.round((received / total) * 100);
+          simulated = Math.max(simulated, realPct);
+          setDownloadProgress(simulated);
+        }
+      }
+
+      // Stop simulation, jump to 100%
+      clearInterval(simInterval);
+      setDownloadProgress(100);
+      setDownloadedBytes(received);
+
+      // Hold at 100% briefly so user sees completion
+      await new Promise(r => setTimeout(r, 600));
+
+      const blob = new Blob(chunks, { type: contentType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -2559,52 +2622,94 @@ const createAutomaticSegmentation = async () => {
     }
   };
 
-  const approveEditedFiles = async () => {
-    try {
-      setIsApproving(true);
-      setApproveSuccess(null);
+  const approveEditedFiles = () => {
+    setIsApproving(true);
+    setApproveProgress(0);
+    setApproveSuccess(null);
+    setApproveFailed(null);
 
-      const exporter = new STLExporter();
-      const formData = new FormData();
+    const exporter = new STLExporter();
+    const formData = new FormData();
+    formData.append('series_instance_uid', stlInstanceId);
 
-      formData.append('series_instance_uid', stlInstanceId);
+    let fileCount = 0;
+    let totalSize = 0;
 
-      // Export each visible mesh as a Blob file
-      for (const mesh of meshRefs.current.left) {
-        if (!mesh.visible) continue;
-
-        const geom = mesh.geometry.clone();
-        const stlData = exporter.parse(new THREE.Mesh(geom, mesh.material), { binary: true });
-        const blob = new Blob([stlData], { type: 'application/octet-stream' });
-
-        const fileName = mesh.userData?.fileName;
-        if (!fileName) {
-          console.warn('Skipping mesh without original fileName');
-          continue;
-        }
-
-        formData.append('files', blob, fileName);
+    for (const mesh of meshRefs.current.left) {
+      if (!mesh.visible) continue;
+      const fileName = mesh.userData?.fileName;
+      if (!fileName) {
+        console.warn('Skipping mesh without original fileName');
+        continue;
       }
-
-      const response = await fetch(`${SERVER_URL}/analyst/meshes/approved`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${userToken}`,
-        },
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Approval failed: ${response.status} ${response.statusText}`);
-      }
-
-      setApproveSuccess('Approval successful!');
-    } catch (error: any) {
-      setApproveSuccess(`Approval failed: ${error.message || error.toString()}`);
-    } finally {
-      setIsApproving(false);
+      const stlData = exporter.parse(mesh, { binary: true });
+      const blob = new Blob([stlData], { type: 'application/octet-stream' });
+      formData.append('files', blob, fileName);
+      fileCount++;
+      totalSize += blob.size;
     }
+
+    console.log(`[Approve 3D] Uploading ${fileCount} files, total size: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`[Approve 3D] URL: ${SERVER_URL}/analyst/meshes/approved`);
+
+    // Slow simulated progress: ramps gradually from 0→85%
+    let simulated = 0;
+    const simInterval = setInterval(() => {
+      simulated += (85 - simulated) * 0.015;
+      setApproveProgress(Math.round(simulated));
+    }, 200);
+
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = 5 * 60 * 1000; // 5 minute timeout for large uploads
+    xhr.open('POST', `${SERVER_URL}/analyst/meshes/approved`);
+    xhr.setRequestHeader('Authorization', `Bearer ${userToken}`);
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        // Upload = 0-90%, server processing = 90-100%
+        const uploadPct = Math.round((e.loaded / e.total) * 90);
+        if (uploadPct > simulated) {
+          simulated = uploadPct;
+          setApproveProgress(uploadPct);
+        }
+        console.log(`[Approve 3D] Upload: ${(e.loaded / (1024 * 1024)).toFixed(1)}/${(e.total / (1024 * 1024)).toFixed(1)} MB (${uploadPct}%)`);
+      }
+    });
+
+    xhr.onload = () => {
+      clearInterval(simInterval);
+      console.log(`[Approve 3D] Response status: ${xhr.status}`);
+      console.log(`[Approve 3D] Response body: ${xhr.responseText}`);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setApproveProgress(100);
+        setTimeout(() => {
+          setApproveSuccess('3D files approved successfully!');
+          setIsApproving(false);
+        }, 600);
+      } else {
+        setApproveFailed(`Approval failed: ${xhr.status} ${xhr.statusText}`);
+        setIsApproving(false);
+      }
+    };
+
+    xhr.onerror = () => {
+      clearInterval(simInterval);
+      console.error(`[Approve 3D] onerror — status: ${xhr.status}, readyState: ${xhr.readyState}`);
+      console.error(`[Approve 3D] Response headers:`, xhr.getAllResponseHeaders());
+      console.error(`[Approve 3D] Response text:`, xhr.responseText);
+      setApproveFailed('Network error — could not reach the server. Check browser console.');
+      setIsApproving(false);
+    };
+
+    xhr.ontimeout = () => {
+      clearInterval(simInterval);
+      console.error('[Approve 3D] Request timed out after 5 minutes');
+      setApproveFailed('Request timed out');
+      setIsApproving(false);
+    };
+
+    xhr.send(formData);
   };
 
   const undoClickRemoval = () => {
@@ -2953,6 +3058,100 @@ const createAutomaticSegmentation = async () => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {isDownloading && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
+              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
+              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "320px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                <span className="spinner-border spinner-border-lg" style={{ marginRight: 16 }} />
+                Downloading 3D Model...
+              </div>
+              <div style={{
+                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
+              }}>
+                <div style={{
+                  width: `${downloadProgress}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
+                  borderRadius: "4px",
+                  transition: "width 0.3s ease-out",
+                }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: "16px", fontWeight: 600, color: "#4FC3F7" }}>
+                {downloadTotalBytes > 0
+                  ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB / ${(downloadTotalBytes / (1024 * 1024)).toFixed(1)} MB — ${downloadProgress}%`
+                  : downloadedBytes > 0
+                    ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB downloaded — ${downloadProgress}%`
+                    : `Downloading... ${downloadProgress}%`
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isApproving && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{
+              background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
+              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
+              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "320px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                <span className="spinner-border spinner-border-lg" style={{ marginRight: 16 }} />
+                Approving 3D Files...
+              </div>
+              <div style={{
+                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
+              }}>
+                <div style={{
+                  width: `${approveProgress}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
+                  borderRadius: "4px",
+                  transition: "width 0.3s ease-out",
+                }} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: "16px", fontWeight: 600, color: "#4FC3F7" }}>
+                {approveTotalBytes > 0
+                  ? `${(approveUploadedBytes / (1024 * 1024)).toFixed(1)} MB / ${(approveTotalBytes / (1024 * 1024)).toFixed(1)} MB — ${approveProgress}%`
+                  : `Approving... ${approveProgress}%`
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {approveSuccess && (
+          <div style={{
+            position: "fixed", top: 20, right: 20, zIndex: 2000,
+            background: "#2ecc71", color: "#fff", padding: "14px 24px", borderRadius: "8px",
+            fontSize: "15px", fontWeight: "bold", boxShadow: "0 4px 12px #0004",
+            display: "flex", alignItems: "center", gap: 10, cursor: "pointer"
+          }} onClick={() => setApproveSuccess(null)}>
+            <i className="fas fa-check-circle" /> {approveSuccess}
+          </div>
+        )}
+
+        {approveFailed && (
+          <div style={{
+            position: "fixed", top: 20, right: 20, zIndex: 2000,
+            background: "#e74c3c", color: "#fff", padding: "14px 24px", borderRadius: "8px",
+            fontSize: "15px", fontWeight: "bold", boxShadow: "0 4px 12px #0004",
+            display: "flex", alignItems: "center", gap: 10, cursor: "pointer"
+          }} onClick={() => setApproveFailed(null)}>
+            <i className="fas fa-times-circle" /> Approval failed: {approveFailed}
           </div>
         )}
 

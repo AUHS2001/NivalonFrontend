@@ -111,6 +111,14 @@ function ToolbarLayoutSelectorWithServices({
             protocolId: 'karachi-layout',
           },
         },
+        {
+          title: '3D Compare',
+          icon: 'layout-side-by-side',
+          commandOptions: {
+            protocolId: '3d-compare',
+            customLayout: '3d-compare',
+          },
+        },
       ];
 
   // Unified selection handler that dispatches to the appropriate command
@@ -118,6 +126,31 @@ function ToolbarLayoutSelectorWithServices({
     (commandOptions, isPreset) => {
       console.log(commandOptions,"afnan called");
       localStorage.setItem('myLayout', commandOptions.protocolId)
+
+      if (commandOptions && commandOptions.customLayout === '3d-compare') {
+        console.log('Applying 3D Compare layout');
+        try {
+          viewportGridService.setLayout({
+            numRows: 1,
+            numCols: 1,
+            layoutType: 'grid',
+            layoutOptions: [],
+            findOrCreateViewport: (index) => ({
+              displaySetInstanceUIDs: [],
+              displaySetOptions: [],
+              viewportOptions: {
+                viewportId: `3dCompareViewport-${index}`,
+                customLayout: '3d-compare',
+              },
+            }),
+            activeViewportId: '3dCompareViewport-0',
+            isHangingProtocolLayout: false,
+          });
+        } catch (error) {
+          console.error('Error applying 3D Compare layout:', error);
+        }
+        return;
+      }
 
       if (commandOptions && commandOptions.customLayout === 'karachi') {
         console.log('Applying Karachi layout');
