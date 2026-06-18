@@ -39,13 +39,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleStlVisibility,
     hideAllStlFiles,
     showAllStlFiles,
-    toggleAllStlVisibility
+    toggleAllStlVisibility,
+    compareRightFiles,
+    toggleCompareRightVisibility,
+    toggleAllCompareRightVisibility,
   } = useStlVisibilityContext();
 
   const type = localStorage.getItem('myLayout');
+  const isCompareLayout = type === '3d-compare';
 
   // Show content if layout type matches or if no layout is set yet (default behavior)
-  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'karachi-layout' || type === 'primary3D';
+  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'karachi-layout' || type === 'primary3D' || type === '3d-compare';
 
   return (
     <div style={{
@@ -54,10 +58,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       display: 'flex',
       flexDirection: 'column',
       borderRight: '1.5px solid #fff',
+      overflow: 'hidden',
     }}>
       {
         shouldShowContent ?
-          <div style={{ backgroundColor: '#0a0e17', borderRight: '1.5px solid #fff', padding: '10px' }}>
+          <div style={{ backgroundColor: '#0a0e17', borderRight: '1.5px solid #fff', padding: '10px', overflowY: 'auto', flex: 1 }}>
             {/* Loading state */}
             {loading && (
               <div style={{
@@ -209,8 +214,128 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             )}
 
-
-
+            {/* Compare Right Panel Files - only in 3D compare layout */}
+            {isCompareLayout && compareRightFiles.length > 0 && !loading && !showImplantView &&
+            !versionHistoryEnabled && !removalMode && !showRightView &&
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && (
+              <div style={{ marginBottom: '20px', padding: '10px' }}>
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                  padding: "5px"
+                }}>
+                  <h4 style={{ fontSize: "14px", margin: 0, color: "#9fcfff" }}>Compare Panel Files</h4>
+                  <span style={{ fontSize: "11px", color: "#888" }}>{compareRightFiles.length} files</span>
+                </div>
+                <div style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "10px"
+                }}>
+                  <button
+                    onClick={() => toggleAllCompareRightVisibility(false)}
+                    className="icon-button"
+                    style={{
+                      fontSize: "11px",
+                      padding: "2px 4px",
+                      borderRadius: "4px",
+                      backgroundColor: 'rgba(255, 77, 77, 0.2)',
+                      border: '1px solid rgba(255, 77, 77, 0.5)',
+                      color: '#ff4d4d',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      flex: 1,
+                      height: "24px",
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <i className="fas fa-eye-slash" />
+                    <span>Hide All</span>
+                  </button>
+                  <button
+                    onClick={() => toggleAllCompareRightVisibility(true)}
+                    className="icon-button"
+                    style={{
+                      fontSize: "11px",
+                      padding: "2px 4px",
+                      borderRadius: "4px",
+                      backgroundColor: 'rgba(77, 255, 77, 0.2)',
+                      border: '1px solid rgba(77, 255, 77, 0.5)',
+                      color: '#4dff4d',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      flex: 1,
+                      height: "24px",
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <i className="fas fa-eye" />
+                    <span>Show All</span>
+                  </button>
+                </div>
+                <div style={{
+                  maxHeight: "600px",
+                  overflowY: "auto",
+                  border: "1px solid #1a2030",
+                  borderRadius: "4px",
+                  padding: "8px"
+                }}>
+                  {compareRightFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: "6px 8px",
+                        borderBottom: "1px solid #1a2030",
+                        fontSize: "12px",
+                        backgroundColor: file.isVisible ? 'transparent' : 'rgba(255,255,255,0.1)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: file.isVisible ? '#fff' : '#888',
+                          flex: 1,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={file.fileName}
+                      >
+                        {file.fileName}
+                      </span>
+                      <button
+                        onClick={() => toggleCompareRightVisibility(file.id)}
+                        className="icon-button"
+                        data-tooltip={file.isVisible ? "Hide from scene" : "Show in scene"}
+                        style={{
+                          fontSize: "12px",
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "4px",
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: file.isVisible ? '#87dbfc' : '#888',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <i className={`fas ${file.isVisible ? 'fa-eye' : 'fa-eye-slash'}`} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {showImplantView && (
               <div style={{ marginTop: '10px'}}>

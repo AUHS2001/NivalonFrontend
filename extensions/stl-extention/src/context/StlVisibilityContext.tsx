@@ -15,16 +15,20 @@ interface StlVisibilityContextType {
   setStlVisibility: (id: string, visible: boolean) => void;
   clearStlFiles: () => void;
   updateMeshVisibility: (meshIndex: number, visible: boolean) => void;
-  // Add these new functions
   hideAllStlFiles: () => void;
   showAllStlFiles: () => void;
   toggleAllStlVisibility: (visible: boolean) => void;
+  compareRightFiles: StlFileInfo[];
+  setCompareRightFiles: (files: StlFileInfo[]) => void;
+  toggleCompareRightVisibility: (id: string) => void;
+  toggleAllCompareRightVisibility: (visible: boolean) => void;
 }
 
 const StlVisibilityContext = createContext<StlVisibilityContextType | undefined>(undefined);
 
 export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [stlFiles, setStlFiles] = useState<StlFileInfo[]>([]);
+  const [compareRightFiles, setCompareRightFiles] = useState<StlFileInfo[]>([]);
 
   const addStlFiles = (files: { fileName: string; originalUrl: string; meshIndex?: number }[]) => {
     setStlFiles(prev => {
@@ -96,13 +100,26 @@ export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     );
   };
 
-  // NEW: Toggle all visibility
   const toggleAllStlVisibility = (visible: boolean) => {
     setStlFiles(prev =>
       prev.map(file => ({
         ...file,
         isVisible: visible
       }))
+    );
+  };
+
+  const toggleCompareRightVisibility = (id: string) => {
+    setCompareRightFiles(prev =>
+      prev.map(file =>
+        file.id === id ? { ...file, isVisible: !file.isVisible } : file
+      )
+    );
+  };
+
+  const toggleAllCompareRightVisibility = (visible: boolean) => {
+    setCompareRightFiles(prev =>
+      prev.map(file => ({ ...file, isVisible: visible }))
     );
   };
 
@@ -117,7 +134,11 @@ export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ child
         updateMeshVisibility,
         hideAllStlFiles,
         showAllStlFiles,
-        toggleAllStlVisibility
+        toggleAllStlVisibility,
+        compareRightFiles,
+        setCompareRightFiles,
+        toggleCompareRightVisibility,
+        toggleAllCompareRightVisibility,
       }}
     >
       {children}

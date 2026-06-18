@@ -5,6 +5,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
 import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { LPS_UP } from '../utils/coordinateSystem';
+import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 
 interface Series {
   series_instance_uid: string;
@@ -44,6 +45,7 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 }) => {
   const context = useContext(StlInstanceContext);
   const { seriesName, seriesName1, updateSeriesName, updateSeriesName1 } = context;
+  const { stlFiles } = useStlVisibilityContext();
 
   // Mount refs for the two views
   const mount1Ref = useRef<HTMLDivElement>(null);
@@ -61,6 +63,8 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
   const group1Ref = useRef<THREE.Group>(new THREE.Group());
   const group2Ref = useRef<THREE.Group>(new THREE.Group());
   const animationRef = useRef<number | null>(null);
+  const meshes1Ref = useRef<{ mesh: THREE.Mesh; fileName: string }[]>([]);
+  const meshes2Ref = useRef<{ mesh: THREE.Mesh; fileName: string }[]>([]);
 
   // State
   const [loading, setLoading] = useState(true);
@@ -280,9 +284,12 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 
       group1.clear();
       group2.clear();
+      meshes1Ref.current = [];
+      meshes2Ref.current = [];
 
       const loadSTLsForGroup = async (urls: string[], group: THREE.Group, isFirstView: boolean) => {
         const baseColor = isFirstView ? 0xffffff : 0x00ffff;
+        const meshTracker = isFirstView ? meshes1Ref : meshes2Ref;
 
         for (const url of urls) {
           if (cancelled) return null;
@@ -303,9 +310,12 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
               side: THREE.DoubleSide
             });
 
+            const fileName = url.substring(url.lastIndexOf('/') + 1);
             const mesh = new THREE.Mesh(geometry.clone(), material);
+            mesh.userData = { fileName };
             // LPS coordinate system - no rotation needed
             group.add(mesh);
+            meshTracker.current.push({ mesh, fileName });
           } catch (error) {
             console.error('Failed to load STL:', url, error);
           }
@@ -352,6 +362,22 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
       cancelled = true;
     };
   }, [stlUrls1, stlUrls2]);
+
+  // Sync visibility from context to comparison meshes
+  useEffect(() => {
+    stlFiles.forEach(file => {
+      meshes1Ref.current.forEach(m => {
+        if (m.fileName === file.fileName) {
+          m.mesh.visible = file.isVisible;
+        }
+      });
+      meshes2Ref.current.forEach(m => {
+        if (m.fileName === file.fileName) {
+          m.mesh.visible = file.isVisible;
+        }
+      });
+    });
+  }, [stlFiles]);
 
   return (
     <div style={{

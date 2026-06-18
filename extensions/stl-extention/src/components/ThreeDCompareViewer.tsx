@@ -7,6 +7,7 @@ import { StlInstanceContext } from '../../../../platform/app/src/context/StlInst
 import { StlInstanceListDataContext } from '../../../../platform/app/src/context/StlInstanceListDataContext';
 import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { LPS_UP } from '../utils/coordinateSystem';
+import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 
 interface ThreeDCompareViewerProps {
   servicesManager: any;
@@ -213,6 +214,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   const stlInstanceListData = listContext?.stlInstanceListData ?? [];
 
   const userToken = localStorage.getItem('token') || '';
+  const { stlFiles, compareRightFiles, setCompareRightFiles } = useStlVisibilityContext();
 
   // Mount refs
   const leftMountRef = useRef<HTMLDivElement>(null);
@@ -368,6 +370,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       rightRenderer.dispose();
       leftControls.dispose();
       rightControls.dispose();
+      setCompareRightFiles([]);
     };
   }, []);
 
@@ -440,6 +443,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
     let filesLoaded = 0;
     const totalFiles = files.length;
+    const loadedFileNames: string[] = [];
 
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
@@ -453,6 +457,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
           const mesh = new THREE.Mesh(geometry, material);
           mesh.userData = info;
           group.add(mesh);
+          loadedFileNames.push(file.name);
         } catch (err) {
           console.error('Error loading local STL:', file.name, err);
         }
@@ -460,19 +465,24 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         filesLoaded++;
         setRightProgress(Math.round((filesLoaded / totalFiles) * 100));
         if (filesLoaded === totalFiles) {
-          // All files loaded — position camera
           if (rightCameraRef.current && rightControlsRef.current && group.children.length > 0) {
             positionCameraForGroup(rightCameraRef.current, rightControlsRef.current, group);
           }
           setRightHasModel(true);
           setRightLoading(false);
+          setCompareRightFiles(loadedFileNames.map(fn => ({
+            id: `cmp-${fn}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            fileName: fn,
+            isVisible: true,
+            originalUrl: '',
+          })));
         }
       };
       reader.readAsArrayBuffer(file);
     });
 
     e.target.value = '';
-  }, []);
+  }, [setCompareRightFiles]);
 
   // ─── RIGHT PANEL: add STLs from URL list (appends to existing, parallel fetch) ───
   const addRightFromUrls = useCallback(async (urls: string[], label: string) => {
@@ -512,7 +522,8 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       })
     );
 
-    results.filter(Boolean).forEach((obj: any) => {
+    const validResults = results.filter(Boolean) as any[];
+    validResults.forEach((obj: any) => {
       const mesh = new THREE.Mesh(obj.geometry, createLeftMaterial(obj.type));
       mesh.userData = obj;
       group.add(mesh);
@@ -523,7 +534,52 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     }
     setRightHasModel(true);
     setRightLoading(false);
-  }, []);
+
+    setCompareRightFiles(validResults.map((obj: any) => ({
+      id: `cmp-${obj.fileName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      fileName: obj.fileName,
+      isVisible: true,
+      originalUrl: '',
+    })));
+  }, [setCompareRightFiles]);
+
+  // ─── Sync visibility from context to left compare view meshes ───
+  useEffect(() => {
+    if (stlFiles.length === 0) return;
+
+    const visibilityMap = new Map<string, boolean>();
+    stlFiles.forEach(file => {
+      visibilityMap.set(file.fileName, file.isVisible);
+    });
+
+    leftGroupRef.current.children.forEach(child => {
+      if (child instanceof THREE.Mesh) {
+        const fileName = child.userData?.fileName;
+        if (fileName && visibilityMap.has(fileName)) {
+          child.visible = visibilityMap.get(fileName)!;
+        }
+      }
+    });
+  }, [stlFiles]);
+
+  // ─── Sync visibility from context to right compare view meshes ───
+  useEffect(() => {
+    if (compareRightFiles.length === 0) return;
+
+    const visibilityMap = new Map<string, boolean>();
+    compareRightFiles.forEach(file => {
+      visibilityMap.set(file.fileName, file.isVisible);
+    });
+
+    rightGroupRef.current.children.forEach(child => {
+      if (child instanceof THREE.Mesh) {
+        const fileName = child.userData?.fileName;
+        if (fileName && visibilityMap.has(fileName)) {
+          child.visible = visibilityMap.get(fileName)!;
+        }
+      }
+    });
+  }, [compareRightFiles]);
 
   // ─── RIGHT PANEL: drag-and-drop from sidebar ───
   const [{ isOver }, dropRef] = useDrop({
