@@ -22,6 +22,10 @@ interface StlVisibilityContextType {
   setCompareRightFiles: (files: StlFileInfo[]) => void;
   toggleCompareRightVisibility: (id: string) => void;
   toggleAllCompareRightVisibility: (visible: boolean) => void;
+  compareLeftFiles: StlFileInfo[];
+  setCompareLeftFiles: (files: StlFileInfo[]) => void;
+  toggleCompareLeftVisibility: (id: string) => void;
+  toggleAllCompareLeftVisibility: (visible: boolean) => void;
 }
 
 const StlVisibilityContext = createContext<StlVisibilityContextType | undefined>(undefined);
@@ -29,6 +33,7 @@ const StlVisibilityContext = createContext<StlVisibilityContextType | undefined>
 export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [stlFiles, setStlFiles] = useState<StlFileInfo[]>([]);
   const [compareRightFiles, setCompareRightFiles] = useState<StlFileInfo[]>([]);
+  const [compareLeftFiles, setCompareLeftFiles] = useState<StlFileInfo[]>([]);
 
   const addStlFiles = (files: { fileName: string; originalUrl: string; meshIndex?: number }[]) => {
     setStlFiles(prev => {
@@ -123,6 +128,20 @@ export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     );
   };
 
+  const toggleCompareLeftVisibility = (id: string) => {
+    setCompareLeftFiles(prev =>
+      prev.map(file =>
+        file.id === id ? { ...file, isVisible: !file.isVisible } : file
+      )
+    );
+  };
+
+  const toggleAllCompareLeftVisibility = (visible: boolean) => {
+    setCompareLeftFiles(prev =>
+      prev.map(file => ({ ...file, isVisible: visible }))
+    );
+  };
+
   return (
     <StlVisibilityContext.Provider
       value={{
@@ -139,6 +158,10 @@ export const StlVisibilityProvider: React.FC<{ children: ReactNode }> = ({ child
         setCompareRightFiles,
         toggleCompareRightVisibility,
         toggleAllCompareRightVisibility,
+        compareLeftFiles,
+        setCompareLeftFiles,
+        toggleCompareLeftVisibility,
+        toggleAllCompareLeftVisibility,
       }}
     >
       {children}
