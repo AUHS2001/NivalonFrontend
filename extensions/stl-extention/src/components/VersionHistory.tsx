@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Version } from '../types/three.types';
 import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 
@@ -53,8 +53,13 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
     }
   };
 
+  // Sort versions descending — latest version on top
+  const sortedVersions = useMemo(
+    () => [...versions].sort((a, b) => b.version - a.version),
+    [versions]
+  );
+
   if (!versionHistoryEnabled) {
-    console.log('VersionHistory: not enabled, returning null');
     return null;
   }
 
@@ -89,38 +94,54 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
             <div style={{ color: "#9fcfff", textAlign: "center", padding: "20px" }}>
               Loading versions...
             </div>
-          ) : versions.length === 0 ? (
+          ) : sortedVersions.length === 0 ? (
             <div style={{ color: "#888", textAlign: "center", padding: "20px" }}>
               No version history available
             </div>
           ) : (
             <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-              {versions.map((version) => (
+              {sortedVersions.map((version, index) => (
                 <div
-                  key={version.id}
+                  key={version.version}
                   style={{
                     padding: "8px",
                     marginBottom: "8px",
                     border: "1px solid #333",
                     borderRadius: "4px",
-                    backgroundColor: selectedVersion === version.id ? "#2c3e50" : "transparent",
+                    backgroundColor: selectedVersion === version.version ? "#2c3e50" : "transparent",
                     cursor: "pointer"
                   }}
-                  onClick={() => handleVersionSelect(version.id)}
+                  onClick={() => handleVersionSelect(version.version)}
                 >
-                  <div style={{ fontWeight: "bold", color: "#87dbfc" }}>
-                    Version {version.version}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: "bold", color: "#87dbfc" }}>
+                      Version {version.version}
+                    </span>
+                    {index === 0 && (
+                      <span style={{
+                        fontSize: "9px",
+                        padding: "1px 6px",
+                        borderRadius: "3px",
+                        backgroundColor: "#27ae60",
+                        color: "#fff",
+                        fontWeight: "bold"
+                      }}>
+                        LATEST
+                      </span>
+                    )}
                   </div>
                   <div style={{ color: "#e8e8e8", fontSize: "12px" }}>
                     Total files: {version.urls.length || 0}
                   </div>
-                  <div style={{ color: "#aaa", fontSize: "11px" }}>
-                    {new Date(version.uploaded_at).toLocaleDateString()}
-                  </div>
+                  {version.uploaded_at && (
+                    <div style={{ color: "#aaa", fontSize: "11px" }}>
+                      {new Date(version.uploaded_at).toLocaleDateString()}
+                    </div>
+                  )}
 
-                  {selectedVersion === version.id && (
+                  {selectedVersion === version.version && (
                     <button
-                      onClick={(e) => handleRestoreVersion(e, version.id)}
+                      onClick={(e) => handleRestoreVersion(e, version.version)}
                       style={{
                         marginTop: "8px",
                         padding: "4px 8px",

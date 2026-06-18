@@ -2048,7 +2048,8 @@ const createAutomaticSegmentation = async () => {
   const versionHistory = useVersionHistory({
     setLoading,
     setError,
-    setApproveSuccess
+    setApproveSuccess,
+    setStlUrls: setTestStls
   });
 
 
@@ -2686,6 +2687,8 @@ const createAutomaticSegmentation = async () => {
         setTimeout(() => {
           setApproveSuccess('3D files approved successfully!');
           setIsApproving(false);
+          // Auto-refresh version history list so new version appears immediately
+          versionHistory.refreshVersionHistory();
         }, 600);
       } else {
         setApproveFailed(`Approval failed: ${xhr.status} ${xhr.statusText}`);

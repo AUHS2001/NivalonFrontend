@@ -7,6 +7,10 @@ interface VersionHistoryContextType {
   versions: Version[];
   setVersions: (versions: Version[]) => void;
   setVersionHistoryEnabled: (enabled: boolean) => void;
+  restoredUrls: string[] | null;
+  setRestoredUrls: (urls: string[] | null) => void;
+  previousViewLoading: boolean;
+  setPreviousViewLoading: (loading: boolean) => void;
 }
 
 const VersionHistoryContext = createContext<VersionHistoryContextType | undefined>(undefined);
@@ -18,6 +22,8 @@ interface VersionHistoryProviderProps {
 export const VersionHistoryProvider: React.FC<VersionHistoryProviderProps> = ({ children }) => {
   const [versionHistoryEnabled, setVersionHistoryEnabled] = useState(false);
   const [versions, setVersions] = useState<Version[]>([]);
+  const [restoredUrls, setRestoredUrls] = useState<string[] | null>(null);
+  const [previousViewLoading, setPreviousViewLoading] = useState(false);
 
 
   const toggleVersionHistory = () => {
@@ -29,7 +35,11 @@ export const VersionHistoryProvider: React.FC<VersionHistoryProviderProps> = ({ 
     toggleVersionHistory,
     versions,
     setVersions,
-    setVersionHistoryEnabled
+    setVersionHistoryEnabled,
+    restoredUrls,
+    setRestoredUrls,
+    previousViewLoading,
+    setPreviousViewLoading
   };
 
   return (
