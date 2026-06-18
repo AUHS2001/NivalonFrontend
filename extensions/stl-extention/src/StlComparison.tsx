@@ -783,7 +783,8 @@ const createAutomaticSegmentation = async () => {
   const versionHistory = useVersionHistory({
     setLoading,
     setError,
-    setApproveSuccess
+    setApproveSuccess,
+    setStlUrls: setTestStls
   });
 
 
@@ -1312,6 +1313,8 @@ const createAutomaticSegmentation = async () => {
       }
 
       setApproveSuccess('Approval successful!');
+      // Auto-refresh version history list so new version appears immediately
+      versionHistory.refreshVersionHistory();
     } catch (error: any) {
       setApproveSuccess(`Approval failed: ${error.message || error.toString()}`);
     } finally {

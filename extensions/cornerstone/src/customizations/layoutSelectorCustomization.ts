@@ -74,6 +74,16 @@ export default {
         disabled: false,
       });
 
+      protocolPresets.push({
+        icon: 'layout-common-1x2',
+        title: 'Local 3D Compare',
+        commandOptions: {
+          protocolId: 'local-3d-compare',
+          customLayout: 'local-3d-compare',
+        },
+        disabled: false,
+      });
+
       return [...protocolPresets];
     };
 

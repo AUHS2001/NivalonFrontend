@@ -7,6 +7,7 @@ import { useAppConfig } from '@state';
 import KarachiLayout from './KarachiLayout';
 import ComparisonLayout from './ComparisonLayout';
 import ThreeDCompareLayout from './ThreeDCompareLayout';
+import LocalThreeDCompareLayout from './LocalThreeDCompareLayout';
 import { loadSeriesFully } from '../services/lazyLoadService';
 
 function ViewerViewportGrid(props: withAppTypes) {
@@ -68,6 +69,22 @@ function ViewerViewportGrid(props: withAppTypes) {
           displaySetInstanceUIDs: [],
           displaySetOptions: [],
           viewportOptions: { customLayout: '3d-compare' },
+        }),
+        isHangingProtocolLayout: true,
+      });
+      return;
+    }
+
+    if (protocol.id === 'local-3d-compare') {
+      viewportGridService.setLayout({
+        numRows: 1,
+        numCols: 1,
+        layoutType: 'grid',
+        layoutOptions: [],
+        findOrCreateViewport: () => ({
+          displaySetInstanceUIDs: [],
+          displaySetOptions: [],
+          viewportOptions: { customLayout: 'local-3d-compare' },
         }),
         isHangingProtocolLayout: true,
       });
@@ -476,6 +493,26 @@ function ViewerViewportGrid(props: withAppTypes) {
             className="flex h-full w-full min-w-[5px] flex-col"
           >
             <ThreeDCompareLayout servicesManager={servicesManager} commandsManager={commandsManager} />
+          </div>
+        );
+        continue;
+      }
+
+      if (viewportOptions?.customLayout === 'local-3d-compare') {
+        viewportPanes[i] = (
+          <div
+            key={viewportId}
+            data-cy="viewport-pane"
+            style={{
+              position: 'absolute',
+              top: viewportY * 100 + '%',
+              left: viewportX * 100 + '%',
+              width: viewportWidth * 100 + '%',
+              height: viewportHeight * 100 + '%',
+            }}
+            className="flex h-full w-full min-w-[5px] flex-col"
+          >
+            <LocalThreeDCompareLayout servicesManager={servicesManager} commandsManager={commandsManager} />
           </div>
         );
         continue;

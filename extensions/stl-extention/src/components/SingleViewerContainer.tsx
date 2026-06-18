@@ -22,7 +22,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
   inertialRotationMode = false,
   pivotBoneIndex = null,
   currentRotationAngle = 0,
-  onResetBone
+  onResetBone,
 }) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();

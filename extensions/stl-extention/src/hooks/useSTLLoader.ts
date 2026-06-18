@@ -344,6 +344,7 @@ export const useSTLLoader = ({
           const meshClone = new THREE.Mesh(v.geometry, matRight);
           meshClone.position.copy(mesh.position);
           meshClone.rotation.copy(mesh.rotation);
+          meshClone.userData = { ...v };
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -413,6 +414,7 @@ export const useSTLLoader = ({
           const matRight = createMeshMaterial(implantColor, true, false, 'I');
           const meshClone = new THREE.Mesh(implant.geometry.clone(), matRight);
           meshClone.position.copy(mesh.position);
+          meshClone.userData = { ...implant, isImplant: true };
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 
@@ -490,6 +492,7 @@ export const useSTLLoader = ({
           const matRight = createMeshMaterial(vertebraeColor.getHex(), true, false, organType);
           const meshClone = new THREE.Mesh(organ.geometry, matRight);
           meshClone.position.copy(mesh.position);
+          meshClone.userData = { ...organ, organType };
           rightGroup.add(meshClone);
           meshRefs.current.right.push(meshClone);
 

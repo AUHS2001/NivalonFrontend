@@ -9,7 +9,7 @@ import "./styles/style.css";
 import { StlInstanceContext } from './../../../platform/app/src/context/StlInstanceContext';
 import { StlInstanceListDataContext } from './../../../platform/app/src/context/StlInstanceListDataContext';
 import { ParentStudyIdContext } from './../../../platform/app/src/context/parentStudyIdContext';
-import { SERVER_URL } from '../../../config/server';
+import { SERVER_URL, fetchFile } from '../../../config/server';
 import { LPS_UP } from './utils/coordinateSystem';
 
 // Hooks
@@ -135,7 +135,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   const [segmentationCreated, setSegmentationCreated] = useState(false);
   const [ohifServices, setOhifServices] = useState<any>(null);
   const [hasSegmentationService, setHasSegmentationService] = useState(false);
-  const { versionHistoryEnabled, versions, setVersions } = useVersionHistoryContext();
+  const { versionHistoryEnabled, versions, setVersions, restoredUrls, setRestoredUrls, setPreviousViewLoading } = useVersionHistoryContext();
   const { showImplantView } = useImplantContext();
 
   const {
@@ -145,25 +145,12 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     cleanupAngleMeasurementMode
   } = useAngleMeasurementContext();
 
-  const [restoredStlUrls, setRestoredStlUrls] = useState<string[]>([]);
-
   const versionHistory = useVersionHistory({
     setLoading,
     setError,
-    setApproveSuccess
+    setApproveSuccess,
+    setStlUrls: setTestStls
   });
-
-  useEffect(() => {
-    if (versionHistory.versionUrlsToRestore.length > 0) {
-      console.log('🔄 Restoring version with URLs:', versionHistory.versionUrlsToRestore);
-
-      // Update the STL URLs to trigger the useSTLLoader hook
-      setTestStls(versionHistory.versionUrlsToRestore);
-
-      // Clear the restoration URLs after applying
-      // Note: You might need to add a setVersionUrlsToRestore function to your hook
-    }
-  }, [versionHistory.versionUrlsToRestore]);
 
 
   useEffect(() => {
@@ -272,6 +259,73 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     brightness
   });
 
+  // Watch for version restore — load ONLY into the Previous View (start group)
+  useEffect(() => {
+    if (!restoredUrls || restoredUrls.length === 0) return;
+
+    console.log('[SpinalCordViewer] Loading restored version into Previous View only:', restoredUrls);
+    const urls = [...restoredUrls];
+    setRestoredUrls(null); // Clear immediately so future restores trigger again
+    setPreviousViewLoading(true);
+
+    const loader = new STLLoader();
+    const startGroup = startGroupRef.current;
+
+    // Clear previous meshes from start group
+    startGroup.clear();
+    startMeshRefs.current = [];
+
+    const loadPromises = urls.map(async (url) => {
+      try {
+        const response = await fetchFile(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+        const arrayBuffer = await response.arrayBuffer();
+        const geometry = loader.parse(arrayBuffer);
+        geometry.computeBoundingBox();
+        const fileName = url.substring(url.lastIndexOf('/') + 1);
+        return { geometry, fileName, url };
+      } catch (error) {
+        console.error(`Failed to load ${url}:`, error);
+        return null;
+      }
+    });
+
+    Promise.all(loadPromises).then((results) => {
+      const valid = results.filter(Boolean);
+      valid.forEach((v) => {
+        if (!v) return;
+        const material = new THREE.MeshPhongMaterial({
+          color: 0xffffff,
+          specular: 0x111111,
+          shininess: 10,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(v.geometry, material);
+        mesh.userData = { fileName: v.fileName };
+        startGroup.add(mesh);
+        startMeshRefs.current.push(mesh);
+      });
+
+      // Center start camera on loaded meshes
+      if (startGroup.children.length > 0 && startControlsRef.current) {
+        const bbox = new THREE.Box3().setFromObject(startGroup);
+        const center = bbox.getCenter(new THREE.Vector3());
+        const size = bbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const startCamera = startControlsRef.current.object as THREE.PerspectiveCamera;
+        const fov = startCamera.fov * (Math.PI / 180);
+        const fitDist = maxDim / (2 * Math.tan(fov / 2));
+        startCamera.position.set(center.x, center.y - fitDist * 1.0, center.z);
+        startCamera.up.set(0, 0, 1);
+        startCamera.lookAt(center);
+        startControlsRef.current.target.copy(center);
+        startControlsRef.current.update();
+      }
+    }).finally(() => {
+      setPreviousViewLoading(false);
+    });
+  }, [restoredUrls]);
+
   useBrightness({
     brightnessEnabled,
     brightness,
@@ -279,7 +333,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   });
 
   useSTLLoader({
-    stlUrls: restoredStlUrls.length > 0 ? restoredStlUrls : tetsStls,
+    stlUrls: tetsStls,
     leftGroupRef,
     rightGroupRef,
     startGroupRef,
@@ -452,6 +506,120 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
       rightRenderer.dispose();
     };
   }, []);
+
+  // Start view (Previous View) setup — runs when version history is toggled on
+  useEffect(() => {
+    if (!versionHistoryEnabled) return;
+
+    // Wait a tick for the DOM to mount the startMountRef div
+    const timer = setTimeout(() => {
+      const startMount = startMountRef.current;
+      if (!startMount || startRendererRef.current) return; // already set up or no mount
+
+      const startScene = startSceneRef.current;
+      startScene.background = new THREE.Color(0x000000);
+
+      // Only add lights and group if not already in the scene
+      if (!startScene.children.some(c => c instanceof THREE.AmbientLight)) {
+        startScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        keyLight.position.set(1, 1, 1).normalize();
+        startScene.add(keyLight);
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        fillLight.position.set(-1, 0.5, -0.5).normalize();
+        startScene.add(fillLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+        backLight.position.set(0, 0, -1).normalize();
+        startScene.add(backLight);
+        startScene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.3));
+      }
+
+      // Add the start group to the scene if not already there
+      if (!startScene.children.includes(startGroupRef.current)) {
+        startScene.add(startGroupRef.current);
+      }
+
+      const width = startMount.clientWidth || 400;
+      const height = startMount.clientHeight || 400;
+
+      // Create start camera (separate from left/right camera)
+      const startCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+      startCamera.up.copy(LPS_UP);
+      startCamera.position.set(0, -250, 50);
+      startCamera.lookAt(0, 0, 0);
+
+      // Create start renderer
+      const startRenderer = new THREE.WebGLRenderer({ antialias: true });
+      startRenderer.setSize(width, height);
+      startRenderer.setPixelRatio(window.devicePixelRatio);
+      startRendererRef.current = startRenderer;
+      startMount.appendChild(startRenderer.domElement);
+
+      // Create start controls
+      const startControls = new OrbitControls(startCamera, startRenderer.domElement);
+      startControls.enableDamping = true;
+      startControls.dampingFactor = 0.25;
+      startControls.maxDistance = 5000;
+      startControlsRef.current = startControls;
+
+      // Center camera on existing start group content
+      if (startGroupRef.current.children.length > 0) {
+        const bbox = new THREE.Box3().setFromObject(startGroupRef.current);
+        const center = bbox.getCenter(new THREE.Vector3());
+        const size = bbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = startCamera.fov * (Math.PI / 180);
+        const fitDist = maxDim / (2 * Math.tan(fov / 2));
+        startCamera.position.set(center.x, center.y - fitDist, center.z);
+        startCamera.lookAt(center);
+        startControls.target.copy(center);
+        startControls.update();
+      }
+
+      // Animation loop for start view
+      let startAnimId: number;
+      const animateStart = () => {
+        startAnimId = requestAnimationFrame(animateStart);
+        if (startMount.offsetParent !== null) {
+          startControls.update();
+          startRenderer.render(startScene, startCamera);
+        }
+      };
+      animateStart();
+
+      // Resize handler
+      const handleStartResize = () => {
+        const w = startMount.clientWidth;
+        const h = startMount.clientHeight;
+        if (w > 0 && h > 0) {
+          startCamera.aspect = w / h;
+          startCamera.updateProjectionMatrix();
+          startRenderer.setSize(w, h);
+        }
+      };
+      window.addEventListener('resize', handleStartResize);
+
+      // Store cleanup in a ref so it can be called on unmount
+      (startMountRef as any)._cleanup = () => {
+        cancelAnimationFrame(startAnimId);
+        window.removeEventListener('resize', handleStartResize);
+        if (startMount.contains(startRenderer.domElement)) {
+          startMount.removeChild(startRenderer.domElement);
+        }
+        startRenderer.dispose();
+        startRendererRef.current = undefined;
+        startControlsRef.current = undefined;
+      };
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      if ((startMountRef as any)._cleanup) {
+        (startMountRef as any)._cleanup();
+        (startMountRef as any)._cleanup = null;
+      }
+    };
+  }, [versionHistoryEnabled]);
 
   // Right view resize handler
   useEffect(() => {

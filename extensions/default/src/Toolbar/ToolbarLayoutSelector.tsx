@@ -119,6 +119,14 @@ function ToolbarLayoutSelectorWithServices({
             customLayout: '3d-compare',
           },
         },
+        {
+          title: 'Local 3D Compare',
+          icon: 'layout-side-by-side',
+          commandOptions: {
+            protocolId: 'local-3d-compare',
+            customLayout: 'local-3d-compare',
+          },
+        },
       ];
 
   // Unified selection handler that dispatches to the appropriate command
@@ -148,6 +156,31 @@ function ToolbarLayoutSelectorWithServices({
           });
         } catch (error) {
           console.error('Error applying 3D Compare layout:', error);
+        }
+        return;
+      }
+
+      if (commandOptions && commandOptions.customLayout === 'local-3d-compare') {
+        console.log('Applying Local 3D Compare layout');
+        try {
+          viewportGridService.setLayout({
+            numRows: 1,
+            numCols: 1,
+            layoutType: 'grid',
+            layoutOptions: [],
+            findOrCreateViewport: (index) => ({
+              displaySetInstanceUIDs: [],
+              displaySetOptions: [],
+              viewportOptions: {
+                viewportId: `local3dCompareViewport-${index}`,
+                customLayout: 'local-3d-compare',
+              },
+            }),
+            activeViewportId: 'local3dCompareViewport-0',
+            isHangingProtocolLayout: false,
+          });
+        } catch (error) {
+          console.error('Error applying Local 3D Compare layout:', error);
         }
         return;
       }
@@ -194,7 +227,7 @@ function ToolbarLayoutSelectorWithServices({
         if (currentViewports) {
           currentViewports.forEach((vp) => {
             const cl = vp?.viewportOptions?.customLayout;
-            if (cl === 'karachi' || cl === '3d-compare' || cl === 'comparison') {
+            if (cl === 'karachi' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison') {
               leavingCustomLayout = true;
             }
           });

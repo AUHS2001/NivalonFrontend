@@ -12,18 +12,27 @@ export const useMeshVisibility = ({
   const { stlFiles } = useStlVisibilityContext();
 
   useEffect(() => {
-    stlFiles.forEach((file, index) => {
-      // Use meshIndex if available, otherwise fall back to array index
-      const meshIndex = file.meshIndex !== undefined ? file.meshIndex : index;
+    if (stlFiles.length === 0) return;
 
-      // Update left view meshes
-      if (meshRefs.current.left[meshIndex]) {
-        meshRefs.current.left[meshIndex].visible = file.isVisible;
+    // Build a visibility map keyed by fileName for fast lookup
+    const visibilityMap = new Map<string, boolean>();
+    stlFiles.forEach(file => {
+      visibilityMap.set(file.fileName, file.isVisible);
+    });
+
+    // Update left view meshes by matching fileName from userData
+    meshRefs.current.left.forEach(mesh => {
+      const fileName = mesh.userData?.fileName;
+      if (fileName && visibilityMap.has(fileName)) {
+        mesh.visible = visibilityMap.get(fileName)!;
       }
+    });
 
-      // Update right view meshes
-      if (meshRefs.current.right[meshIndex]) {
-        meshRefs.current.right[meshIndex].visible = file.isVisible;
+    // Update right view meshes by matching fileName from userData
+    meshRefs.current.right.forEach(mesh => {
+      const fileName = mesh.userData?.fileName;
+      if (fileName && visibilityMap.has(fileName)) {
+        mesh.visible = visibilityMap.get(fileName)!;
       }
     });
   }, [stlFiles, meshRefs]);

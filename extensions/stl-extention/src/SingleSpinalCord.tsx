@@ -91,13 +91,9 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
   const undoOrderRef = useRef<('bone' | 'click')[]>([]);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
   const [showRightView, setShowRightView] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
-  const [approveProgress, setApproveProgress] = useState(0);
   const [approveUploadedBytes, setApproveUploadedBytes] = useState(0);
   const [approveTotalBytes, setApproveTotalBytes] = useState(0);
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
@@ -171,7 +167,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { layout, activeViewportId, viewports, isHangingProtocolLayout } = viewportGrid;
   // const viewport1Rendering = useViewportRendering(activeViewportId || "");
-  const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory } = useVersionHistoryContext();
+  const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory, isApproving, setIsApproving, approveProgress, setApproveProgress, isDownloading, setIsDownloading, downloadProgress, setDownloadProgress } = useVersionHistoryContext();
 
   const [rotationMode, setRotationMode] = useState(false);
   const [rotationMode1, setRotationMode1] = useState(false);
@@ -2048,7 +2044,8 @@ const createAutomaticSegmentation = async () => {
   const versionHistory = useVersionHistory({
     setLoading,
     setError,
-    setApproveSuccess
+    setApproveSuccess,
+    setStlUrls: setTestStls
   });
 
 
@@ -2540,6 +2537,17 @@ const createAutomaticSegmentation = async () => {
       setDownloadedBytes(0);
       setDownloadTotalBytes(0);
 
+      // Open the right 3D panel so the user can see the progress bar
+      try {
+        const svcManager = propServicesManager || servicesManager;
+        const panelService = svcManager?.services?.panelService;
+        if (panelService) {
+          panelService.activatePanel('stl-extention.panelModule.stl', true);
+        }
+      } catch (e) {
+        // Panel activation is best-effort
+      }
+
       // Simulated progress: ramps from 0→90% over ~15s while waiting
       let simulated = 0;
       const simInterval = setInterval(() => {
@@ -2628,6 +2636,17 @@ const createAutomaticSegmentation = async () => {
     setApproveSuccess(null);
     setApproveFailed(null);
 
+    // Open the right 3D panel so the user can see the progress bar
+    try {
+      const svcManager = propServicesManager || servicesManager;
+      const panelService = svcManager?.services?.panelService;
+      if (panelService) {
+        panelService.activatePanel('stl-extention.panelModule.stl', true);
+      }
+    } catch (e) {
+      // Panel activation is best-effort
+    }
+
     const exporter = new STLExporter();
     const formData = new FormData();
     formData.append('series_instance_uid', stlInstanceId);
@@ -2686,6 +2705,8 @@ const createAutomaticSegmentation = async () => {
         setTimeout(() => {
           setApproveSuccess('3D files approved successfully!');
           setIsApproving(false);
+          // Auto-refresh version history list so new version appears immediately
+          versionHistory.refreshVersionHistory();
         }, 600);
       } else {
         setApproveFailed(`Approval failed: ${xhr.status} ${xhr.statusText}`);
@@ -3056,78 +3077,6 @@ const createAutomaticSegmentation = async () => {
                         : `stl-pct-show 0.1s ${show}s forwards`,
                   }}>{pct}%</span>
                 ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isDownloading && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center"
-          }}>
-            <div style={{
-              background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
-              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
-              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "320px"
-            }}>
-              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-                <span className="spinner-border spinner-border-lg" style={{ marginRight: 16 }} />
-                Downloading 3D Model...
-              </div>
-              <div style={{
-                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
-              }}>
-                <div style={{
-                  width: `${downloadProgress}%`,
-                  height: "100%",
-                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
-                  borderRadius: "4px",
-                  transition: "width 0.3s ease-out",
-                }} />
-              </div>
-              <div style={{ marginTop: 10, fontSize: "16px", fontWeight: 600, color: "#4FC3F7" }}>
-                {downloadTotalBytes > 0
-                  ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB / ${(downloadTotalBytes / (1024 * 1024)).toFixed(1)} MB — ${downloadProgress}%`
-                  : downloadedBytes > 0
-                    ? `${(downloadedBytes / (1024 * 1024)).toFixed(1)} MB downloaded — ${downloadProgress}%`
-                    : `Downloading... ${downloadProgress}%`
-                }
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isApproving && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center"
-          }}>
-            <div style={{
-              background: "#222", color: "#fff", padding: "24px 32px", borderRadius: "12px",
-              fontSize: "22px", fontWeight: "bold", boxShadow: "0 4px 24px #0008",
-              display: "flex", flexDirection: "column", alignItems: "center", minWidth: "320px"
-            }}>
-              <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-                <span className="spinner-border spinner-border-lg" style={{ marginRight: 16 }} />
-                Approving 3D Files...
-              </div>
-              <div style={{
-                width: "100%", height: "8px", background: "#444", borderRadius: "4px", overflow: "hidden"
-              }}>
-                <div style={{
-                  width: `${approveProgress}%`,
-                  height: "100%",
-                  background: "linear-gradient(90deg, #4FC3F7, #2196F3)",
-                  borderRadius: "4px",
-                  transition: "width 0.3s ease-out",
-                }} />
-              </div>
-              <div style={{ marginTop: 10, fontSize: "16px", fontWeight: 600, color: "#4FC3F7" }}>
-                {approveTotalBytes > 0
-                  ? `${(approveUploadedBytes / (1024 * 1024)).toFixed(1)} MB / ${(approveTotalBytes / (1024 * 1024)).toFixed(1)} MB — ${approveProgress}%`
-                  : `Approving... ${approveProgress}%`
-                }
               </div>
             </div>
           </div>
