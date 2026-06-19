@@ -12,8 +12,10 @@ interface UseBoneRemovalProps {
   setRemoving: (removing: boolean) => void;
   setUndoStack: React.Dispatch<React.SetStateAction<THREE.BufferGeometry[][]>>;
   setRemovalOutline: React.Dispatch<React.SetStateAction<{ x: number, y: number }[]>>;
+  localOnly?: boolean;
   removalOutline: { x: number, y: number }[];
   onRemovalComplete?: (removedWorldVertices: THREE.Vector3[], preRemovalBounds: { min: THREE.Vector3; max: THREE.Vector3 }) => void;
+  meshKey?: 'left' | 'right';
 }
 
 export const useBoneRemoval = ({
@@ -27,7 +29,9 @@ export const useBoneRemoval = ({
   setUndoStack,
   setRemovalOutline,
   removalOutline,
-  onRemovalComplete
+  onRemovalComplete,
+  localOnly = false,
+  meshKey = 'left'
 }: UseBoneRemovalProps) => {
   const removalOutlinePoints = useRef<{ x: number, y: number }[]>([]);
 
@@ -49,12 +53,13 @@ export const useBoneRemoval = ({
     setTimeout(() => { // allow UI to update, then process
       const cam = cameraRef.current;
       if (!cam) { setRemoving(false); return; }
-      const prevGeometries = meshRefs.current.left.map(mesh => mesh.geometry.clone());
+      const targetMeshes = meshRefs.current[meshKey];
+      const prevGeometries = targetMeshes.map(mesh => mesh.geometry.clone());
       setUndoStack(stack => [...stack, prevGeometries]);
       // Compute STL bounds BEFORE geometry clipping so the STL→DICOM transform is correct
-      const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
+      const preRemovalBounds = computeSTLBounds(targetMeshes);
       const removedWorldVertices: THREE.Vector3[] = [];
-      meshRefs.current.left.forEach((mesh, idx) => {
+      targetMeshes.forEach((mesh, idx) => {
         if (!mesh.visible) return;
         const geometry = mesh.geometry as THREE.BufferGeometry;
         const position = geometry.getAttribute('position');
@@ -84,7 +89,7 @@ export const useBoneRemoval = ({
           const newGeometry = geometry.clone();
           newGeometry.setIndex(newIndices);
           mesh.geometry = newGeometry;
-          if (meshRefs.current.right[idx]) {
+          if (!localOnly && meshKey === 'left' && meshRefs.current.right[idx]) {
             meshRefs.current.right[idx].geometry = newGeometry.clone();
           }
           // Collect world positions of removed (inside) vertices

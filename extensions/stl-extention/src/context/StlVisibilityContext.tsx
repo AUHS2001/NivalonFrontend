@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, SetStateAction } from 'react';
 
 export interface StlFileInfo {
   id: string;
@@ -19,7 +19,7 @@ interface StlVisibilityContextType {
   showAllStlFiles: () => void;
   toggleAllStlVisibility: (visible: boolean) => void;
   compareRightFiles: StlFileInfo[];
-  setCompareRightFiles: (files: StlFileInfo[]) => void;
+  setCompareRightFiles: (files: SetStateAction<StlFileInfo[]>) => void;
   toggleCompareRightVisibility: (id: string) => void;
   toggleAllCompareRightVisibility: (visible: boolean) => void;
   compareLeftFiles: StlFileInfo[];

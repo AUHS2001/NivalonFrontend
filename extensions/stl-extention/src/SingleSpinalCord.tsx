@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useContext, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useContext, useCallback } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
@@ -70,6 +70,8 @@ interface SingleSpinalCordProps {
   // commandsManager?: any;
   extensionManager?: any;
   props?: any;
+  localOnly?: boolean;
+  compareMode?: boolean;
 }
 
 
@@ -77,8 +79,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   servicesManager: propServicesManager,
   // commandsManager,
   extensionManager,
-  props
+  props,
+  localOnly = false,
+  compareMode = false,
 }) => {
+  // Whether the right compare panel should be shown
+  const showComparePanel = localOnly || compareMode;
+
   // State
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,7 +93,11 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<THREE.BufferGeometry[][]>([]);
   const [removalOutline, setRemovalOutline] = useState<{ x: number, y: number }[]>([]);
+  const [rightRemovalOutline, setRightRemovalOutline] = useState<{ x: number, y: number }[]>([]);
   const [removing, setRemoving] = useState(false);
+  const [leftHasModel, setLeftHasModel] = useState(false);
+  const [rightHasModel, setRightHasModel] = useState(false);
+  const [rightLoading, setRightLoading] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
   const undoOrderRef = useRef<('bone' | 'click')[]>([]);
@@ -103,6 +114,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   // Refs
   const removalOutlinePoints = useRef<{ x: number, y: number }[]>([]);
   const removalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const rightRemovalCanvasRef = useRef<HTMLCanvasElement>(null);
   const leftMountRef = useRef<HTMLDivElement>(null);
   const rightMountRef = useRef<HTMLDivElement>(null);
   const startMountRef = useRef<HTMLDivElement>(null);
@@ -119,6 +131,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const implantRendererRef = useRef<THREE.WebGLRenderer>();
 
   const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const rightCameraRef = useRef<THREE.PerspectiveCamera>();
   const implantCameraRef = useRef<THREE.PerspectiveCamera>();
 
   const leftControlsRef = useRef<OrbitControls>();
@@ -149,7 +162,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [hasSegmentationService, setHasSegmentationService] = useState(false);
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
-  const { addStlFiles, clearStlFiles } = useStlVisibilityContext();
+  const { addStlFiles, clearStlFiles, compareRightFiles, setCompareRightFiles, compareLeftFiles, setCompareLeftFiles } = useStlVisibilityContext();
   const { showRightView: labelViewEnabled, onToggleRightView } = useLabelingViewContext();
   const {
     isLinkingActive,
@@ -1555,7 +1568,11 @@ useEffect(() => {
       }
 
       // Add STL visibility context clearing
-      clearStlFiles();
+      if (localOnly) {
+        setCompareLeftFiles([]);
+      } else {
+        clearStlFiles();
+      }
 
       setFiles(newFiles);
       setLoading(true);
@@ -1564,7 +1581,7 @@ useEffect(() => {
       try {
         const loader = new STLLoader();
 
-        // Clear existing meshes from left and right views only
+        // Clear existing meshes from left view
         meshRefs.current.left.forEach(mesh => {
           leftGroupRef.current.remove(mesh);
           mesh.geometry.dispose();
@@ -1574,20 +1591,85 @@ useEffect(() => {
             mesh.material.dispose();
           }
         });
-
-        meshRefs.current.right.forEach(mesh => {
-          rightGroupRef.current.remove(mesh);
-          mesh.geometry.dispose();
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach(m => m.dispose());
-          } else {
-            mesh.material.dispose();
-          }
-        });
-
         meshRefs.current.left = [];
-        meshRefs.current.right = [];
 
+        // Clear right view only in non-compare modes (compare modes have independent right panel)
+        if (!showComparePanel) {
+          meshRefs.current.right.forEach(mesh => {
+            rightGroupRef.current.remove(mesh);
+            mesh.geometry.dispose();
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(m => m.dispose());
+            } else {
+              mesh.material.dispose();
+            }
+          });
+          meshRefs.current.right = [];
+        }
+
+        // ─── localOnly mode: simple direct loading, no classification ───
+        if (localOnly) {
+          const allNewStlFiles: { fileName: string; originalUrl: string; meshIndex: number }[] = [];
+
+          for (const file of newFiles) {
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const geometry = loader.parse(arrayBuffer);
+              geometry.computeBoundingBox();
+
+              const mat = new THREE.MeshPhongMaterial({
+                color: 0xffffff, specular: 0x111111, shininess: 10, side: THREE.DoubleSide
+              });
+              const mesh = new THREE.Mesh(geometry, mat);
+              mesh.userData = {
+                type: 'X', number: 0,
+                fullName: file.name.replace('.stl', '').toUpperCase(),
+                fileName: file.name,
+              };
+              leftGroupRef.current.add(mesh);
+              meshRefs.current.left.push(mesh);
+              allNewStlFiles.push({
+                fileName: file.name,
+                originalUrl: URL.createObjectURL(file),
+                meshIndex: meshRefs.current.left.length - 1,
+              });
+            } catch (err) {
+              console.error('Error loading local STL:', file.name, err);
+            }
+          }
+
+          // Position camera to fit all loaded meshes
+          if (leftGroupRef.current.children.length > 0 && cameraRef.current && leftControlsRef.current) {
+            const bbox = new THREE.Box3().setFromObject(leftGroupRef.current);
+            const center = bbox.getCenter(new THREE.Vector3());
+            const size = bbox.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = cameraRef.current.fov * (Math.PI / 180);
+            const fitDist = maxDim / (2 * Math.tan(fov / 2));
+            leftControlsRef.current.target.copy(center);
+            cameraRef.current.position.set(center.x, center.y - fitDist, center.z);
+            cameraRef.current.up.set(0, 0, 1);
+            cameraRef.current.lookAt(center);
+            cameraRef.current.updateProjectionMatrix();
+            leftControlsRef.current.update();
+          }
+
+          if (allNewStlFiles.length > 0) {
+            setCompareLeftFiles(allNewStlFiles.map(f => ({
+              id: `cmp-left-${f.fileName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              fileName: f.fileName,
+              isVisible: true,
+              originalUrl: f.originalUrl,
+              meshIndex: f.meshIndex,
+            })));
+          }
+
+          setLoading(false);
+          setLeftHasModel(meshRefs.current.left.length > 0);
+          return;
+        }
+
+        // ─── Normal mode: vertebrae/organ classification ───
         // Load each file
         const loadPromises = newFiles.map(async (file) => {
           try {
@@ -1683,7 +1765,7 @@ useEffect(() => {
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Colored) - no emissive
+          // Right mesh = Labelling View (Colored)
           const matRight = new THREE.MeshPhongMaterial({
             color: color.getHex(),
             specular: 0x111111,
@@ -1758,9 +1840,9 @@ useEffect(() => {
           leftGroupRef.current.add(mesh);
           meshRefs.current.left.push(mesh);
 
-          // Right mesh = Labelling View (Pink for aorta, Purple for heart) - no emissive
+          // Right mesh = Labelling View
           const matRight = new THREE.MeshPhongMaterial({
-            color: organType === 'A' ? 0xe91e63 : 0x9c27b0, // Pink for aorta, Purple for heart
+            color: organType === 'A' ? 0xe91e63 : 0x9c27b0,
             specular: 0x111111,
             shininess: 10,
             side: THREE.DoubleSide
@@ -1812,9 +1894,109 @@ useEffect(() => {
         setError(`Error loading STL files: ${err.message}`);
       } finally {
         setLoading(false);
+        if (meshRefs.current.left.length > 0) {
+          setLeftHasModel(true);
+        }
       }
     }
   };
+
+  // ─── Right panel file handler for localOnly compare mode ───
+  const handleRightFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const newFiles = Array.from(e.target.files).filter((f: File) => /\.stl$/i.test(f.name));
+    if (newFiles.length === 0) return;
+
+    setRightLoading(true);
+
+    // Clear existing right meshes only
+    meshRefs.current.right.forEach(mesh => {
+      rightGroupRef.current.remove(mesh);
+      mesh.geometry.dispose();
+      if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+      else mesh.material.dispose();
+    });
+    meshRefs.current.right = [];
+
+    const loader = new STLLoader();
+    const loadedFileNames: string[] = [];
+
+    for (const file of newFiles) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const geometry = loader.parse(arrayBuffer);
+        geometry.computeBoundingBox();
+
+        const mat = new THREE.MeshPhongMaterial({
+          color: 0xffffff, specular: 0x111111, shininess: 10, side: THREE.DoubleSide
+        });
+        const mesh = new THREE.Mesh(geometry, mat);
+        mesh.userData = {
+          type: 'X', number: 0,
+          fullName: file.name.replace('.stl', '').toUpperCase(),
+          fileName: file.name,
+        };
+        rightGroupRef.current.add(mesh);
+        meshRefs.current.right.push(mesh);
+        loadedFileNames.push(file.name);
+      } catch (err) {
+        console.error('Error loading right STL:', file.name, err);
+      }
+    }
+
+    if (rightGroupRef.current.children.length > 0 && rightCameraRef.current && rightControlsRef.current) {
+      const bbox = new THREE.Box3().setFromObject(rightGroupRef.current);
+      const center = bbox.getCenter(new THREE.Vector3());
+      const size = bbox.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = rightCameraRef.current.fov * (Math.PI / 180);
+      const fitDist = maxDim / (2 * Math.tan(fov / 2));
+      rightControlsRef.current.target.copy(center);
+      rightCameraRef.current.position.set(center.x, center.y - fitDist, center.z);
+      rightCameraRef.current.up.set(0, 0, 1);
+      rightCameraRef.current.lookAt(center);
+      rightCameraRef.current.updateProjectionMatrix();
+      rightControlsRef.current.update();
+    }
+
+    setRightLoading(false);
+    setRightHasModel(true);
+    setCompareRightFiles(loadedFileNames.map(fn => ({
+      id: `cmp-${fn}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      fileName: fn,
+      isVisible: true,
+      originalUrl: '',
+    })));
+
+    e.target.value = '';
+  };
+
+  // Sync visibility for right panel compareRightFiles
+  useEffect(() => {
+    if (compareRightFiles.length === 0) return;
+    const visibilityMap = new Map<string, boolean>();
+    compareRightFiles.forEach(file => visibilityMap.set(file.fileName, file.isVisible));
+    meshRefs.current.right.forEach(mesh => {
+      const fileName = mesh.userData?.fileName;
+      if (fileName && visibilityMap.has(fileName)) {
+        mesh.visible = visibilityMap.get(fileName)!;
+      }
+    });
+  }, [compareRightFiles]);
+
+  // Sync visibility for left panel compareLeftFiles (localOnly mode)
+  useEffect(() => {
+    if (!localOnly || compareLeftFiles.length === 0) return;
+    const visibilityMap = new Map<string, boolean>();
+    compareLeftFiles.forEach(file => visibilityMap.set(file.fileName, file.isVisible));
+    meshRefs.current.left.forEach(mesh => {
+      const fileName = mesh.userData?.fileName;
+      if (fileName && visibilityMap.has(fileName)) {
+        mesh.visible = visibilityMap.get(fileName)!;
+      }
+    });
+  }, [compareLeftFiles, localOnly]);
 
   const getVertebraInfo = (fileName: string) => {
     // First try to match vertebrae (C, T, L, S)
@@ -2027,6 +2209,24 @@ const createAutomaticSegmentation = async () => {
     onRemovalComplete: (removedVertices, preRemovalBounds) => {
       performVoxelMasking(removedVertices, preRemovalBounds);
     },
+    localOnly: showComparePanel,
+    meshKey: 'left',
+  });
+
+  // Right panel bone removal — active in localOnly or compareMode
+  useBoneRemoval({
+    removalMode: removalMode && showComparePanel,
+    leftRendererRef: rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
+    leftControlsRef: rightControlsRef,
+    cameraRef: rightCameraRef,
+    meshRefs,
+    removalCanvasRef: rightRemovalCanvasRef,
+    setRemoving,
+    setUndoStack: setUndoStackTracked,
+    setRemovalOutline: setRightRemovalOutline,
+    removalOutline: rightRemovalOutline,
+    localOnly: true,
+    meshKey: 'right',
   });
 
   const {
@@ -2074,6 +2274,16 @@ const createAutomaticSegmentation = async () => {
   });
 
 
+  // Clear file lists on mount for compare modes
+  useLayoutEffect(() => {
+    if (localOnly) {
+      setCompareLeftFiles([]);
+    }
+    if (showComparePanel) {
+      setCompareRightFiles([]);
+    }
+  }, []);
+
   // Data fetching
   useEffect(() => {
     const fetchData = async () => {
@@ -2103,10 +2313,10 @@ const createAutomaticSegmentation = async () => {
       }
     };
 
-    if (stlInstanceId) {
+    if (stlInstanceId && !localOnly) {
       fetchData();
     }
-  }, [stlInstanceId, userToken]);
+  }, [stlInstanceId, userToken, localOnly]);
 
   // Three.js Viewer and Controls Setup
   useEffect(() => {
@@ -2135,6 +2345,7 @@ const createAutomaticSegmentation = async () => {
     rightCamera.lookAt(0, 0, 0);
 
     cameraRef.current = leftCamera; // Keep ref for backward compatibility
+    rightCameraRef.current = rightCamera;
 
     const leftRenderer = new THREE.WebGLRenderer({ antialias: true });
     leftRenderer.setSize(leftMount.clientWidth, leftMount.clientHeight, false);
@@ -2272,6 +2483,8 @@ const createAutomaticSegmentation = async () => {
       rightRenderer.dispose();
       leftControls.dispose();
       rightControls.dispose();
+      setCompareRightFiles([]);
+      setCompareLeftFiles([]);
     };
   }, []);
 
@@ -2317,29 +2530,56 @@ const createAutomaticSegmentation = async () => {
         const idx = meshRefs.current.left.findIndex(m => m === selectedMesh);
         if (idx !== -1) {
           const leftMesh = meshRefs.current.left[idx];
-          const rightMesh = meshRefs.current.right[idx];
 
           // Compute bounds BEFORE removing mesh so STL→DICOM transform is correct
           const preRemovalBounds = computeSTLBounds(meshRefs.current.left);
 
           // Remove from scene
           leftGroupRef.current.remove(leftMesh);
-          rightGroupRef.current.remove(rightMesh);
-
-          // Remove from refs
           meshRefs.current.left.splice(idx, 1);
-          meshRefs.current.right.splice(idx, 1);
 
-          // Push into undo stack
-          setClickRemovalUndoStack(stack => [
-            ...stack,
-            { leftMesh, rightMesh, index: idx }
-          ]);
+          // In normal mode (no compare), also remove paired right mesh
+          if (!showComparePanel) {
+            const rightMesh = meshRefs.current.right[idx];
+            if (rightMesh) {
+              rightGroupRef.current.remove(rightMesh);
+              meshRefs.current.right.splice(idx, 1);
+            }
+
+            // Push into undo stack (with paired mesh)
+            setClickRemovalUndoStack(stack => [
+              ...stack,
+              { leftMesh, rightMesh, index: idx }
+            ]);
+          } else {
+            // compare mode: undo stack with left mesh only
+            setClickRemovalUndoStack(stack => [
+              ...stack,
+              { leftMesh, rightMesh: null as any, index: idx }
+            ]);
+          }
           undoOrderRef.current.push('click');
 
           // Mask corresponding DICOM voxels
           const removedVertices = extractRemovedVerticesFromClick(leftMesh);
           performVoxelMasking(removedVertices, preRemovalBounds);
+
+          // Update file list context
+          const fileName = leftMesh.userData?.fileName;
+          if (localOnly && fileName) {
+            if (meshRefs.current.left.length > 0) {
+              setCompareLeftFiles(meshRefs.current.left.map((m, i) => ({
+                id: `cmp-left-${m.userData?.fileName || i}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                fileName: m.userData?.fileName || `mesh-${i}`,
+                isVisible: true,
+                originalUrl: '',
+                meshIndex: i,
+              })));
+            } else {
+              setCompareLeftFiles([]);
+              setLeftHasModel(false);
+            }
+          }
         }
       }
     };
@@ -2353,6 +2593,79 @@ const createAutomaticSegmentation = async () => {
     };
   }, [clickRemovalMode]);
 
+  // Click removal for right panel (Compare Panel) — localOnly or compareMode
+  // Bone removal (outline) is handled by the second useBoneRemoval hook above
+  useEffect(() => {
+    if (!clickRemovalMode || !showComparePanel) return;
+
+    const rightRenderer = rightRendererRef.current;
+    const rightCanvas = rightRenderer?.domElement;
+    if (!rightCanvas) return;
+
+    // Disable OrbitControls on right panel so click events reach our handler
+    const rightControls = rightControlsRef.current;
+    if (rightControls) {
+      rightControls.enabled = false;
+    }
+
+    const onRightClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+
+      const rect = rightCanvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, rightCameraRef.current!);
+
+      const meshes = meshRefs.current.right.filter(mesh => mesh.visible);
+      const intersects = raycaster.intersectObjects(meshes, true);
+
+      if (intersects.length > 0) {
+        const selectedMesh = intersects[0].object as THREE.Mesh;
+        const idx = meshRefs.current.right.findIndex(m => m === selectedMesh);
+        if (idx !== -1) {
+          const rightMesh = meshRefs.current.right[idx];
+
+          // Remove from scene
+          rightGroupRef.current.remove(rightMesh);
+
+          // Remove from refs
+          meshRefs.current.right.splice(idx, 1);
+
+          // Update compare right files in context
+          const fileName = rightMesh.userData?.fileName;
+          if (fileName) {
+            setCompareRightFiles(prev => prev.filter(f => f.fileName !== fileName));
+          }
+
+          // Dispose geometry and material
+          rightMesh.geometry.dispose();
+          if (Array.isArray(rightMesh.material)) rightMesh.material.forEach(m => m.dispose());
+          else (rightMesh.material as THREE.Material).dispose();
+
+          // Update rightHasModel state
+          if (meshRefs.current.right.length === 0) {
+            setRightHasModel(false);
+          }
+        }
+      }
+    };
+
+    rightCanvas.style.cursor = 'pointer';
+    rightCanvas.addEventListener('click', onRightClick);
+
+    return () => {
+      rightCanvas.style.cursor = 'auto';
+      rightCanvas.removeEventListener('click', onRightClick);
+      // Re-enable OrbitControls when leaving removal mode
+      if (rightControls) {
+        rightControls.enabled = true;
+      }
+    };
+  }, [clickRemovalMode, showComparePanel]);
 
   useEffect(() => {
     // Helper to remove existing implant meshes from the scene
@@ -2933,7 +3246,8 @@ const createAutomaticSegmentation = async () => {
         border: 'none'
       }}>
 
-        {loading && (
+        {/* Loading overlay — only for non-local mode (local mode shows it inside left panel) */}
+        {loading && !localOnly && (
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -2990,6 +3304,7 @@ const createAutomaticSegmentation = async () => {
           style={{ display: "none" }}
           disabled={loading}
         />
+
         {isCreatingSegmentation && (
           <div style={{
             position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.5)",
@@ -3121,15 +3436,36 @@ const createAutomaticSegmentation = async () => {
           </div>
         )}
 
+        {/* Hidden file input for right panel in compare modes */}
+        {showComparePanel && (
+          <input
+            id="stl-right-file-input"
+            type="file"
+            accept=".stl"
+            onChange={handleRightFileChange}
+            multiple
+            style={{ display: 'none' }}
+          />
+        )}
+
         <SingleViewerContainer
           startMountRef={startMountRef}
           leftMountRef={leftMountRef}
           rightMountRef={rightMountRef}
           removalCanvasRef={removalCanvasRef}
+          rightRemovalCanvasRef={showComparePanel ? rightRemovalCanvasRef : undefined}
           inertialRotationMode={inertialRotationMode}
           pivotBoneIndex={pivotBoneIndex}
           currentRotationAngle={currentRotationAngle}
           onResetBone={() => resetBoneRef.current?.()}
+          localOnly={localOnly}
+          compareMode={compareMode}
+          onBrowseLeft={() => document.getElementById('stl-file-input')?.click()}
+          leftHasModel={leftHasModel}
+          leftLoading={loading}
+          onBrowseRight={() => document.getElementById('stl-right-file-input')?.click()}
+          rightHasModel={rightHasModel}
+          rightLoading={rightLoading}
         >
           {/* Transparency Toggle Button - Only shows when centerline is enabled */}
           {centerLineEnabled && (
