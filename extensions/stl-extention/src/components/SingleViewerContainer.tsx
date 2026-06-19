@@ -6,11 +6,20 @@ interface SingleViewerContainerProps {
   leftMountRef: React.RefObject<HTMLDivElement>;
   rightMountRef: React.RefObject<HTMLDivElement>;
   removalCanvasRef: React.RefObject<HTMLCanvasElement>;
+  rightRemovalCanvasRef?: React.RefObject<HTMLCanvasElement>;
   children?: React.ReactNode;
   inertialRotationMode?: boolean;
   pivotBoneIndex?: number | null;
   currentRotationAngle?: number;
   onResetBone?: () => void;
+  localOnly?: boolean;
+  compareMode?: boolean;
+  onBrowseLeft?: () => void;
+  leftHasModel?: boolean;
+  leftLoading?: boolean;
+  onBrowseRight?: () => void;
+  rightHasModel?: boolean;
+  rightLoading?: boolean;
 }
 
 export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
@@ -18,14 +27,24 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
   leftMountRef,
   rightMountRef,
   removalCanvasRef,
+  rightRemovalCanvasRef,
   children,
   inertialRotationMode = false,
   pivotBoneIndex = null,
   currentRotationAngle = 0,
   onResetBone,
+  localOnly = false,
+  compareMode = false,
+  onBrowseLeft,
+  leftHasModel = false,
+  leftLoading = false,
+  onBrowseRight,
+  rightHasModel = false,
+  rightLoading = false,
 }) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();
+  const showComparePanel = localOnly || compareMode;
 
   return (
     <div style={{ flex: 1, display: 'flex', width: '100%', height: '100%', backgroundColor: '#0a0e17', position: 'relative' }}>
@@ -40,7 +59,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       </div>
 
       {/* Left Viewer */}
-      <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+      <div style={{ flex: 1, position: 'relative', height: '100%', borderRight: showComparePanel ? '2px solid #ffffff' : 'none' }}>
         {/* 3D View Header with Instructions */}
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
@@ -127,6 +146,70 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
             </div>
           )}
         </div>
+
+        {/* Browse STL button for localOnly mode when files are loaded */}
+        {localOnly && !leftLoading && leftHasModel && (
+          <button
+            onClick={onBrowseLeft}
+            style={{
+              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
+              backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
+              fontSize: '11px', fontWeight: 500,
+            }}
+          >
+            Browse STL
+          </button>
+        )}
+
+        {/* Loading overlay for localOnly mode — inside left panel */}
+        {localOnly && leftLoading && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 30,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.88)',
+          }}>
+            <div style={{
+              width: '56px', height: '56px',
+              border: '4px solid rgba(255,255,255,0.1)',
+              borderTop: '4px solid #4FC3F7',
+              borderRadius: '50%',
+              animation: 'stl-spin 0.8s linear infinite',
+            }} />
+            <div style={{ color: '#fff', marginTop: '20px', fontSize: '16px', fontWeight: 600 }}>Loading 3D Model</div>
+            <div style={{ color: '#888', marginTop: '10px', fontSize: '12px' }}>Please wait while the model loads</div>
+            <style>{`@keyframes stl-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* Browse overlay for localOnly mode when no files loaded */}
+        {localOnly && !leftLoading && !leftHasModel && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 50,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              color: '#667', fontSize: '16px', textAlign: 'center',
+              padding: '20px', pointerEvents: 'auto',
+            }}>
+              <div style={{ marginBottom: '16px', fontSize: '36px', opacity: 0.4 }}>+</div>
+              <div style={{ marginBottom: '12px' }}>Drop files or browse</div>
+              <div style={{ marginBottom: '16px', fontSize: '12px', opacity: 0.6 }}>or</div>
+              <button
+                onClick={onBrowseLeft}
+                style={{
+                  padding: '8px 20px', borderRadius: '6px', border: '1px solid #334',
+                  backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
+                  fontSize: '13px', fontWeight: 500,
+                }}
+              >
+                Browse STL Files
+              </button>
+            </div>
+          </div>
+        )}
+
         <div ref={leftMountRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
          <canvas
           ref={removalCanvasRef}
@@ -141,15 +224,88 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       <div style={{
         flex: 1,
         position: 'relative',
-        display: 'none'
-        // display: showRightView ? 'block' : 'none'
+        height: '100%',
+        display: showComparePanel ? 'block' : 'none',
       }}>
         <div style={{
-          position: 'absolute', top: 0,left: 300, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px'
-        }}>Labelling View</div>
+        }}>Compare Panel</div>
+
+        {/* Loading overlay for right panel */}
+        {showComparePanel && rightLoading && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 30,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.88)',
+          }}>
+            <div style={{
+              width: '56px', height: '56px',
+              border: '4px solid rgba(255,255,255,0.1)',
+              borderTop: '4px solid #4FC3F7',
+              borderRadius: '50%',
+              animation: 'stl-spin 0.8s linear infinite',
+            }} />
+            <div style={{ color: '#fff', marginTop: '20px', fontSize: '16px', fontWeight: 600 }}>Loading 3D Model</div>
+            <div style={{ color: '#888', marginTop: '10px', fontSize: '12px' }}>Please wait while the model loads</div>
+            <style>{`@keyframes stl-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* Browse overlay when no model loaded */}
+        {showComparePanel && !rightLoading && !rightHasModel && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 50,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              color: '#667', fontSize: '16px', textAlign: 'center',
+              padding: '20px', pointerEvents: 'auto',
+            }}>
+              <div style={{ marginBottom: '16px', fontSize: '36px', opacity: 0.4 }}>+</div>
+              <div style={{ marginBottom: '12px' }}>Drop files or browse</div>
+              <div style={{ marginBottom: '16px', fontSize: '12px', opacity: 0.6 }}>or</div>
+              <button
+                onClick={onBrowseRight}
+                style={{
+                  padding: '8px 20px', borderRadius: '6px', border: '1px solid #334',
+                  backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
+                  fontSize: '13px', fontWeight: 500,
+                }}
+              >
+                Browse STL Files
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Browse button when model already loaded */}
+        {showComparePanel && !rightLoading && rightHasModel && (
+          <button
+            onClick={onBrowseRight}
+            style={{
+              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
+              backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
+              fontSize: '11px', fontWeight: 500,
+            }}
+          >
+            Browse STL
+          </button>
+        )}
+
         <div ref={rightMountRef} style={{ width: '100%', height: '100%' }} />
+        {rightRemovalCanvasRef && (
+          <canvas
+            ref={rightRemovalCanvasRef}
+            style={{
+              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+              pointerEvents: 'none', zIndex: 150, userSelect: 'none',
+            }}
+          />
+        )}
       </div>
 
       {children}

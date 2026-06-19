@@ -5,6 +5,8 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { useDrop } from 'react-dnd';
 import { LPS_UP } from '../utils/coordinateSystem';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
+import { useThreeDToolsBridge, ToolDef } from '../context/ThreeDToolsBridgeContext';
+import { handleScreenshot as handleScreenshotUtil } from '../utils/fileHandlers';
 
 interface LocalThreeDCompareViewerProps {
   servicesManager: any;
@@ -104,6 +106,7 @@ const LocalThreeDCompareViewer: React.FC<LocalThreeDCompareViewerProps> = ({
     compareLeftFiles, setCompareLeftFiles,
     compareRightFiles, setCompareRightFiles,
   } = useStlVisibilityContext();
+  const { registerTools } = useThreeDToolsBridge();
 
   // Mount refs
   const leftMountRef = useRef<HTMLDivElement>(null);
@@ -421,6 +424,77 @@ const LocalThreeDCompareViewer: React.FC<LocalThreeDCompareViewerProps> = ({
     drop: () => ({ handled3dCompare: true }),
     collect: monitor => ({ isOver: monitor.isOver() }),
   });
+
+  // ─── Tool callbacks ───
+  const toolCallbacksRef = useRef<Record<string, () => void>>({});
+
+  toolCallbacksRef.current = {
+    fileSelect: () => leftFileInputRef.current?.click(),
+    screenshot: () => handleScreenshotUtil(leftRendererRef.current, leftSceneRef.current, leftCameraRef.current),
+    download: () => {},
+    boneRemoval: () => {},
+    linking: () => {},
+    alignment: () => {},
+    brightness: () => {},
+    measurement: () => {},
+    angle: () => {},
+    horizontal: () => {},
+    vertical: () => {},
+    longitudinal: () => {},
+    rotation: () => {},
+    implantMove: () => {},
+    interactiveRotation: () => {},
+    merge: () => {},
+    clickRemoval: () => {},
+    labelView: () => {},
+    spineLabeling: () => {},
+    colorMode: () => {},
+    approve: () => {},
+    versionHistory: () => {},
+    implant: () => {},
+    undo: () => {},
+  };
+
+  const makeOnClick = useCallback((id: string) => () => toolCallbacksRef.current[id]?.(), []);
+
+  // ─── Register tools into bridge context for top bar dropdown ───
+  useEffect(() => {
+    const noop = makeOnClick;
+    const toolDefs: ToolDef[] = [
+      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: noop('fileSelect') },
+      { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: false, danger: true, onClick: noop('boneRemoval') },
+      { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: noop('linking') },
+      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: noop('alignment') },
+      { id: 'download', label: 'Download', icon: 'fa-download', active: false, onClick: noop('download') },
+      { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: false, onClick: noop('brightness') },
+      { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: false, onClick: noop('measurement') },
+      { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: false, onClick: noop('angle') },
+      { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: false, onClick: noop('horizontal') },
+      { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: false, onClick: noop('vertical') },
+      { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: false, onClick: noop('longitudinal') },
+      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: false, onClick: noop('rotation') },
+      { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: false, onClick: noop('implantMove') },
+      { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: false, onClick: noop('interactiveRotation') },
+      { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: noop('screenshot') },
+      { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: noop('merge') },
+      { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: false, danger: true, onClick: noop('clickRemoval') },
+      { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: false, onClick: noop('labelView') },
+      { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: false, onClick: noop('spineLabeling') },
+      { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: false, onClick: noop('colorMode') },
+      ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
+        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, onClick: noop('approve') }]
+        : []),
+      { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: false, onClick: noop('versionHistory') },
+      { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: false, onClick: noop('implant') },
+      { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: true, onClick: noop('undo'), hidden: true },
+    ];
+    registerTools(toolDefs);
+  }, [registerTools, makeOnClick]);
+
+  // Clear tools on unmount
+  useEffect(() => {
+    return () => registerTools([]);
+  }, [registerTools]);
 
   return (
     <div style={{

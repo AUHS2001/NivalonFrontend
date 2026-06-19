@@ -8,6 +8,10 @@ import { StlInstanceListDataContext } from '../../../../platform/app/src/context
 import { SERVER_URL, fetchFile } from '../../../../config/server';
 import { LPS_UP } from '../utils/coordinateSystem';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
+import { useBoneRemovalContext } from '../context/BoneRemovalContext';
+import { useClickRemoveContext } from '../context/ClickRemoveContext';
+import { useBoneRemoval } from '../hooks/useBoneRemoval';
+import { MeshRefs } from '../types/three.types';
 
 interface ThreeDCompareViewerProps {
   servicesManager: any;
@@ -237,6 +241,21 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   const animationIdRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 3D Tool contexts
+  const { removalMode } = useBoneRemovalContext();
+  const { clickRemovalMode } = useClickRemoveContext();
+
+  // Mesh refs for bone removal hook
+  const meshRefs = useRef<MeshRefs>({ left: [], right: [] });
+
+  // Bone removal state
+  const [removalOutline, setRemovalOutline] = useState<{ x: number, y: number }[]>([]);
+  const [rightRemovalOutline, setRightRemovalOutline] = useState<{ x: number, y: number }[]>([]);
+  const [removing, setRemoving] = useState(false);
+  const [undoStack, setUndoStack] = useState<THREE.BufferGeometry[][]>([]);
+  const removalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rightRemovalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // State
   const [leftLoading, setLeftLoading] = useState(true);
   const [leftProgress, setLeftProgress] = useState(0);
@@ -410,6 +429,11 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         await loadSTLsWithMaterials(stlUrls, leftGroupRef.current, cancelled, setLeftProgress);
         if (cancelled.current) return;
 
+        // Sync meshRefs with loaded meshes
+        meshRefs.current.left = leftGroupRef.current.children.filter(
+          c => c instanceof THREE.Mesh
+        ) as THREE.Mesh[];
+
         // Position camera — same as useSTLLoader camera centering
         if (leftCameraRef.current && leftControlsRef.current) {
           positionCameraForGroup(leftCameraRef.current, leftControlsRef.current, leftGroupRef.current);
@@ -465,6 +489,11 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         filesLoaded++;
         setRightProgress(Math.round((filesLoaded / totalFiles) * 100));
         if (filesLoaded === totalFiles) {
+          // Sync meshRefs with loaded meshes
+          meshRefs.current.right = group.children.filter(
+            c => c instanceof THREE.Mesh
+          ) as THREE.Mesh[];
+
           if (rightCameraRef.current && rightControlsRef.current && group.children.length > 0) {
             positionCameraForGroup(rightCameraRef.current, rightControlsRef.current, group);
           }
@@ -529,6 +558,11 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       group.add(mesh);
     });
 
+    // Sync meshRefs with loaded meshes
+    meshRefs.current.right = group.children.filter(
+      c => c instanceof THREE.Mesh
+    ) as THREE.Mesh[];
+
     if (group.children.length > 0 && rightCameraRef.current && rightControlsRef.current) {
       positionCameraForGroup(rightCameraRef.current, rightControlsRef.current, group);
     }
@@ -580,6 +614,151 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       }
     });
   }, [compareRightFiles]);
+
+  // ─── Bone removal (outline) for LEFT panel ───
+  useBoneRemoval({
+    removalMode,
+    leftRendererRef: leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
+    leftControlsRef,
+    cameraRef: leftCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
+    meshRefs,
+    removalCanvasRef,
+    setRemoving,
+    setUndoStack,
+    setRemovalOutline,
+    removalOutline,
+    localOnly: true,
+    meshKey: 'left',
+  });
+
+  // ─── Bone removal (outline) for RIGHT panel ───
+  useBoneRemoval({
+    removalMode,
+    leftRendererRef: rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
+    leftControlsRef: rightControlsRef,
+    cameraRef: rightCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
+    meshRefs,
+    removalCanvasRef: rightRemovalCanvasRef,
+    setRemoving,
+    setUndoStack,
+    setRemovalOutline: setRightRemovalOutline,
+    removalOutline: rightRemovalOutline,
+    localOnly: true,
+    meshKey: 'right',
+  });
+
+  // ─── Click removal for LEFT panel ───
+  useEffect(() => {
+    if (!clickRemovalMode) return;
+
+    const leftRenderer = leftRendererRef.current;
+    const canvas = leftRenderer?.domElement;
+    if (!canvas) return;
+
+    const onClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, leftCameraRef.current!);
+
+      const meshes = meshRefs.current.left.filter(mesh => mesh.visible);
+      const intersects = raycaster.intersectObjects(meshes, true);
+
+      if (intersects.length > 0) {
+        const selectedMesh = intersects[0].object as THREE.Mesh;
+        const idx = meshRefs.current.left.findIndex(m => m === selectedMesh);
+        if (idx !== -1) {
+          const leftMesh = meshRefs.current.left[idx];
+
+          leftGroupRef.current.remove(leftMesh);
+          meshRefs.current.left.splice(idx, 1);
+
+          leftMesh.geometry.dispose();
+          if (Array.isArray(leftMesh.material)) leftMesh.material.forEach(m => m.dispose());
+          else (leftMesh.material as THREE.Material).dispose();
+        }
+      }
+    };
+
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', onClick);
+
+    return () => {
+      canvas.style.cursor = 'auto';
+      canvas.removeEventListener('click', onClick);
+    };
+  }, [clickRemovalMode]);
+
+  // ─── Click removal for RIGHT panel ───
+  useEffect(() => {
+    if (!clickRemovalMode) return;
+
+    const rightRenderer = rightRendererRef.current;
+    const rightCanvas = rightRenderer?.domElement;
+    if (!rightCanvas) return;
+
+    const rightControls = rightControlsRef.current;
+    if (rightControls) {
+      rightControls.enabled = false;
+    }
+
+    const onRightClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+
+      const rect = rightCanvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, rightCameraRef.current!);
+
+      const meshes = meshRefs.current.right.filter(mesh => mesh.visible);
+      const intersects = raycaster.intersectObjects(meshes, true);
+
+      if (intersects.length > 0) {
+        const selectedMesh = intersects[0].object as THREE.Mesh;
+        const idx = meshRefs.current.right.findIndex(m => m === selectedMesh);
+        if (idx !== -1) {
+          const rightMesh = meshRefs.current.right[idx];
+
+          rightGroupRef.current.remove(rightMesh);
+          meshRefs.current.right.splice(idx, 1);
+
+          const fileName = rightMesh.userData?.fileName;
+          if (fileName) {
+            setCompareRightFiles(prev => prev.filter(f => f.fileName !== fileName));
+          }
+
+          rightMesh.geometry.dispose();
+          if (Array.isArray(rightMesh.material)) rightMesh.material.forEach(m => m.dispose());
+          else (rightMesh.material as THREE.Material).dispose();
+
+          if (meshRefs.current.right.length === 0) {
+            setRightHasModel(false);
+          }
+        }
+      }
+    };
+
+    rightCanvas.style.cursor = 'pointer';
+    rightCanvas.addEventListener('click', onRightClick);
+
+    return () => {
+      rightCanvas.style.cursor = 'auto';
+      rightCanvas.removeEventListener('click', onRightClick);
+      if (rightControls) {
+        rightControls.enabled = true;
+      }
+    };
+  }, [clickRemovalMode]);
 
   // ─── RIGHT PANEL: drag-and-drop from sidebar ───
   const [{ isOver }, dropRef] = useDrop({
@@ -691,6 +870,13 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         )}
 
         <div ref={leftMountRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
+        <canvas
+          ref={removalCanvasRef}
+          style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: 150, userSelect: 'none',
+          }}
+        />
       </div>
 
       {/* ─── Right Panel ─── */}
@@ -806,6 +992,13 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         )}
 
         <div ref={rightMountRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }} />
+        <canvas
+          ref={rightRemovalCanvasRef}
+          style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: 150, userSelect: 'none',
+          }}
+        />
       </div>
     </div>
   );
