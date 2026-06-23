@@ -4,7 +4,7 @@ import { ViewportGrid, ViewportPane } from '@ohif/ui-next';
 import { useViewportGrid } from '@ohif/ui-next';
 import EmptyViewport from './EmptyViewport';
 import { useAppConfig } from '@state';
-import KarachiLayout from './KarachiLayout';
+import STLLayout from './STLLayout';
 import ComparisonLayout from './ComparisonLayout';
 import ThreeDCompareLayout from './ThreeDCompareLayout';
 import LocalThreeDCompareLayout from './LocalThreeDCompareLayout';
@@ -42,8 +42,8 @@ function ViewerViewportGrid(props: withAppTypes) {
     activeStudyUID,
     viewportMatchDetails
   ) => {
-    if (protocol.id === 'karachi-layout') {
-      // Apply Karachi layout
+    if (protocol.id === 'stl-layout') {
+      // Apply STL layout
       viewportGridService.setLayout({
         numRows: 1,
         numCols: 1,
@@ -52,7 +52,7 @@ function ViewerViewportGrid(props: withAppTypes) {
         findOrCreateViewport: () => ({
           displaySetInstanceUIDs: [],
           displaySetOptions: [],
-          viewportOptions: { customLayout: 'karachi' },
+          viewportOptions: { customLayout: 'stl' },
         }),
         isHangingProtocolLayout: true,
       });
@@ -92,7 +92,7 @@ function ViewerViewportGrid(props: withAppTypes) {
     }
 
     if (protocol.id === 'comparison-layout') {
-      // Apply Karachi layout
+      // Apply comparison layout
       viewportGridService.setLayout({
         numRows: 1,
         numCols: 1,
@@ -398,7 +398,7 @@ function ViewerViewportGrid(props: withAppTypes) {
       const viewportId = viewportOptions.viewportId;
       const isActive = activeViewportId === viewportId;
 
-      if (viewportOptions?.customLayout === 'karachi') {
+      if (viewportOptions?.customLayout === 'stl') {
         const onInteractionHandler = event => {
           if (isActive) {
             return;
@@ -431,7 +431,7 @@ function ViewerViewportGrid(props: withAppTypes) {
               data-cy="viewport-pane"
               className="flex h-full w-full min-w-[5px] flex-col"
             >
-              <KarachiLayout servicesManager={servicesManager} commandsManager={commandsManager} />
+              <STLLayout servicesManager={servicesManager} commandsManager={commandsManager} />
             </div>
           </ViewportPane>
         );

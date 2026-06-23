@@ -54,7 +54,7 @@ function getViewportsAndBounds(servicesManager: any) {
 
   entries.forEach(([viewportId, viewportInfo]: [string, any]) => {
     const opts = viewportInfo?.viewportOptions || {};
-    if (opts.customLayout === 'karachi' || viewportId === 'karachiViewport') return;
+    if (opts.customLayout === 'stl' || viewportId === 'stlViewport') return;
     try {
       const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
       if (viewport && viewport.element) {

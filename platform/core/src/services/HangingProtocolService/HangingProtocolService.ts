@@ -1610,7 +1610,6 @@ export default class HangingProtocolService extends PubSubService {
     const bestMatch = matchingScores[0];
 
     console.log('ProtocolEngine::matchImages bestMatch', bestMatch, matchingScores);
-    console.log('afnan done')
     console.log('instance id', bestMatch?.SeriesInstanceUID)
 
     return {

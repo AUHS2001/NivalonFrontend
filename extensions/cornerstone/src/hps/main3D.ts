@@ -68,8 +68,8 @@ export const main3D = {
       viewports: [
         {
           viewportOptions: {
-            viewportId: 'karachiViewport',
-            customLayout: 'karachi' // Replaced volume3d with Karachi layout
+            viewportId: 'stlViewport',
+            customLayout: 'stl'
           },
           displaySets: [
             {

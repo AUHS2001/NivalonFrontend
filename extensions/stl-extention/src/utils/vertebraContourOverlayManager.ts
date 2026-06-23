@@ -149,7 +149,7 @@ function getViewportsForOverlay(servicesManager: any) {
   entries.forEach(([viewportId, viewportInfo]: [string, any]) => {
     const opts = viewportInfo?.viewportOptions || {};
     // Skip custom 3D layouts — only draw on DICOM 2D viewports
-    if (opts.customLayout === 'karachi' || viewportId === 'karachiViewport') return;
+    if (opts.customLayout === 'stl' || viewportId === 'stlViewport') return;
     if (opts.customLayout === '3d-compare' || opts.customLayout === 'local-3d-compare') return;
     try {
       const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);

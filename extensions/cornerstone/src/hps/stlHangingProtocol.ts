@@ -1,25 +1,25 @@
-// karachiHangingProtocol.js
-const karachiHangingProtocol = {
-  id: 'karachi-layout',
+// stlHangingProtocol.js
+const stlHangingProtocol = {
+  id: 'stl-layout',
   name: '3D only',
   locked: true,
   icon: 'layout-advanced-3d-only',
   protocolMatchingRules: [
     {
-      id: 'karachiRule',
+      id: 'stlRule',
       weight: 1,
       attribute: 'ProtocolName',
       constraint: {
         equals: {
-          value: 'karachi-layout'
+          value: 'stl-layout'
         }
       }
     }
   ],
   stages: [
     {
-      id: 'karachiStage',
-      name: 'Karachi Stage',
+      id: 'stlStage',
+      name: 'STL Stage',
       viewportStructure: {
         type: 'grid',
         properties: {
@@ -30,12 +30,12 @@ const karachiHangingProtocol = {
       viewports: [
         {
           viewportOptions: {
-            viewportId: 'karachiViewport',
-            customLayout: 'karachi'
+            viewportId: 'stlViewport',
+            customLayout: 'stl'
           },
           displaySets: [
             {
-              id: 'karachiDisplaySet'
+              id: 'stlDisplaySet'
             }
           ]
         }
@@ -45,4 +45,4 @@ const karachiHangingProtocol = {
   numberOfPriorsReferenced: -1
 };
 
-export default karachiHangingProtocol;
+export default stlHangingProtocol;

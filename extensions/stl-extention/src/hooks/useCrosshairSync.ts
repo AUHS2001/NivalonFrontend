@@ -366,7 +366,7 @@ export const useCrosshairSync = ({
 
     viewportEntries.forEach(([viewportId, viewportInfo]: [string, any]) => {
       const viewportOptions = viewportInfo?.viewportOptions || {};
-      if (viewportOptions.customLayout === 'karachi' || viewportId === 'karachiViewport') return;
+      if (viewportOptions.customLayout === 'stl' || viewportId === 'stlViewport') return;
 
       try {
         const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);

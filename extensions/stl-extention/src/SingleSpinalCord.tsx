@@ -1391,8 +1391,8 @@ useEffect(() => {
 
     viewports.forEach((viewport, viewportId) => {
       // ✅ Skip the first viewport
-      if (viewport.viewportId === 'karachiViewport') {
-        console.log('Skipping Karachi viewport (viewport 0)');
+      if (viewport.viewportId === 'stlViewport') {
+        console.log('Skipping STL viewport (viewport 0)');
         return;
       }
 
@@ -1435,8 +1435,8 @@ useEffect(() => {
 
     viewports.forEach((viewport, viewportId) => {
       // ✅ Skip the first viewport
-      if (viewport.viewportId === 'karachiViewport') {
-        console.log('Skipping Karachi viewport (viewport 0)');
+      if (viewport.viewportId === 'stlViewport') {
+        console.log('Skipping STL viewport (viewport 0)');
         return;
       }
 

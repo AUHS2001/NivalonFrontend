@@ -29,7 +29,6 @@ const StudyBrowser = ({
     const viewPreset = viewPresets
       ? viewPresets.filter(preset => preset.selected)[0]?.id
       : 'thumbnails';
-      // console.log("afnan data", tabData)
     return tabData?.studies?.map(
       ({ studyInstanceUid, date, description, numInstances, modalities, displaySets }) => {
         const isExpanded = expandedStudyInstanceUIDs.includes(studyInstanceUid);

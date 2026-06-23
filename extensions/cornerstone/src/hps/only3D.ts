@@ -1,9 +1,9 @@
 import { HYDRATE_SEG_SYNC_GROUP, VOI_SYNC_GROUP } from './mpr';
 
 export const only3D = {
-  id: 'karachi-layout', // Changed to match your protocol ID
+  id: 'stl-layout',
   locked: true,
-  name: '3D only', // Updated name
+  name: '3D only',
   icon: 'layout-advanced-3d-only',
   isPreset: true,
   createdDate: '2023-03-15T10:29:44.894Z',
@@ -12,12 +12,12 @@ export const only3D = {
   editableBy: {},
   protocolMatchingRules: [
     {
-      id: 'karachiRule',
+      id: 'stlRule',
       weight: 1,
       attribute: 'ProtocolName',
       constraint: {
         equals: {
-          value: 'karachi-layout'
+          value: 'stl-layout'
         }
       }
     }
@@ -41,8 +41,8 @@ export const only3D = {
   },
   stages: [
     {
-      id: 'karachiStage',
-      name: 'Karachi Stage',
+      id: 'stlStage',
+      name: 'STL Stage',
       viewportStructure: {
         layoutType: 'grid',
         properties: {
@@ -53,15 +53,13 @@ export const only3D = {
       viewports: [
         {
           viewportOptions: {
-            viewportId: 'karachiViewport',
-            customLayout: 'karachi' // This will trigger your custom layout
+            viewportId: 'stlViewport',
+            customLayout: 'stl'
           },
           displaySets: [
             {
               id: 'activeDisplaySet',
               options: {
-                // You can keep display preset options if needed
-                // or remove them for custom layout
               },
             },
           ],
