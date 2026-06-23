@@ -2305,9 +2305,17 @@ const createAutomaticSegmentation = async () => {
         }
 
         const data = await response.json();
-        console.log('Fetched segmentation URLs:', data?.data?.processed?.urls);
-        setTestStls(data?.data?.processed?.urls || []);
-        setVersions(data?.data?.versions || []);
+        const versions = data?.data?.versions || [];
+        setVersions(versions);
+
+        if (versions.length > 0) {
+          const latestVersion = versions.reduce((a, b) => (a.version > b.version ? a : b));
+          console.log('Using latest version:', latestVersion.version, latestVersion.urls);
+          setTestStls(latestVersion.urls || []);
+        } else {
+          console.log('No versions, using processed URLs:', data?.data?.processed?.urls);
+          setTestStls(data?.data?.processed?.urls || []);
+        }
       } catch (err: any) {
         setError(err.message);
       }

@@ -375,9 +375,17 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         }
 
         const data = await response.json();
-        console.log('[STL Fetch] Segmentation URLs:', data?.data?.processed?.urls);
-        setTestStls(data?.data?.processed?.urls || []);
-        setVersions(data?.data?.versions || []);
+        const versions = data?.data?.versions || [];
+        setVersions(versions);
+
+        if (versions.length > 0) {
+          const latestVersion = versions.reduce((a, b) => (a.version > b.version ? a : b));
+          console.log('[STL Fetch] Using latest version:', latestVersion.version, latestVersion.urls);
+          setTestStls(latestVersion.urls || []);
+        } else {
+          console.log('[STL Fetch] No versions, using processed URLs:', data?.data?.processed?.urls);
+          setTestStls(data?.data?.processed?.urls || []);
+        }
         versionHistory.getVersionHistory();
       } catch (err: any) {
         setError(err.message);
