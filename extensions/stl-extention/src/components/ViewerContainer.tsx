@@ -20,7 +20,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
   show,
   children
 }) => {
-  const { previousViewLoading, isApproving, approveProgress, isDownloading, downloadProgress } = useVersionHistoryContext();
+  const { previousViewLoading, isApproving, approveProgress, isDownloading, downloadProgress, isUploading, uploadProgress } = useVersionHistoryContext();
   return (
     <div style={{
         flex: 1, // Change from flex: 6 to flex: 1
@@ -115,6 +115,41 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
         }}>Labelling View</div>
         <div ref={rightMountRef} style={{ width: '100%', height: '70%' }} />
       </div>
+
+      {/* Upload progress bar */}
+      {isUploading && (
+        <div style={{
+          position: 'absolute',
+          bottom: (isApproving ? 60 : 0) + (isDownloading ? 60 : 0) + 20,
+          left: 20,
+          right: 20,
+          zIndex: 200,
+          backgroundColor: 'rgba(10, 14, 23, 0.9)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          border: '1px solid #333',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#87dbfc', fontSize: '13px', fontWeight: 600 }}>
+              Uploading 3D Files...
+            </span>
+            <span style={{ color: '#4FC3F7', fontSize: '13px', fontWeight: 700 }}>
+              {uploadProgress}%
+            </span>
+          </div>
+          <div style={{
+            width: '100%', height: '6px', backgroundColor: '#333', borderRadius: '3px', overflow: 'hidden'
+          }}>
+            <div style={{
+              width: `${uploadProgress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #4FC3F7, #2196F3)',
+              borderRadius: '3px',
+              transition: 'width 0.3s ease-out',
+            }} />
+          </div>
+        </div>
+      )}
 
       {/* Download progress bar */}
       {isDownloading && (

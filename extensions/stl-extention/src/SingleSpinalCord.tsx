@@ -65,6 +65,107 @@ import {
   resetCachedSTLBounds,
 } from './utils/voxelMaskingManager';
 
+/** Lightweight 3D preview for selected upload files */
+const UploadPreviewScene: React.FC<{ files: File[] }> = ({ files }) => {
+  const mountRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = mountRef.current;
+    if (!container || files.length === 0) return;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0e17);
+
+    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 10000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(1, 1, 1);
+    scene.add(dirLight);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const loader = new STLLoader();
+    let loaded = 0;
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const buffer = ev.target?.result as ArrayBuffer;
+        if (!buffer) return;
+        const geometry = loader.parse(buffer);
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshPhongMaterial({
+          color: 0xffffff,
+          specular: 0x111111,
+          shininess: 50,
+          flatShading: false,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.userData.fileName = file.name;
+        group.add(mesh);
+
+        loaded++;
+        if (loaded === files.length) {
+          // Center camera on all meshes
+          const box = new THREE.Box3().setFromObject(group);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3()).length();
+          camera.position.copy(center).add(new THREE.Vector3(0, 0, size * 1.2));
+          controls.target.copy(center);
+          controls.update();
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    let animId: number;
+    const animate = () => {
+      animId = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const onResize = () => {
+      if (!container) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cancelAnimationFrame(animId);
+      controls.dispose();
+      renderer.dispose();
+      // Clean up geometries and materials
+      group.traverse((child) => {
+        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        if ((child as THREE.Mesh).material) {
+          const mat = (child as THREE.Mesh).material;
+          if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+          else mat.dispose();
+        }
+      });
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, [files]);
+
+  return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
+};
+
 interface SingleSpinalCordProps {
   servicesManager?: any;
   // commandsManager?: any;
@@ -109,6 +210,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [approveTotalBytes, setApproveTotalBytes] = useState(0);
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
   const [approveFailed, setApproveFailed] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [showMerge, setShowMergeView] = useState(false);
 
   // Refs
@@ -180,7 +283,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { layout, activeViewportId, viewports, isHangingProtocolLayout } = viewportGrid;
   // const viewport1Rendering = useViewportRendering(activeViewportId || "");
-  const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory, isApproving, setIsApproving, approveProgress, setApproveProgress, isDownloading, setIsDownloading, downloadProgress, setDownloadProgress } = useVersionHistoryContext();
+  const { versionHistoryEnabled, versions, setVersions, toggleVersionHistory, isApproving, setIsApproving, approveProgress, setApproveProgress, isDownloading, setIsDownloading, downloadProgress, setDownloadProgress, isUploading, setIsUploading, uploadProgress, setUploadProgress } = useVersionHistoryContext();
 
   const [rotationMode, setRotationMode] = useState(false);
   const [rotationMode1, setRotationMode1] = useState(false);
@@ -2284,45 +2387,45 @@ const createAutomaticSegmentation = async () => {
     }
   }, []);
 
-  // Data fetching
-  useEffect(() => {
-    const fetchData = async () => {
-      setError(null);
-      try {
-        const response = await fetch(
-          `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${userToken}`,
-              "Content-Type": "application/json"
-            },
-            credentials: 'include',
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch data');
+  // Data fetching — extracted so it can be called after upload too
+  const fetchStlData = async () => {
+    setError(null);
+    try {
+      const response = await fetch(
+        `${SERVER_URL}/analyst/meshes?series_instance_uid=${stlInstanceId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${userToken}`,
+            "Content-Type": "application/json"
+          },
+          credentials: 'include',
         }
+      );
 
-        const data = await response.json();
-        const versions = data?.data?.versions || [];
-        setVersions(versions);
-
-        if (versions.length > 0) {
-          const latestVersion = versions.reduce((a, b) => (a.version > b.version ? a : b));
-          console.log('Using latest version:', latestVersion.version, latestVersion.urls);
-          setTestStls(latestVersion.urls || []);
-        } else {
-          console.log('No versions, using processed URLs:', data?.data?.processed?.urls);
-          setTestStls(data?.data?.processed?.urls || []);
-        }
-      } catch (err: any) {
-        setError(err.message);
+      if (!response.ok) {
+        throw new Error('Failed to fetch data');
       }
-    };
 
+      const data = await response.json();
+      const versions = data?.data?.versions || [];
+      setVersions(versions);
+
+      if (versions.length > 0) {
+        const latestVersion = versions.reduce((a, b) => (a.version > b.version ? a : b));
+        console.log('Using latest version:', latestVersion.version, latestVersion.urls);
+        setTestStls(latestVersion.urls || []);
+      } else {
+        console.log('No versions, using processed URLs:', data?.data?.processed?.urls);
+        setTestStls(data?.data?.processed?.urls || []);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
     if (stlInstanceId && !localOnly) {
-      fetchData();
+      fetchStlData();
     }
   }, [stlInstanceId, userToken, localOnly]);
 
@@ -3054,6 +3157,90 @@ const createAutomaticSegmentation = async () => {
     xhr.send(formData);
   };
 
+  const handleUploadFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files;
+    if (!selected || selected.length === 0) return;
+    const stlFiles = Array.from(selected).filter(f => f.name.toLowerCase().endsWith('.stl'));
+    if (stlFiles.length === 0) return;
+    setUploadFiles(stlFiles);
+    setShowUploadPreview(true);
+    // Reset file input so the same files can be re-selected
+    e.target.value = '';
+  };
+
+  const handleUploadSave = () => {
+    if (uploadFiles.length === 0) return;
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    const formData = new FormData();
+    formData.append('series_instance_uid', stlInstanceId);
+
+    let totalSize = 0;
+    for (const file of uploadFiles) {
+      formData.append('files', file, file.name);
+      totalSize += file.size;
+    }
+
+    console.log(`[Upload 3D] Uploading ${uploadFiles.length} files, total size: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+
+    // Slow simulated progress: ramps gradually from 0→85%
+    let simulated = 0;
+    const simInterval = setInterval(() => {
+      simulated += (85 - simulated) * 0.015;
+      setUploadProgress(Math.round(simulated));
+    }, 200);
+
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.open('POST', `${SERVER_URL}/analyst/meshes/approved`);
+    xhr.setRequestHeader('Authorization', `Bearer ${userToken}`);
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const uploadPct = Math.round((e.loaded / e.total) * 90);
+        if (uploadPct > simulated) {
+          simulated = uploadPct;
+          setUploadProgress(uploadPct);
+        }
+      }
+    });
+
+    xhr.onload = () => {
+      clearInterval(simInterval);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress(100);
+        setTimeout(() => {
+          setApproveSuccess('3D files uploaded successfully!');
+          setIsUploading(false);
+          setShowUploadPreview(false);
+          setUploadFiles([]);
+          versionHistory.refreshVersionHistory();
+          fetchStlData();
+        }, 600);
+      } else {
+        setApproveFailed(`Upload failed: ${xhr.status} ${xhr.statusText}`);
+        setIsUploading(false);
+      }
+    };
+
+    xhr.onerror = () => {
+      clearInterval(simInterval);
+      setApproveFailed('Network error — could not reach the server.');
+      setIsUploading(false);
+    };
+
+    xhr.ontimeout = () => {
+      clearInterval(simInterval);
+      setApproveFailed('Upload request timed out');
+      setIsUploading(false);
+    };
+
+    xhr.send(formData);
+  };
+
   const undoClickRemoval = () => {
     setClickRemovalUndoStack(stack => {
       if (stack.length === 0) return stack;
@@ -3190,6 +3377,7 @@ const createAutomaticSegmentation = async () => {
     spineLabeling: toggleSpineLabelingMode,
     colorMode: toggleColorMode,
     approve: approveEditedFiles,
+    upload: () => document.getElementById('stl-upload-input')?.click(),
     versionHistory: () => { toggleVersionHistory(); versionHistory.getVersionHistory(); },
     implant: () => { if (showImplantView) { toggleImplantView(); } else { document.getElementById('implant-file-input')?.click(); } },
   };
@@ -3221,7 +3409,10 @@ const createAutomaticSegmentation = async () => {
       { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
       { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
       ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
-        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve') }]
+        ? [
+            { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve') },
+            { id: 'upload', label: 'Upload', icon: 'fa-upload', active: false, disabled: isUploading, onClick: makeOnClick('upload') },
+          ]
         : []),
       { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
       { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
@@ -3234,7 +3425,7 @@ const createAutomaticSegmentation = async () => {
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
     implantMoveMode, inertialRotationMode, showMerge, clickRemovalMode,
     clickRemovalUndoStack.length, labelViewEnabled, spineLabelingMode, colorModeEnabled,
-    isApproving, versionHistoryEnabled, showImplantView,
+    isApproving, isUploading, versionHistoryEnabled, showImplantView,
     registerTools, makeOnClick,
   ]);
 
@@ -3311,6 +3502,15 @@ const createAutomaticSegmentation = async () => {
           multiple
           style={{ display: "none" }}
           disabled={loading}
+        />
+
+        <input
+          id="stl-upload-input"
+          type="file"
+          accept=".stl"
+          onChange={handleUploadFileSelect}
+          multiple
+          style={{ display: "none" }}
         />
 
         {isCreatingSegmentation && (
@@ -3424,6 +3624,140 @@ const createAutomaticSegmentation = async () => {
             display: "flex", alignItems: "center", gap: 10, cursor: "pointer"
           }} onClick={() => setApproveFailed(null)}>
             <i className="fas fa-times-circle" /> Approval failed: {approveFailed}
+          </div>
+        )}
+
+        {/* Upload Preview Overlay */}
+        {showUploadPreview && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 2500,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{
+              width: '80%', maxWidth: '1000px',
+              background: '#1a1e2e', borderRadius: '12px',
+              border: '1px solid #333', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: '80vh',
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #333',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>
+                  <i className="fas fa-upload" style={{ marginRight: 8, color: '#4FC3F7' }} />
+                  Upload STL Files
+                </span>
+                <button
+                  onClick={() => { setShowUploadPreview(false); setUploadFiles([]); }}
+                  disabled={isUploading}
+                  style={{
+                    background: 'none', border: 'none', color: '#888',
+                    fontSize: '18px', cursor: isUploading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                {/* 3D Preview */}
+                <div style={{ flex: 2, position: 'relative', minHeight: '400px' }}>
+                  <UploadPreviewScene files={uploadFiles} />
+                </div>
+
+                {/* File list */}
+                <div style={{
+                  flex: 1, borderLeft: '1px solid #333',
+                  padding: '16px', overflowY: 'auto',
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                  <div style={{ color: '#87dbfc', fontSize: '13px', fontWeight: 600, marginBottom: 12 }}>
+                    {uploadFiles.length} file{uploadFiles.length !== 1 ? 's' : ''} selected
+                  </div>
+                  {uploadFiles.map((f, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', marginBottom: 4,
+                      background: '#0a0e17', borderRadius: '6px',
+                      fontSize: '12px', color: '#ccc',
+                    }}>
+                      <i className="fas fa-cube" style={{ color: '#4FC3F7' }} />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.name}
+                      </span>
+                      <span style={{ color: '#666', fontSize: '11px' }}>
+                        {(f.size / 1024).toFixed(0)} KB
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Upload progress bar */}
+              {isUploading && (
+                <div style={{ padding: '12px 20px', borderTop: '1px solid #333' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ color: '#87dbfc', fontSize: '13px', fontWeight: 600 }}>
+                      Uploading 3D Files...
+                    </span>
+                    <span style={{ color: '#4FC3F7', fontSize: '13px', fontWeight: 700 }}>
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <div style={{
+                    width: '100%', height: '6px', backgroundColor: '#333', borderRadius: '3px', overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${uploadProgress}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #4FC3F7, #2196F3)',
+                      borderRadius: '3px',
+                      transition: 'width 0.3s ease-out',
+                    }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div style={{
+                padding: '14px 20px',
+                borderTop: '1px solid #333',
+                display: 'flex', justifyContent: 'flex-end', gap: 10,
+              }}>
+                <button
+                  onClick={() => { setShowUploadPreview(false); setUploadFiles([]); }}
+                  disabled={isUploading}
+                  style={{
+                    padding: '8px 20px', borderRadius: '6px',
+                    border: '1px solid #555', background: 'transparent',
+                    color: '#ccc', fontSize: '13px', fontWeight: 600,
+                    cursor: isUploading ? 'not-allowed' : 'pointer',
+                    opacity: isUploading ? 0.5 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadSave}
+                  disabled={isUploading}
+                  style={{
+                    padding: '8px 20px', borderRadius: '6px',
+                    border: 'none', background: '#2196F3',
+                    color: '#fff', fontSize: '13px', fontWeight: 600,
+                    cursor: isUploading ? 'not-allowed' : 'pointer',
+                    opacity: isUploading ? 0.7 : 1,
+                  }}
+                >
+                  {isUploading ? 'Uploading...' : 'Save'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
