@@ -1084,15 +1084,14 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
      { angleMeasurementEnabled === true ? <></> : (
        versionHistoryEnabled ? (
          <>
-           <ControlPanel
-             loading={loading}
-             error={error}
-             approveSuccess={approveSuccess}
+           <ViewerContainer
+             startMountRef={startMountRef}
+             leftMountRef={leftMountRef}
+             rightMountRef={rightMountRef}
+             removalCanvasRef={removalCanvasRef}
+             showRightView={showRightView}
+             show={versionHistoryEnabled}
            >
-             <ImplantViewer
-               showImplantView={showImplantView}
-               onClose={() => {}}
-             />
              <VersionHistory
                versions={versions}
                selectedVersion={versionHistory.selectedVersion}
@@ -1101,15 +1100,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
                onSelectVersion={versionHistory.setSelectedVersion}
                onRestoreVersion={versionHistory.restoreVersion}
              />
-           </ControlPanel>
-           <ViewerContainer
-             startMountRef={startMountRef}
-             leftMountRef={leftMountRef}
-             rightMountRef={rightMountRef}
-             removalCanvasRef={removalCanvasRef}
-             showRightView={showRightView}
-             show={versionHistoryEnabled}
-           />
+           </ViewerContainer>
          </>
        ) : (
          <ViewerContainer

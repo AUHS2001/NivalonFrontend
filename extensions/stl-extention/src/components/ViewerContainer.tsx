@@ -32,42 +32,56 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
         height: '100%', // Add this
         minHeight: '700px'
       }}>
-      {/* Start View */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: show ? 'block' : 'none', height: ''  }}>
-        <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-          border: '1px solid #000', fontSize: '12px'
-        }}>Previous View</div>
-        {previousViewLoading && (
+      {/* Start View (Previous View) */}
+      <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: show ? 'block' : 'none', height: '100%' }}>
+        {show && children && (
           <div style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(10, 14, 23, 0.85)',
-            zIndex: 200,
+            top: 10,
+            left: 10,
+            right: 10,
+            zIndex: 150,
+            padding: '10px',
+            backgroundColor: 'rgba(10, 14, 23, 0.92)',
+            borderRadius: '8px',
+            border: '1px solid #333',
+            overflowY: 'auto',
+            maxHeight: '60%',
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              border: '3px solid rgba(135, 219, 252, 0.3)',
-              borderTop: '3px solid #87dbfc',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-            }} />
-            <div style={{ color: '#87dbfc', marginTop: '12px', fontSize: '13px' }}>
-              Loading 3D Model...
-            </div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            {children}
           </div>
         )}
-        <div ref={startMountRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
+        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+          {previousViewLoading && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(10, 14, 23, 0.85)',
+              zIndex: 200,
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '3px solid rgba(135, 219, 252, 0.3)',
+                borderTop: '3px solid #87dbfc',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }} />
+              <div style={{ color: '#87dbfc', marginTop: '12px', fontSize: '13px' }}>
+                Loading 3D Model...
+              </div>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          )}
+          <div ref={startMountRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
+        </div>
       </div>
 
       {/* Left Viewer */}
@@ -172,7 +186,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
         </div>
       )}
 
-      {children}
+      {!show && children}
     </div>
   );
 };
