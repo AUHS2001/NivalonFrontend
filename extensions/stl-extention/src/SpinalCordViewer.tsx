@@ -315,7 +315,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         const startCamera = startControlsRef.current.object as THREE.PerspectiveCamera;
         const fov = startCamera.fov * (Math.PI / 180);
         const fitDist = maxDim / (2 * Math.tan(fov / 2));
-        startCamera.position.set(center.x, center.y - fitDist * 1.0, center.z);
+        startCamera.position.set(center.x, center.y - fitDist * 2, center.z);
         startCamera.up.set(0, 0, 1);
         startCamera.lookAt(center);
         startControlsRef.current.target.copy(center);
@@ -570,7 +570,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         const maxDim = Math.max(size.x, size.y, size.z);
         const fov = startCamera.fov * (Math.PI / 180);
         const fitDist = maxDim / (2 * Math.tan(fov / 2));
-        startCamera.position.set(center.x, center.y - fitDist, center.z);
+        startCamera.position.set(center.x, center.y - fitDist * 2, center.z);
         startCamera.lookAt(center);
         startControls.target.copy(center);
         startControls.update();
