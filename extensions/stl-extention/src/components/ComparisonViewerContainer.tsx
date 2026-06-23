@@ -111,8 +111,15 @@ export const ComparisonViewerContainer: React.FC<ComparisonViewerContainerProps>
 
         const [data1, data2] = await Promise.all([response1.json(), response2.json()]);
 
-        const urls1 = data1?.data?.processed?.urls || [];
-        const urls2 = data2?.data?.processed?.urls || [];
+        const versions1 = data1?.data?.versions || [];
+        const versions2 = data2?.data?.versions || [];
+
+        const urls1 = versions1.length > 0
+          ? (versions1.reduce((a, b) => (a.version > b.version ? a : b)).urls || [])
+          : (data1?.data?.processed?.urls || []);
+        const urls2 = versions2.length > 0
+          ? (versions2.reduce((a, b) => (a.version > b.version ? a : b)).urls || [])
+          : (data2?.data?.processed?.urls || []);
 
         setStlUrls1(urls1);
         setStlUrls2(urls2);

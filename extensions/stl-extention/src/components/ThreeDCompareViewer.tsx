@@ -469,7 +469,10 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         );
         if (!response.ok) throw new Error('Failed to fetch data');
         const data = await response.json();
-        const stlUrls: string[] = data?.data?.processed?.urls || [];
+        const versions = data?.data?.versions || [];
+        const stlUrls: string[] = versions.length > 0
+          ? (versions.reduce((a, b) => (a.version > b.version ? a : b)).urls || [])
+          : (data?.data?.processed?.urls || []);
         if (stlUrls.length === 0) throw new Error('No STL files found for this series');
 
         // Load STLs with proper materials — same as useSTLLoader
@@ -1248,7 +1251,10 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       })
         .then(res => res.json())
         .then(data => {
-          const urls: string[] = data?.data?.processed?.urls || [];
+          const versions = data?.data?.versions || [];
+          const urls: string[] = versions.length > 0
+            ? (versions.reduce((a, b) => (a.version > b.version ? a : b)).urls || [])
+            : (data?.data?.processed?.urls || []);
           if (urls.length > 0) {
             addRightFromUrls(urls, seriesDesc ? `Series: ${seriesDesc}` : 'Series');
           }

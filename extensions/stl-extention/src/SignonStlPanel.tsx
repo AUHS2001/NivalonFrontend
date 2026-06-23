@@ -60,7 +60,10 @@ const SignonStlPanel: React.FC<SignonStlPanelProps> = ({
         }
 
         const data = await response.json();
-        const urls = data?.data?.processed?.urls || [];
+        const versions = data?.data?.versions || [];
+        const urls = versions.length > 0
+          ? (versions.reduce((a, b) => (a.version > b.version ? a : b)).urls || [])
+          : (data?.data?.processed?.urls || []);
 
         console.log('SignonStlPanel - Fetched STL URLs:', urls);
 
