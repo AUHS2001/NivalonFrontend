@@ -253,6 +253,10 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   const animationIdRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Camera sync
+  const [syncCameras, setSyncCameras] = useState(false);
+  const isSyncingRef = useRef(false);
+
   // 3D Tool contexts
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
@@ -1341,6 +1345,81 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     return () => registerTools([]);
   }, [registerTools]);
 
+  // ─── Camera sync between left and right panels ───
+  useEffect(() => {
+    if (!syncCameras) return;
+    const leftCtrl = leftControlsRef.current;
+    const rightCtrl = rightControlsRef.current;
+    const leftCam = leftCameraRef.current;
+    const rightCam = rightCameraRef.current;
+    if (!leftCtrl || !rightCtrl || !leftCam || !rightCam) return;
+
+    // Snapshot each panel's state at the moment sync is enabled so we only
+    // apply deltas (rotation change + zoom ratio), preserving each model's
+    // original apparent size and center.
+    const leftInitTarget = leftCtrl.target.clone();
+    const rightInitTarget = rightCtrl.target.clone();
+
+    const toSpherical = (cam: THREE.PerspectiveCamera, ctrl: { target: THREE.Vector3 }) => {
+      const offset = new THREE.Vector3().subVectors(cam.position, ctrl.target);
+      const s = new THREE.Spherical().setFromVector3(offset);
+      return s;
+    };
+
+    const leftInitSph = toSpherical(leftCam, leftCtrl);
+    const rightInitSph = toSpherical(rightCam, rightCtrl);
+
+    const syncCamera = (
+      src: THREE.PerspectiveCamera, srcCtrl: typeof leftCtrl,
+      srcInitSph: THREE.Spherical, srcInitTarget: THREE.Vector3,
+      dst: THREE.PerspectiveCamera, dstCtrl: typeof rightCtrl,
+      dstInitSph: THREE.Spherical, dstInitTarget: THREE.Vector3,
+    ) => {
+      const srcSph = toSpherical(src, srcCtrl);
+
+      // Apply rotation deltas + zoom ratio relative to each camera's own starting state
+      const dstSph = new THREE.Spherical(
+        dstInitSph.radius * (srcSph.radius / srcInitSph.radius),
+        dstInitSph.phi + (srcSph.phi - srcInitSph.phi),
+        dstInitSph.theta + (srcSph.theta - srcInitSph.theta),
+      );
+
+      const offset = new THREE.Vector3().setFromSpherical(dstSph);
+
+      // Sync pan: apply source's pan delta to destination's own center
+      const panDelta = new THREE.Vector3().subVectors(srcCtrl.target, srcInitTarget);
+      dstCtrl.target.copy(dstInitTarget).add(panDelta);
+
+      dst.position.copy(dstCtrl.target).add(offset);
+      dst.up.copy(src.up);
+      dst.lookAt(dstCtrl.target);
+      dst.zoom = src.zoom;
+      dst.updateProjectionMatrix();
+    };
+
+    const onLeftChange = () => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
+      syncCamera(leftCam, leftCtrl, leftInitSph, leftInitTarget, rightCam, rightCtrl, rightInitSph, rightInitTarget);
+      isSyncingRef.current = false;
+    };
+
+    const onRightChange = () => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
+      syncCamera(rightCam, rightCtrl, rightInitSph, rightInitTarget, leftCam, leftCtrl, leftInitSph, leftInitTarget);
+      isSyncingRef.current = false;
+    };
+
+    leftCtrl.addEventListener('change', onLeftChange);
+    rightCtrl.addEventListener('change', onRightChange);
+
+    return () => {
+      leftCtrl.removeEventListener('change', onLeftChange);
+      rightCtrl.removeEventListener('change', onRightChange);
+    };
+  }, [syncCameras]);
+
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'row',
@@ -1424,10 +1503,29 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       >
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#ffffff', zIndex: 100,
-          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-          fontSize: '12px', marginTop: '12px',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '12px',
         }}>
-          {rightLabel || 'Compare Panel'}
+          <div style={{
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+            fontSize: '12px',
+          }}>
+            {rightLabel || 'Compare Panel'}
+          </div>
+          <button
+            onClick={() => setSyncCameras(prev => !prev)}
+            style={{
+              padding: '4px 10px', borderRadius: '4px', fontSize: '11px',
+              border: syncCameras ? '1px solid #4FC3F7' : '1px solid #334',
+              backgroundColor: syncCameras ? 'rgba(79,195,247,0.2)' : '#1a1f2e',
+              color: syncCameras ? '#4FC3F7' : '#aab',
+              cursor: 'pointer', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}
+          >
+            <i className="fas fa-sync-alt" style={{ fontSize: '10px' }} />
+            Sync
+          </button>
         </div>
 
         {rightLoading && (

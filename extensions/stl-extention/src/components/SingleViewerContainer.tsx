@@ -20,6 +20,8 @@ interface SingleViewerContainerProps {
   onBrowseRight?: () => void;
   rightHasModel?: boolean;
   rightLoading?: boolean;
+  syncCameras?: boolean;
+  onToggleSync?: () => void;
 }
 
 export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
@@ -41,6 +43,8 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
   onBrowseRight,
   rightHasModel = false,
   rightLoading = false,
+  syncCameras = false,
+  onToggleSync,
 }) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();
@@ -229,9 +233,30 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-          fontSize: '12px', marginTop: '12px'
-        }}>Compare Panel</div>
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '12px',
+        }}>
+          <div style={{
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+            fontSize: '12px',
+          }}>Compare Panel</div>
+          {onToggleSync && (
+            <button
+              onClick={onToggleSync}
+              style={{
+                padding: '4px 10px', borderRadius: '4px', fontSize: '11px',
+                border: syncCameras ? '1px solid #4FC3F7' : '1px solid #334',
+                backgroundColor: syncCameras ? 'rgba(79,195,247,0.2)' : '#1a1f2e',
+                color: syncCameras ? '#4FC3F7' : '#aab',
+                cursor: 'pointer', fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}
+            >
+              <i className="fas fa-sync-alt" style={{ fontSize: '10px' }} />
+              Sync
+            </button>
+          )}
+        </div>
 
         {/* Loading overlay for right panel */}
         {showComparePanel && rightLoading && (

@@ -214,6 +214,10 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [showMerge, setShowMergeView] = useState(false);
 
+  // Camera sync
+  const [syncCameras, setSyncCameras] = useState(false);
+  const isSyncingRef = useRef(false);
+
   // Refs
   const removalOutlinePoints = useRef<{ x: number, y: number }[]>([]);
   const removalCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -3434,6 +3438,81 @@ const createAutomaticSegmentation = async () => {
     return () => registerTools([]);
   }, [registerTools]);
 
+  // ─── Camera sync between left and right panels ───
+  useEffect(() => {
+    if (!syncCameras) return;
+    const leftCtrl = leftControlsRef.current;
+    const rightCtrl = rightControlsRef.current;
+    const leftCam = cameraRef.current;
+    const rightCam = rightCameraRef.current;
+    if (!leftCtrl || !rightCtrl || !leftCam || !rightCam) return;
+
+    // Snapshot each panel's state at the moment sync is enabled so we only
+    // apply deltas (rotation change + zoom ratio), preserving each model's
+    // original apparent size and center.
+    const leftInitTarget = leftCtrl.target.clone();
+    const rightInitTarget = rightCtrl.target.clone();
+
+    const toSpherical = (cam: THREE.PerspectiveCamera, ctrl: { target: THREE.Vector3 }) => {
+      const offset = new THREE.Vector3().subVectors(cam.position, ctrl.target);
+      const s = new THREE.Spherical().setFromVector3(offset);
+      return s;
+    };
+
+    const leftInitSph = toSpherical(leftCam, leftCtrl);
+    const rightInitSph = toSpherical(rightCam, rightCtrl);
+
+    const syncCamera = (
+      src: THREE.PerspectiveCamera, srcCtrl: typeof leftCtrl,
+      srcInitSph: THREE.Spherical, srcInitTarget: THREE.Vector3,
+      dst: THREE.PerspectiveCamera, dstCtrl: typeof rightCtrl,
+      dstInitSph: THREE.Spherical, dstInitTarget: THREE.Vector3,
+    ) => {
+      const srcSph = toSpherical(src, srcCtrl);
+
+      // Apply rotation deltas + zoom ratio relative to each camera's own starting state
+      const dstSph = new THREE.Spherical(
+        dstInitSph.radius * (srcSph.radius / srcInitSph.radius),
+        dstInitSph.phi + (srcSph.phi - srcInitSph.phi),
+        dstInitSph.theta + (srcSph.theta - srcInitSph.theta),
+      );
+
+      const offset = new THREE.Vector3().setFromSpherical(dstSph);
+
+      // Sync pan: apply source's pan delta to destination's own center
+      const panDelta = new THREE.Vector3().subVectors(srcCtrl.target, srcInitTarget);
+      dstCtrl.target.copy(dstInitTarget).add(panDelta);
+
+      dst.position.copy(dstCtrl.target).add(offset);
+      dst.up.copy(src.up);
+      dst.lookAt(dstCtrl.target);
+      dst.zoom = src.zoom;
+      dst.updateProjectionMatrix();
+    };
+
+    const onLeftChange = () => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
+      syncCamera(leftCam, leftCtrl, leftInitSph, leftInitTarget, rightCam, rightCtrl, rightInitSph, rightInitTarget);
+      isSyncingRef.current = false;
+    };
+
+    const onRightChange = () => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
+      syncCamera(rightCam, rightCtrl, rightInitSph, rightInitTarget, leftCam, leftCtrl, leftInitSph, leftInitTarget);
+      isSyncingRef.current = false;
+    };
+
+    leftCtrl.addEventListener('change', onLeftChange);
+    rightCtrl.addEventListener('change', onRightChange);
+
+    return () => {
+      leftCtrl.removeEventListener('change', onLeftChange);
+      rightCtrl.removeEventListener('change', onRightChange);
+    };
+  }, [syncCameras]);
+
   return (
     <CenterLineProvider
       toggleCenterLine={toggleCenterLine}
@@ -3808,6 +3887,8 @@ const createAutomaticSegmentation = async () => {
           onBrowseRight={() => document.getElementById('stl-right-file-input')?.click()}
           rightHasModel={rightHasModel}
           rightLoading={rightLoading}
+          syncCameras={syncCameras}
+          onToggleSync={showComparePanel ? () => setSyncCameras(prev => !prev) : undefined}
         >
           {/* Transparency Toggle Button - Only shows when centerline is enabled */}
           {centerLineEnabled && (
