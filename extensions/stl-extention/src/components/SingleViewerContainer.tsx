@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLabelingViewContext } from '../context/LabelingViewContext';
+import { useActivePanelContext } from '../context/ActivePanelContext';
 
 interface SingleViewerContainerProps {
   startMountRef: React.RefObject<HTMLDivElement>;
@@ -48,6 +49,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
 }) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();
+  const { togglePanel, isPanelActive } = useActivePanelContext();
   const showComparePanel = localOnly || compareMode;
 
   return (
@@ -69,10 +71,24 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
           marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px'
         }}>
-          <div style={{
-            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-            fontSize: '12px', width: 'fit-content'
-          }}>3D View</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+              fontSize: '12px', width: 'fit-content'
+            }}>3D View</div>
+            {showComparePanel && (
+              <div
+                onClick={() => togglePanel('left')}
+                style={{
+                  width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+                  border: `2px solid ${isPanelActive('left') ? '#00ffff' : '#555'}`,
+                  backgroundColor: isPanelActive('left') ? '#00ffff' : 'transparent',
+                  transition: 'all 0.15s ease',
+                }}
+                title={isPanelActive('left') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+              />
+            )}
+          </div>
 
           {/* Interactive Rotation Instructions */}
           {inertialRotationMode && (
@@ -240,6 +256,16 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
             backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
             fontSize: '12px',
           }}>Compare Panel</div>
+          <div
+            onClick={() => togglePanel('right')}
+            style={{
+              width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+              border: `2px solid ${isPanelActive('right') ? '#00ffff' : '#555'}`,
+              backgroundColor: isPanelActive('right') ? '#00ffff' : 'transparent',
+              transition: 'all 0.15s ease',
+            }}
+            title={isPanelActive('right') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+          />
           {onToggleSync && (
             <button
               onClick={onToggleSync}

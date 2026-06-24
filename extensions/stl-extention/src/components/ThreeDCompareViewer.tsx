@@ -24,6 +24,7 @@ import { useSpineLabelingContext } from '../context/SpineLabelingContext';
 import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { useImplantContext } from '../context/ImplantContext';
 import { useVersionHistory } from '../hooks/useVersionHistory';
+import { useActivePanelContext } from '../context/ActivePanelContext';
 
 interface ThreeDCompareViewerProps {
   servicesManager: any;
@@ -260,6 +261,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   // 3D Tool contexts
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
+  const { activePanel, togglePanel, isPanelActive } = useActivePanelContext();
   const { registerTools } = useThreeDToolsBridge();
   const { brightnessEnabled, brightness, toggleBrightness } = useBrightnessContext();
   const {
@@ -306,6 +308,29 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   const initialMousePos = useRef({ x: 0, y: 0 });
   const selectedMeshIndex = useRef<number | null>(null);
   const implantFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset all active tools when panel toggle changes
+  const prevActivePanelRef = useRef(activePanel);
+  useEffect(() => {
+    if (prevActivePanelRef.current === activePanel) return;
+    prevActivePanelRef.current = activePanel;
+
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+    setRemovalMode(false);
+    if (clickRemovalMode) onToggleClickRemoval(false);
+    if (brightnessEnabled) toggleBrightness();
+    if (measurementEnabled) toggleMeasurement();
+    if (angleMeasurementEnabled) toggleAngleMeasurement();
+    if (colorModeRef.current) {
+      colorModeRef.current = false;
+      setColorModeEnabled(false);
+    }
+  }, [activePanel]);
 
   // State
   const [leftLoading, setLeftLoading] = useState(true);
@@ -671,7 +696,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
   // ─── Bone removal (outline) for LEFT panel ───
   useBoneRemoval({
-    removalMode,
+    removalMode: removalMode && isPanelActive('left'),
     leftRendererRef: leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
     leftControlsRef,
     cameraRef: leftCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
@@ -687,7 +712,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
   // ─── Bone removal (outline) for RIGHT panel ───
   useBoneRemoval({
-    removalMode,
+    removalMode: removalMode && isPanelActive('right'),
     leftRendererRef: rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
     leftControlsRef: rightControlsRef,
     cameraRef: rightCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
@@ -706,21 +731,30 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     brightnessEnabled,
     brightness,
     meshRefs,
+    activePanel: activePanel === 'both' ? undefined : activePanel,
   });
 
   // ─── Measurement mode setup ───
   useEffect(() => {
+    const rendererRef = activePanel === 'right'
+      ? rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>
+      : leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>;
+    const sceneRef = activePanel === 'right' ? rightSceneRef : leftSceneRef;
+    const camRef = activePanel === 'right'
+      ? rightCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>
+      : leftCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>;
+
     setupMeasurementMode({
-      leftRendererRef: leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
-      leftSceneRef: leftSceneRef,
-      cameraRef: leftCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
+      leftRendererRef: rendererRef,
+      leftSceneRef: sceneRef,
+      cameraRef: camRef,
       meshRefs,
     });
 
     setupAngleMeasurementMode({
-      leftRendererRef: leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
-      leftSceneRef: leftSceneRef,
-      cameraRef: leftCameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
+      leftRendererRef: rendererRef,
+      leftSceneRef: sceneRef,
+      cameraRef: camRef,
       meshRefs,
     });
 
@@ -728,12 +762,15 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       cleanupMeasurementMode();
       cleanupAngleMeasurementMode();
     };
-  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode]);
+  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel]);
 
   // ─── Screenshot handler ───
   const handleScreenshot = useCallback(() => {
-    handleScreenshotUtil(leftRendererRef.current, leftSceneRef.current, leftCameraRef.current);
-  }, []);
+    const renderer = activePanel === 'right' ? rightRendererRef.current : leftRendererRef.current;
+    const scene = activePanel === 'right' ? rightSceneRef.current : leftSceneRef.current;
+    const camera = activePanel === 'right' ? rightCameraRef.current : leftCameraRef.current;
+    handleScreenshotUtil(renderer, scene, camera);
+  }, [activePanel]);
 
   // ─── Download handler ───
   const handleDownload = useCallback(() => {
@@ -813,9 +850,9 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       }
     };
 
-    meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
-    meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
-  }, [labelViewEnabled, LABEL_COLORS]);
+    if (isPanelActive('left')) meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
+    if (isPanelActive('right')) meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
+  }, [labelViewEnabled, LABEL_COLORS, isPanelActive]);
 
   // ─── Approve handler ───
   const approveEditedFiles = useCallback(() => {
@@ -897,25 +934,28 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
   // ─── HORIZONTAL bone movement ───
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode) return;
+    const mount = activePanel === 'right' ? rightMountRef.current : leftMountRef.current;
+    const camRef = activePanel === 'right' ? rightCameraRef : leftCameraRef;
+    const ctrlRef = activePanel === 'right' ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = activePanel === 'right' ? 'right' : 'left';
+    if (!mount || !rotationMode) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode) return;
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, leftCameraRef.current!);
-      const meshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRef.current!);
+      const meshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(meshes);
       if (intersects.length > 0) {
-        leftControlsRef.current!.enabled = false;
+        ctrlRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(intersects[0].object as THREE.Mesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
     const onMouseMove = (event: MouseEvent) => {
@@ -924,49 +964,54 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const amount = -deltaX * 0.5;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
-        const left = meshRefs.current.left[i];
-        if (left?.userData?.isImplant || left?.userData?.type === 'I') continue;
-        if (left) left.position.x += amount;
-        const right = meshRefs.current.right[i];
-        if (right && !right.userData?.isImplant && right.userData?.type !== 'I') right.position.x += amount;
+        const mesh = meshRefs.current[primaryKey][i];
+        if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+        if (mesh) mesh.position.x += amount;
+        if (activePanel === 'both') {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.x += amount;
+        }
       }
     };
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      if (leftControlsRef.current) leftControlsRef.current.enabled = true;
+      if (ctrlRef.current) ctrlRef.current.enabled = true;
     };
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode]);
+  }, [rotationMode, activePanel]);
 
   // ─── VERTICAL bone movement ───
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode1) return;
+    const mount = activePanel === 'right' ? rightMountRef.current : leftMountRef.current;
+    const camRef = activePanel === 'right' ? rightCameraRef : leftCameraRef;
+    const ctrlRef = activePanel === 'right' ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = activePanel === 'right' ? 'right' : 'left';
+    if (!mount || !rotationMode1) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode1) return;
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, leftCameraRef.current!);
-      const meshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRef.current!);
+      const meshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(meshes);
       if (intersects.length > 0) {
-        leftControlsRef.current!.enabled = false;
+        ctrlRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(intersects[0].object as THREE.Mesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
     const onMouseMove = (event: MouseEvent) => {
@@ -975,50 +1020,55 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const amount = -deltaY * 0.5;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
-        const left = meshRefs.current.left[i];
-        if (left?.userData?.isImplant || left?.userData?.type === 'I') continue;
-        if (left) left.position.z += amount;
-        const right = meshRefs.current.right[i];
-        if (right && !right.userData?.isImplant && right.userData?.type !== 'I') right.position.z += amount;
+        const mesh = meshRefs.current[primaryKey][i];
+        if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+        if (mesh) mesh.position.z += amount;
+        if (activePanel === 'both') {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.z += amount;
+        }
       }
     };
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      if (leftControlsRef.current) leftControlsRef.current.enabled = true;
+      if (ctrlRef.current) ctrlRef.current.enabled = true;
     };
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode1]);
+  }, [rotationMode1, activePanel]);
 
   // ─── ROTATION (tilt around X-axis) ───
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode2) return;
+    const mount = activePanel === 'right' ? rightMountRef.current : leftMountRef.current;
+    const camRef = activePanel === 'right' ? rightCameraRef : leftCameraRef;
+    const ctrlRef = activePanel === 'right' ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = activePanel === 'right' ? 'right' : 'left';
+    if (!mount || !rotationMode2) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode2) return;
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, leftCameraRef.current!);
-      const meshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRef.current!);
+      const meshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(meshes);
       if (intersects.length > 0) {
         event.preventDefault();
-        leftControlsRef.current!.enabled = false;
+        ctrlRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(intersects[0].object as THREE.Mesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
     const onMouseMove = (event: MouseEvent) => {
@@ -1027,49 +1077,54 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const rotationSpeed = 0.005;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
-        const left = meshRefs.current.left[i];
-        if (!left || left.userData?.isImplant || left.userData?.type === 'I') continue;
-        left.rotation.x += deltaY * rotationSpeed;
-        const right = meshRefs.current.right[i];
-        if (right && !right.userData?.isImplant && right.userData?.type !== 'I') right.rotation.x += deltaY * rotationSpeed;
+        const mesh = meshRefs.current[primaryKey][i];
+        if (!mesh || mesh.userData?.isImplant || mesh.userData?.type === 'I') continue;
+        mesh.rotation.x += deltaY * rotationSpeed;
+        if (activePanel === 'both') {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.rotation.x += deltaY * rotationSpeed;
+        }
       }
     };
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      if (leftControlsRef.current) leftControlsRef.current.enabled = true;
+      if (ctrlRef.current) ctrlRef.current.enabled = true;
     };
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode2]);
+  }, [rotationMode2, activePanel]);
 
   // ─── LONGITUDINAL (forward/backward) ───
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode3) return;
+    const mount = activePanel === 'right' ? rightMountRef.current : leftMountRef.current;
+    const camRef = activePanel === 'right' ? rightCameraRef : leftCameraRef;
+    const ctrlRef = activePanel === 'right' ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = activePanel === 'right' ? 'right' : 'left';
+    if (!mount || !rotationMode3) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode3) return;
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, leftCameraRef.current!);
-      const meshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRef.current!);
+      const meshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(meshes);
       if (intersects.length > 0) {
-        leftControlsRef.current!.enabled = false;
+        ctrlRef.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(intersects[0].object as THREE.Mesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
     const onMouseMove = (event: MouseEvent) => {
@@ -1078,31 +1133,33 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const amount = deltaY * 0.5;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
-        const left = meshRefs.current.left[i];
-        if (left?.userData?.isImplant || left?.userData?.type === 'I') continue;
-        if (left) left.position.y += amount;
-        const right = meshRefs.current.right[i];
-        if (right && !right.userData?.isImplant && right.userData?.type !== 'I') right.position.y += amount;
+        const mesh = meshRefs.current[primaryKey][i];
+        if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+        if (mesh) mesh.position.y += amount;
+        if (activePanel === 'both') {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.y += amount;
+        }
       }
     };
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      if (leftControlsRef.current) leftControlsRef.current.enabled = true;
+      if (ctrlRef.current) ctrlRef.current.enabled = true;
     };
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode3]);
+  }, [rotationMode3, activePanel]);
 
   // ─── Click removal for LEFT panel ───
   useEffect(() => {
-    if (!clickRemovalMode) return;
+    if (!clickRemovalMode || !isPanelActive('left')) return;
 
     const leftRenderer = leftRendererRef.current;
     const canvas = leftRenderer?.domElement;
@@ -1154,11 +1211,11 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         leftControls.enabled = true;
       }
     };
-  }, [clickRemovalMode]);
+  }, [clickRemovalMode, activePanel]);
 
   // ─── Click removal for RIGHT panel ───
   useEffect(() => {
-    if (!clickRemovalMode) return;
+    if (!clickRemovalMode || !isPanelActive('right')) return;
 
     const rightRenderer = rightRendererRef.current;
     const rightCanvas = rightRenderer?.domElement;
@@ -1219,7 +1276,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         rightControls.enabled = true;
       }
     };
-  }, [clickRemovalMode]);
+  }, [clickRemovalMode, activePanel]);
 
   // ─── RIGHT PANEL: drag-and-drop from sidebar ───
   const [{ isOver }, dropRef] = useDrop({
@@ -1303,9 +1360,9 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
 
   useEffect(() => {
     const toolDefs: ToolDef[] = [
-      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: makeOnClick('fileSelect') },
+      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: makeOnClick('fileSelect'), hidden: true },
       { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
-      { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: makeOnClick('linking') },
+      { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: makeOnClick('linking'), hidden: true },
       { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: makeOnClick('alignment') },
       { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
       { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
@@ -1318,7 +1375,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: implantMoveMode, onClick: makeOnClick('implantMove') },
       { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: inertialRotationMode, onClick: makeOnClick('interactiveRotation') },
       { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
-      { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: makeOnClick('merge') },
+      { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: makeOnClick('merge'), hidden: true },
       { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
       { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
       { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
@@ -1430,10 +1487,25 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #ffffff' }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-          fontSize: '12px', marginTop: '12px',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '12px',
         }}>
-          {leftLabel ? `Current Series: ${leftLabel}` : '3D View'}
+          <div style={{
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+            fontSize: '12px',
+          }}>
+            {leftLabel ? `Current Series: ${leftLabel}` : '3D View'}
+          </div>
+          <div
+            onClick={() => togglePanel('left')}
+            style={{
+              width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+              border: `2px solid ${isPanelActive('left') ? '#00ffff' : '#555'}`,
+              backgroundColor: isPanelActive('left') ? '#00ffff' : 'transparent',
+              transition: 'all 0.15s ease',
+            }}
+            title={isPanelActive('left') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+          />
         </div>
 
         {leftLoading && (
@@ -1512,6 +1584,16 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
           }}>
             {rightLabel || 'Compare Panel'}
           </div>
+          <div
+            onClick={() => togglePanel('right')}
+            style={{
+              width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+              border: `2px solid ${isPanelActive('right') ? '#00ffff' : '#555'}`,
+              backgroundColor: isPanelActive('right') ? '#00ffff' : 'transparent',
+              transition: 'all 0.15s ease',
+            }}
+            title={isPanelActive('right') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+          />
           <button
             onClick={() => setSyncCameras(prev => !prev)}
             style={{

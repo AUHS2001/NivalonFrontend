@@ -46,6 +46,7 @@ import { useViewportRendering } from '../../cornerstone/src/hooks/useViewportRen
 import FileLoaderService from 'platform/app/src/routes/Local/fileLoaderService';
 import { useAngleMeasurementContext } from './context/AngleMeasurementContext';
 import { useImplantContext } from './context/ImplantContext';
+import { useActivePanelContext } from './context/ActivePanelContext';
 
 import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineLabelingContext';
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
@@ -269,6 +270,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [hasSegmentationService, setHasSegmentationService] = useState(false);
   const { removalMode, setRemovalMode } = useBoneRemovalContext();
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
+  const { activePanel, isPanelActive } = useActivePanelContext();
   const { addStlFiles, clearStlFiles, compareRightFiles, setCompareRightFiles, compareLeftFiles, setCompareLeftFiles } = useStlVisibilityContext();
   const { showRightView: labelViewEnabled, onToggleRightView } = useLabelingViewContext();
   const {
@@ -299,6 +301,29 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [pivotBoneIndex, setPivotBoneIndex] = useState<number | null>(null);
   const [currentRotationAngle, setCurrentRotationAngle] = useState<number>(0);
   const resetBoneRef = useRef<(() => void) | null>(null);
+
+  // Reset all active tools when panel toggle changes
+  const prevActivePanelRef = useRef(activePanel);
+  useEffect(() => {
+    if (prevActivePanelRef.current === activePanel) return;
+    prevActivePanelRef.current = activePanel;
+
+    setRotationMode(false);
+    setRotationMode1(false);
+    setRotationMode2(false);
+    setRotationMode3(false);
+    setImplantMoveMode(false);
+    setInertialRotationMode(false);
+    setRemovalMode(false);
+    if (clickRemovalMode) onToggleClickRemoval(false);
+    if (brightnessEnabled) toggleBrightness();
+    if (measurementEnabled) toggleMeasurement();
+    if (angleMeasurementEnabled) toggleAngleMeasurement();
+    if (colorModeRef.current) {
+      colorModeRef.current = false;
+      setColorModeEnabled(false);
+    }
+  }, [activePanel]);
 
   const isRotatingRef = useRef(false);
   const initialMousePos = useRef({ x: 0, y: 0 });
@@ -420,9 +445,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       }
     };
 
-    // Apply to all meshes in all views
-    meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
-    meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
+    // Apply to active panel meshes
+    if (isPanelActive('left')) {
+      meshRefs.current.left.forEach((mesh, i) => applyColorToMesh(mesh, i));
+    }
+    if (isPanelActive('right')) {
+      meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
+    }
 
     // Toggle contour overlay on DICOM viewports
     if (newState) {
@@ -430,7 +459,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     } else {
       hideContourOverlay();
     }
-  }, [labelViewEnabled, LABEL_COLORS]);
+  }, [labelViewEnabled, LABEL_COLORS, isPanelActive]);
 
   // Effect to apply/remove label colors when label view is toggled
   // Auto-dismiss approve success/failure toasts after 4 seconds
@@ -529,332 +558,262 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   } = useAngleMeasurementContext();
 
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode) return;
-  
+    const useRight = showComparePanel && activePanel === 'right';
+    const mount = useRight ? rightMountRef.current : leftMountRef.current;
+    const camRefH = useRight ? rightCameraRef : cameraRef;
+    const ctrlRefH = useRight ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+    const moveBoth = !showComparePanel || activePanel === 'both';
+    if (!mount || !rotationMode) return;
+
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-  
+
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode) return;
-
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, cameraRef.current!);
-      // Filter out implants from raycasting
-      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRefH.current!);
+      const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(nonImplantMeshes);
-
       if (intersects.length > 0) {
-        leftControlsRef.current!.enabled = false;
+        ctrlRefH.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-        const clickedMesh = intersects[0].object as THREE.Mesh;
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
 
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-
       const deltaX = event.clientX - initialMousePos.current.x;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-      // Cursor right → bone moves right (screen coordinates)
-      // Cursor left → bone moves left (screen coordinates)
-      // Negate because screen X is opposite to world X in this view
       const horizontalAmount = -deltaX * 0.5;
-
-      const clickedIndex = selectedMeshIndex.current;
-
-      // For each bone from clicked down to bottom (skip implants)
-      for (let i = clickedIndex; i >= 0; i--) {
-        const leftMesh = meshRefs.current.left[i];
-        const rightMesh = meshRefs.current.right[i];
-
-        // Skip implants
-        if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
-
-        if (leftMesh) {
-          leftMesh.position.x += horizontalAmount;
-        }
-
-        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-          rightMesh.position.x += horizontalAmount;
+      for (let i = selectedMeshIndex.current; i >= 0; i--) {
+        const mesh = meshRefs.current[primaryKey][i];
+        if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+        if (mesh) mesh.position.x += horizontalAmount;
+        if (moveBoth) {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.x += horizontalAmount;
         }
       }
-
-      // Update measurements when bones move
       updateMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      leftControlsRef.current!.enabled = true;
+      ctrlRefH.current!.enabled = true;
     };
 
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode, updateMeasurementsOnBoneMove]);
+  }, [rotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   // VERTICAL - UP/DOWN (Motion)
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode1) return;
-  
+    const useRight = showComparePanel && activePanel === 'right';
+    const mount = useRight ? rightMountRef.current : leftMountRef.current;
+    const camRefV = useRight ? rightCameraRef : cameraRef;
+    const ctrlRefV = useRight ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+    const moveBoth = !showComparePanel || activePanel === 'both';
+    if (!mount || !rotationMode1) return;
+
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-  
+
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode1) return;
-
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, cameraRef.current!);
-      // Filter out implants from raycasting
-      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRefV.current!);
+      const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(nonImplantMeshes);
-
       if (intersects.length > 0) {
-        leftControlsRef.current!.enabled = false;
+        ctrlRefV.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-        const clickedMesh = intersects[0].object as THREE.Mesh;
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
 
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-
       const deltaY = event.clientY - initialMousePos.current.y;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-      // Cursor down → bone moves down (negative Y in 3D world)
-      // Cursor up → bone moves up (positive Y in 3D world)
-      // In LPS, Z is up (Superior), so we use Z for vertical movement
       const verticalAmount = -deltaY * 0.5;
-
-      const clickedIndex = selectedMeshIndex.current;
-
-      // For each bone from clicked down to bottom (skip implants)
-      for (let i = clickedIndex; i >= 0; i--) {
-        const leftMesh = meshRefs.current.left[i];
-        const rightMesh = meshRefs.current.right[i];
-
-        // Skip implants
-        if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
-
-        if (leftMesh) {
-          leftMesh.position.z += verticalAmount; // Z is up in LPS
-        }
-
-        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-          rightMesh.position.z += verticalAmount;
+      for (let i = selectedMeshIndex.current; i >= 0; i--) {
+        const mesh = meshRefs.current[primaryKey][i];
+        if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+        if (mesh) mesh.position.z += verticalAmount;
+        if (moveBoth) {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.z += verticalAmount;
         }
       }
-
-      // Update measurements when bones move
       updateMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      leftControlsRef.current!.enabled = true;
+      ctrlRefV.current!.enabled = true;
     };
 
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode1, updateMeasurementsOnBoneMove]);
+  }, [rotationMode1, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 
   useEffect(() => {
-    const leftMount = leftMountRef.current;
-    if (!leftMount || !rotationMode2) return;
+    const useRight = showComparePanel && activePanel === 'right';
+    const mount = useRight ? rightMountRef.current : leftMountRef.current;
+    const camRefR = useRight ? rightCameraRef : cameraRef;
+    const ctrlRefR = useRight ? rightControlsRef : leftControlsRef;
+    const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+    const moveBoth = !showComparePanel || activePanel === 'both';
+    if (!mount || !rotationMode2) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode2) return;
-
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, cameraRef.current!);
-      // Filter out implants from raycasting
-      const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+      raycaster.setFromCamera(mouse, camRefR.current!);
+      const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(nonImplantMeshes);
-
       if (intersects.length > 0) {
         event.preventDefault();
-        leftControlsRef.current!.enabled = false;
+        ctrlRefR.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-        const clickedMesh = intersects[0].object as THREE.Mesh;
-        selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
+        selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
       }
     };
 
     const onMouseMove = (event: MouseEvent) => {
       if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-
       const deltaY = event.clientY - initialMousePos.current.y;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-      // Vertical rotation only (top to down):
-      // Cursor up → tilt backward (around X-axis)
-      // Cursor down → tilt forward (around X-axis)
       const rotationSpeed = 0.005;
-
-      const clickedIndex = selectedMeshIndex.current;
-
-      for (let i = clickedIndex; i >= 0; i--) {
-        const leftMesh = meshRefs.current.left[i];
-        const rightMesh = meshRefs.current.right[i];
-
-        if (!leftMesh) continue;
-        // Skip implants
-        if (leftMesh.userData?.isImplant || leftMesh.userData?.type === 'I') continue;
-
-        // Rotation around X-axis only (vertical cursor movement)
-        leftMesh.rotation.x += deltaY * rotationSpeed;
-
-        if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-          rightMesh.rotation.x += deltaY * rotationSpeed;
+      for (let i = selectedMeshIndex.current; i >= 0; i--) {
+        const mesh = meshRefs.current[primaryKey][i];
+        if (!mesh || mesh.userData?.isImplant || mesh.userData?.type === 'I') continue;
+        mesh.rotation.x += deltaY * rotationSpeed;
+        if (moveBoth) {
+          const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+          if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.rotation.x += deltaY * rotationSpeed;
         }
       }
-
-      // Update measurements when bones move
       updateMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
-      leftControlsRef.current!.enabled = true;
+      ctrlRefR.current!.enabled = true;
     };
 
-    leftMount.addEventListener('mousedown', onMouseDown);
+    mount.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-
     return () => {
-      leftMount.removeEventListener('mousedown', onMouseDown);
+      mount.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-}, [rotationMode2, updateMeasurementsOnBoneMove]);
+}, [rotationMode2, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // FORWARD - BACKWARD (Motion)
 useEffect(() => {
-  const leftMount = leftMountRef.current;
-  if (!leftMount || !rotationMode3) return; // Use rotationMode3 for forward/backward movement
+  const useRight = showComparePanel && activePanel === 'right';
+  const mount = useRight ? rightMountRef.current : leftMountRef.current;
+  const camRefFB = useRight ? rightCameraRef : cameraRef;
+  const ctrlRefFB = useRight ? rightControlsRef : leftControlsRef;
+  const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+  const moveBoth = !showComparePanel || activePanel === 'both';
+  if (!mount || !rotationMode3) return;
 
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
   const onMouseDown = (event: MouseEvent) => {
     if (!rotationMode3) return;
-
-    const rect = leftMount.getBoundingClientRect();
+    const rect = mount.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, cameraRef.current!);
-    // Filter out implants from raycasting
-    const nonImplantMeshes = meshRefs.current.left.filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
+    raycaster.setFromCamera(mouse, camRefFB.current!);
+    const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
     const intersects = raycaster.intersectObjects(nonImplantMeshes);
-
     if (intersects.length > 0) {
-      leftControlsRef.current!.enabled = false;
+      ctrlRefFB.current!.enabled = false;
       isRotatingRef.current = true;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-      const clickedMesh = intersects[0].object as THREE.Mesh;
-      selectedMeshIndex.current = meshRefs.current.left.indexOf(clickedMesh);
+      selectedMeshIndex.current = meshRefs.current[primaryKey].indexOf(intersects[0].object as THREE.Mesh);
     }
   };
 
   const onMouseMove = (event: MouseEvent) => {
     if (!isRotatingRef.current || selectedMeshIndex.current === null) return;
-
     const deltaY = event.clientY - initialMousePos.current.y;
     initialMousePos.current = { x: event.clientX, y: event.clientY };
-
-    // Cursor up → bone moves forward (away from camera, positive Y in LPS)
-    // Cursor down → bone moves backward (toward camera, negative Y in LPS)
-    // In LPS, Y is posterior (back), so positive Y = backward from viewer's perspective
     const depthAmount = deltaY * 0.5;
-
-    const clickedIndex = selectedMeshIndex.current;
-
-    // For each bone from clicked down to bottom (skip implants)
-    for (let i = clickedIndex; i >= 0; i--) {
-      const leftMesh = meshRefs.current.left[i];
-      const rightMesh = meshRefs.current.right[i];
-
-      // Skip implants
-      if (leftMesh?.userData?.isImplant || leftMesh?.userData?.type === 'I') continue;
-
-      if (leftMesh) {
-        leftMesh.position.y += depthAmount; // Forward/backward on Y-axis in LPS
-      }
-
-      if (rightMesh && !rightMesh.userData?.isImplant && rightMesh.userData?.type !== 'I') {
-        rightMesh.position.y += depthAmount;
+    for (let i = selectedMeshIndex.current; i >= 0; i--) {
+      const mesh = meshRefs.current[primaryKey][i];
+      if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
+      if (mesh) mesh.position.y += depthAmount;
+      if (moveBoth) {
+        const other = meshRefs.current[primaryKey === 'left' ? 'right' : 'left'][i];
+        if (other && !other.userData?.isImplant && other.userData?.type !== 'I') other.position.y += depthAmount;
       }
     }
-
-    // Update measurements when bones move
     updateMeasurementsOnBoneMove();
   };
 
   const onMouseUp = () => {
     isRotatingRef.current = false;
     selectedMeshIndex.current = null;
-    leftControlsRef.current!.enabled = true;
+    ctrlRefFB.current!.enabled = true;
   };
 
-  leftMount.addEventListener('mousedown', onMouseDown);
+  mount.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
-
   return () => {
-    leftMount.removeEventListener('mousedown', onMouseDown);
+    mount.removeEventListener('mousedown', onMouseDown);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   };
-}, [rotationMode3, updateMeasurementsOnBoneMove]);
+}, [rotationMode3, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // IMPLANT MOVE MODE - When active, clicking on implant moves only the implant
 useEffect(() => {
-  const leftMount = leftMountRef.current;
-  if (!leftMount || !implantMoveMode) return;
+  const useRight = showComparePanel && activePanel === 'right';
+  const mount = useRight ? rightMountRef.current : leftMountRef.current;
+  const camRefIM = useRight ? rightCameraRef : cameraRef;
+  const ctrlRefIM = useRight ? rightControlsRef : leftControlsRef;
+  const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+  const moveBoth = !showComparePanel || activePanel === 'both';
+  if (!mount || !implantMoveMode) return;
 
   let isDragging = false;
   let lastX = 0;
@@ -863,43 +822,27 @@ useEffect(() => {
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
-  // Find the implant mesh
   const getImplantMeshes = () => {
-    const leftImplant = meshRefs.current.left.find(
-      m => m.userData?.isImplant || m.userData?.type === 'I'
-    );
-    const rightImplant = meshRefs.current.right.find(
-      m => m.userData?.isImplant || m.userData?.type === 'I'
-    );
-    return { leftImplant, rightImplant };
+    const primaryImplant = meshRefs.current[primaryKey].find(m => m.userData?.isImplant || m.userData?.type === 'I');
+    const otherKey = primaryKey === 'left' ? 'right' : 'left';
+    const otherImplant = meshRefs.current[otherKey].find(m => m.userData?.isImplant || m.userData?.type === 'I');
+    return { primaryImplant, otherImplant };
   };
 
   const onMouseDown = (event: MouseEvent) => {
     if (!implantMoveMode) return;
-
-    const rect = leftMount.getBoundingClientRect();
+    const rect = mount.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, cameraRef.current!);
-
-    // Only raycast against implant meshes
-    const { leftImplant } = getImplantMeshes();
-    if (!leftImplant) return;
-
-    const intersects = raycaster.intersectObject(leftImplant);
-
-    // Only start dragging if we clicked on the implant
+    raycaster.setFromCamera(mouse, camRefIM.current!);
+    const { primaryImplant } = getImplantMeshes();
+    if (!primaryImplant) return;
+    const intersects = raycaster.intersectObject(primaryImplant);
     if (intersects.length > 0) {
       isDragging = true;
       lastX = event.clientX;
       lastY = event.clientY;
-
-      // Disable orbit controls
-      if (leftControlsRef.current) {
-        leftControlsRef.current.enabled = false;
-      }
-
+      if (ctrlRefIM.current) ctrlRefIM.current.enabled = false;
       event.preventDefault();
       event.stopPropagation();
     }
@@ -907,74 +850,50 @@ useEffect(() => {
 
   const onMouseMove = (event: MouseEvent) => {
     if (!isDragging || !implantMoveMode) return;
-
     const deltaX = event.clientX - lastX;
     const deltaY = event.clientY - lastY;
     lastX = event.clientX;
     lastY = event.clientY;
-
-    const { leftImplant, rightImplant } = getImplantMeshes();
-
-    // Move implant only (shift for rotation)
+    const { primaryImplant, otherImplant } = getImplantMeshes();
     if (event.shiftKey) {
-      // Rotate around the implant's own center
-      // Since geometry is centered at load time, simple rotation works
       const rotateSpeed = 0.03;
-
-      if (leftImplant) {
-        // Mouse left/right = spin around vertical axis (Y in world, but Z in local due to rotation.x = PI/2)
-        leftImplant.rotateZ(deltaX * rotateSpeed);
-        // Mouse up/down = tilt forward/back
-        leftImplant.rotateX(-deltaY * rotateSpeed);
-      }
-
-      if (rightImplant) {
-        rightImplant.rotateZ(deltaX * rotateSpeed);
-        rightImplant.rotateX(-deltaY * rotateSpeed);
-      }
+      if (primaryImplant) { primaryImplant.rotateZ(deltaX * rotateSpeed); primaryImplant.rotateX(-deltaY * rotateSpeed); }
+      if (moveBoth && otherImplant) { otherImplant.rotateZ(deltaX * rotateSpeed); otherImplant.rotateX(-deltaY * rotateSpeed); }
     } else {
-      // Move - screen coordinates to world coordinates
-      // deltaX positive = mouse right = move right in world (positive X)
-      // deltaY positive = mouse down = move down in world (negative Y in Y-up coordinate system)
       const moveSpeed = 0.5;
-      if (leftImplant) {
-        leftImplant.position.x += deltaX * moveSpeed;
-        leftImplant.position.y -= deltaY * moveSpeed;  // Negate: mouse down = world down (negative Y)
-      }
-      if (rightImplant) {
-        rightImplant.position.x += deltaX * moveSpeed;
-        rightImplant.position.y -= deltaY * moveSpeed;
-      }
+      if (primaryImplant) { primaryImplant.position.x += deltaX * moveSpeed; primaryImplant.position.y -= deltaY * moveSpeed; }
+      if (moveBoth && otherImplant) { otherImplant.position.x += deltaX * moveSpeed; otherImplant.position.y -= deltaY * moveSpeed; }
     }
   };
 
   const onMouseUp = () => {
     isDragging = false;
-    // Re-enable orbit controls
-    if (leftControlsRef.current) {
-      leftControlsRef.current.enabled = true;
-    }
+    if (ctrlRefIM.current) ctrlRefIM.current.enabled = true;
   };
 
-  leftMount.addEventListener('mousedown', onMouseDown);
+  mount.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
-
   return () => {
-    leftMount.removeEventListener('mousedown', onMouseDown);
+    mount.removeEventListener('mousedown', onMouseDown);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   };
-}, [implantMoveMode]);
+}, [implantMoveMode, activePanel, showComparePanel]);
 
 // INTERACTIVE ROTATION MODE - 3-matic style: Direct, precise rotation with axis handles
 // No momentum/inertia - rotation stops immediately when mouse is released
 useEffect(() => {
-  const leftMount = leftMountRef.current;
-  const scene = leftSceneRef.current;
-  const camera = cameraRef.current;
+  const useRight = showComparePanel && activePanel === 'right';
+  const primaryKey: 'left' | 'right' = useRight ? 'right' : 'left';
+  const moveBoth = !showComparePanel || activePanel === 'both';
 
-  if (!leftMount || !inertialRotationMode || !scene || !camera) {
+  const mount = useRight ? rightMountRef.current : leftMountRef.current;
+  const scene = useRight ? rightSceneRef.current : leftSceneRef.current;
+  const camera = useRight ? rightCameraRef.current : cameraRef.current;
+  const ctrlRef = useRight ? rightControlsRef : leftControlsRef;
+
+  if (!mount || !inertialRotationMode || !scene || !camera) {
     return;
   }
 
@@ -997,29 +916,35 @@ useEffect(() => {
   };
 
   // Save all bones' initial state
-  meshRefs.current.left.forEach((mesh, idx) => {
+  meshRefs.current[primaryKey].forEach((mesh, idx) => {
     if (mesh && !mesh.userData?.isImplant) {
-      allOriginalQuaternions.left[idx] = mesh.quaternion.clone();
+      allOriginalQuaternions[primaryKey][idx] = mesh.quaternion.clone();
     }
   });
-  meshRefs.current.right.forEach((mesh, idx) => {
-    if (mesh && !mesh.userData?.isImplant) {
-      allOriginalQuaternions.right[idx] = mesh.quaternion.clone();
-    }
-  });
+  if (moveBoth) {
+    const otherKey = primaryKey === 'left' ? 'right' : 'left';
+    meshRefs.current[otherKey].forEach((mesh, idx) => {
+      if (mesh && !mesh.userData?.isImplant) {
+        allOriginalQuaternions[otherKey][idx] = mesh.quaternion.clone();
+      }
+    });
+  }
 
   // Reset ALL bones to their initial positions
   const resetAllBones = () => {
-    meshRefs.current.left.forEach((mesh, idx) => {
-      if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions.left[idx]) {
-        mesh.quaternion.copy(allOriginalQuaternions.left[idx]);
+    meshRefs.current[primaryKey].forEach((mesh, idx) => {
+      if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions[primaryKey][idx]) {
+        mesh.quaternion.copy(allOriginalQuaternions[primaryKey][idx]);
       }
     });
-    meshRefs.current.right.forEach((mesh, idx) => {
-      if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions.right[idx]) {
-        mesh.quaternion.copy(allOriginalQuaternions.right[idx]);
-      }
-    });
+    if (moveBoth) {
+      const otherKey = primaryKey === 'left' ? 'right' : 'left';
+      meshRefs.current[otherKey].forEach((mesh, idx) => {
+        if (mesh && !mesh.userData?.isImplant && allOriginalQuaternions[otherKey][idx]) {
+          mesh.quaternion.copy(allOriginalQuaternions[otherKey][idx]);
+        }
+      });
+    }
     setCurrentRotationAngle(0);
     updateMeasurementsOnBoneMove();
   };
@@ -1168,39 +1093,43 @@ useEffect(() => {
 
     const deltaQuat = new THREE.Quaternion().setFromAxisAngle(rotAxis, deltaAngle);
 
-    const leftMesh = meshRefs.current.left[currentBoneIndex];
-    if (leftMesh && !leftMesh.userData?.isImplant) {
-      // Pure quaternion rotation - geometry is already centered
-      leftMesh.quaternion.premultiply(deltaQuat);
+    const primaryMesh = meshRefs.current[primaryKey][currentBoneIndex];
+    if (primaryMesh && !primaryMesh.userData?.isImplant) {
+      primaryMesh.quaternion.premultiply(deltaQuat);
     }
 
-    const rightMesh = meshRefs.current.right[currentBoneIndex];
-    if (rightMesh && !rightMesh.userData?.isImplant) {
-      rightMesh.quaternion.premultiply(deltaQuat);
+    if (moveBoth) {
+      const otherKey = primaryKey === 'left' ? 'right' : 'left';
+      const otherMesh = meshRefs.current[otherKey][currentBoneIndex];
+      if (otherMesh && !otherMesh.userData?.isImplant) {
+        otherMesh.quaternion.premultiply(deltaQuat);
+      }
     }
 
     updateMeasurementsOnBoneMove();
   };
 
   // Store original state for reset
-  let originalLeftQuaternion: THREE.Quaternion | null = null;
-  let originalRightQuaternion: THREE.Quaternion | null = null;
-  let originalLeftPosition: THREE.Vector3 | null = null;
-  let originalRightPosition: THREE.Vector3 | null = null;
+  let originalPrimaryQuaternion: THREE.Quaternion | null = null;
+  let originalOtherQuaternion: THREE.Quaternion | null = null;
+  let originalPrimaryPosition: THREE.Vector3 | null = null;
+  let originalOtherPosition: THREE.Vector3 | null = null;
 
   // Reset single bone to original rotation (for double-click)
   const resetBone = () => {
     if (currentBoneIndex === null) return;
 
-    const leftMesh = meshRefs.current.left[currentBoneIndex];
-    const rightMesh = meshRefs.current.right[currentBoneIndex];
-
-    if (leftMesh && originalLeftQuaternion) {
-      leftMesh.quaternion.copy(originalLeftQuaternion);
+    const primaryMesh = meshRefs.current[primaryKey][currentBoneIndex];
+    if (primaryMesh && originalPrimaryQuaternion) {
+      primaryMesh.quaternion.copy(originalPrimaryQuaternion);
     }
 
-    if (rightMesh && originalRightQuaternion) {
-      rightMesh.quaternion.copy(originalRightQuaternion);
+    if (moveBoth) {
+      const otherKey = primaryKey === 'left' ? 'right' : 'left';
+      const otherMesh = meshRefs.current[otherKey][currentBoneIndex];
+      if (otherMesh && originalOtherQuaternion) {
+        otherMesh.quaternion.copy(originalOtherQuaternion);
+      }
     }
 
     accumulatedRotation = 0;
@@ -1216,7 +1145,7 @@ useEffect(() => {
   const getRotationDelta = (e: MouseEvent, axis: 'x' | 'y' | 'z'): number => {
     if (!gizmoGroup || !camera) return 0;
 
-    const rect = leftMount.getBoundingClientRect();
+    const rect = mount.getBoundingClientRect();
     const projected = gizmoGroup.position.clone().project(camera);
     const cx = (projected.x + 1) / 2 * rect.width;
     const cy = (-projected.y + 1) / 2 * rect.height;
@@ -1259,7 +1188,7 @@ useEffect(() => {
 
   // Mouse down handler
   const handleMouseDown = (e: MouseEvent) => {
-    const rect = leftMount.getBoundingClientRect();
+    const rect = mount.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
@@ -1280,7 +1209,7 @@ useEffect(() => {
       // Check if clicking on center pivot (to drag or double-click to reset)
       if (dist < screenSize * 0.15) {
         isDraggingPivot = true;
-        leftControlsRef.current && (leftControlsRef.current.enabled = false);
+        ctrlRef.current && (ctrlRef.current.enabled = false);
         e.preventDefault();
         return;
       }
@@ -1298,7 +1227,7 @@ useEffect(() => {
         lastMouseAngle = Math.atan2(my - cy, mx - cx);
         accumulatedRotation = 0;
 
-        leftControlsRef.current && (leftControlsRef.current.enabled = false);
+        ctrlRef.current && (ctrlRef.current.enabled = false);
         e.preventDefault();
         return;
       }
@@ -1308,7 +1237,7 @@ useEffect(() => {
     }
 
     // No gizmo yet - place one on clicked bone
-    const bones = meshRefs.current.left.filter(
+    const bones = meshRefs.current[primaryKey].filter(
       m => m.visible && !m.userData?.isImplant && m.userData?.type !== 'I'
     );
 
@@ -1317,29 +1246,34 @@ useEffect(() => {
     if (hits.length > 0) {
       const hitPoint = hits[0].point.clone();
       const hitMesh = hits[0].object as THREE.Mesh;
-      const boneIdx = meshRefs.current.left.indexOf(hitMesh);
+      const boneIdx = meshRefs.current[primaryKey].indexOf(hitMesh);
 
       currentPivot = hitPoint;
       currentBoneIndex = boneIdx;
 
       // Store original state BEFORE centering
-      originalLeftQuaternion = hitMesh.quaternion.clone();
-      originalLeftPosition = hitMesh.position.clone();
+      originalPrimaryQuaternion = hitMesh.quaternion.clone();
+      originalPrimaryPosition = hitMesh.position.clone();
 
-      const rightMesh = meshRefs.current.right[boneIdx];
-      if (rightMesh) {
-        originalRightQuaternion = rightMesh.quaternion.clone();
-        originalRightPosition = rightMesh.position.clone();
+      if (moveBoth) {
+        const otherKey = primaryKey === 'left' ? 'right' : 'left';
+        const otherMesh = meshRefs.current[otherKey][boneIdx];
+        if (otherMesh) {
+          originalOtherQuaternion = otherMesh.quaternion.clone();
+          originalOtherPosition = otherMesh.position.clone();
+        }
+
+        // Center the other geometry too
+        if (otherMesh && !otherMesh.userData.geometryCentered) {
+          centerGeometry(otherMesh);
+          otherMesh.userData.geometryCentered = true;
+        }
       }
 
       // Center the geometry so rotation happens around true center
       if (!hitMesh.userData.geometryCentered) {
         centerGeometry(hitMesh);
         hitMesh.userData.geometryCentered = true;
-      }
-      if (rightMesh && !rightMesh.userData.geometryCentered) {
-        centerGeometry(rightMesh);
-        rightMesh.userData.geometryCentered = true;
       }
 
       // Place gizmo at the CLICK POINT (where user clicked)
@@ -1355,7 +1289,7 @@ useEffect(() => {
   const handleDoubleClick = (e: MouseEvent) => {
     if (!gizmoGroup || !gizmoCreated) return;
 
-    const rect = leftMount.getBoundingClientRect();
+    const rect = mount.getBoundingClientRect();
     const projected = gizmoGroup.position.clone().project(camera);
     const cx = (projected.x + 1) / 2 * rect.width;
     const cy = (-projected.y + 1) / 2 * rect.height;
@@ -1377,13 +1311,13 @@ useEffect(() => {
   const handleMouseMove = (e: MouseEvent) => {
     // Dragging pivot to reposition
     if (isDraggingPivot && gizmoGroup) {
-      const rect = leftMount.getBoundingClientRect();
+      const rect = mount.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
 
-      const bones = meshRefs.current.left.filter(
+      const bones = meshRefs.current[primaryKey].filter(
         m => m.visible && !m.userData?.isImplant && m.userData?.type !== 'I'
       );
 
@@ -1392,28 +1326,32 @@ useEffect(() => {
       if (hits.length > 0) {
         const newPos = hits[0].point.clone();
         const hitMesh = hits[0].object as THREE.Mesh;
-        const boneIdx = meshRefs.current.left.indexOf(hitMesh);
+        const boneIdx = meshRefs.current[primaryKey].indexOf(hitMesh);
 
         currentBoneIndex = boneIdx;
 
         // Store original state
-        originalLeftQuaternion = hitMesh.quaternion.clone();
-        originalLeftPosition = hitMesh.position.clone();
+        originalPrimaryQuaternion = hitMesh.quaternion.clone();
+        originalPrimaryPosition = hitMesh.position.clone();
 
-        const rightMesh = meshRefs.current.right[boneIdx];
-        if (rightMesh) {
-          originalRightQuaternion = rightMesh.quaternion.clone();
-          originalRightPosition = rightMesh.position.clone();
+        if (moveBoth) {
+          const otherKey = primaryKey === 'left' ? 'right' : 'left';
+          const otherMesh = meshRefs.current[otherKey][boneIdx];
+          if (otherMesh) {
+            originalOtherQuaternion = otherMesh.quaternion.clone();
+            originalOtherPosition = otherMesh.position.clone();
+          }
+
+          if (otherMesh && !otherMesh.userData.geometryCentered) {
+            centerGeometry(otherMesh);
+            otherMesh.userData.geometryCentered = true;
+          }
         }
 
         // Center geometry if not already
         if (!hitMesh.userData.geometryCentered) {
           centerGeometry(hitMesh);
           hitMesh.userData.geometryCentered = true;
-        }
-        if (rightMesh && !rightMesh.userData.geometryCentered) {
-          centerGeometry(rightMesh);
-          rightMesh.userData.geometryCentered = true;
         }
 
         // Move gizmo to where user is dragging (click point)
@@ -1458,25 +1396,25 @@ useEffect(() => {
     activeAxis = null;
     setCurrentRotationAngle(0);
 
-    leftControlsRef.current && (leftControlsRef.current.enabled = true);
+    ctrlRef.current && (ctrlRef.current.enabled = true);
   };
 
   // Set cursor
-  leftMount.style.cursor = 'crosshair';
+  mount.style.cursor = 'crosshair';
 
   // Add event listeners
-  leftMount.addEventListener('mousedown', handleMouseDown);
-  leftMount.addEventListener('dblclick', handleDoubleClick);
+  mount.addEventListener('mousedown', handleMouseDown);
+  mount.addEventListener('dblclick', handleDoubleClick);
   window.addEventListener('mousemove', handleMouseMove);
   window.addEventListener('mouseup', handleMouseUp);
 
   // Cleanup
   return () => {
-    leftMount.removeEventListener('mousedown', handleMouseDown);
-    leftMount.removeEventListener('dblclick', handleDoubleClick);
+    mount.removeEventListener('mousedown', handleMouseDown);
+    mount.removeEventListener('dblclick', handleDoubleClick);
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', handleMouseUp);
-    leftMount.style.cursor = 'default';
+    mount.style.cursor = 'default';
 
     if (gizmoGroup) {
       scene.remove(gizmoGroup);
@@ -1488,7 +1426,7 @@ useEffect(() => {
       });
     }
   };
-}, [inertialRotationMode, updateMeasurementsOnBoneMove]);
+}, [inertialRotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   const applyBoneAndRainbowToAllViewports = () => {
     console.log('🎨 Applying bone preset with OHIF services...');
@@ -1638,19 +1576,24 @@ useEffect(() => {
   const { registerTools } = useThreeDToolsBridge();
 
   useEffect(() => {
+    const useRightPanel = showComparePanel && activePanel === 'right';
+    const rendererRef = useRightPanel ? rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined> : leftRendererRef;
+    const sceneRef = useRightPanel ? rightSceneRef : leftSceneRef;
+    const camRef = useRightPanel ? rightCameraRef : cameraRef;
+
     // Setup distance measurement mode (existing)
     setupMeasurementMode({
-      leftRendererRef,
-      leftSceneRef,
-      cameraRef,
+      leftRendererRef: rendererRef,
+      leftSceneRef: sceneRef,
+      cameraRef: camRef,
       meshRefs
     });
-    
+
     // Setup angle measurement mode (new)
     setupAngleMeasurementMode({
-      leftRendererRef,
-      leftSceneRef,
-      cameraRef,
+      leftRendererRef: rendererRef,
+      leftSceneRef: sceneRef,
+      cameraRef: camRef,
       meshRefs
     });
 
@@ -1658,7 +1601,7 @@ useEffect(() => {
       cleanupMeasurementMode();
       cleanupAngleMeasurementMode();
     };
-  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode]);
+  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel, showComparePanel]);
 
 
 
@@ -2303,7 +2246,7 @@ const createAutomaticSegmentation = async () => {
   }, [servicesManager]);
 
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
-    removalMode,
+    removalMode: removalMode && isPanelActive('left'),
     leftRendererRef,
     leftControlsRef,
     cameraRef,
@@ -2322,7 +2265,7 @@ const createAutomaticSegmentation = async () => {
 
   // Right panel bone removal — active in localOnly or compareMode
   useBoneRemoval({
-    removalMode: removalMode && showComparePanel,
+    removalMode: removalMode && showComparePanel && isPanelActive('right'),
     leftRendererRef: rightRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
     leftControlsRef: rightControlsRef,
     cameraRef: rightCameraRef,
@@ -2359,7 +2302,8 @@ const createAutomaticSegmentation = async () => {
   useBrightness({
     brightnessEnabled,
     brightness,
-    meshRefs
+    meshRefs,
+    activePanel: showComparePanel && activePanel !== 'both' ? activePanel as 'left' | 'right' : undefined,
   });
 
   useSTLLoader({
@@ -2616,7 +2560,7 @@ const createAutomaticSegmentation = async () => {
 
   // Click removal mode
   useEffect(() => {
-    if (!clickRemovalMode) return;
+    if (!clickRemovalMode || !isPanelActive('left')) return;
 
     const leftRenderer = leftRendererRef.current;
     const canvas = leftRenderer?.domElement;
@@ -2706,12 +2650,12 @@ const createAutomaticSegmentation = async () => {
       canvas.style.cursor = 'auto';
       canvas.removeEventListener('click', onClick);
     };
-  }, [clickRemovalMode]);
+  }, [clickRemovalMode, activePanel]);
 
   // Click removal for right panel (Compare Panel) — localOnly or compareMode
   // Bone removal (outline) is handled by the second useBoneRemoval hook above
   useEffect(() => {
-    if (!clickRemovalMode || !showComparePanel) return;
+    if (!clickRemovalMode || !showComparePanel || !isPanelActive('right')) return;
 
     const rightRenderer = rightRendererRef.current;
     const rightCanvas = rightRenderer?.domElement;
@@ -2780,7 +2724,7 @@ const createAutomaticSegmentation = async () => {
         rightControls.enabled = true;
       }
     };
-  }, [clickRemovalMode, showComparePanel]);
+  }, [clickRemovalMode, showComparePanel, activePanel]);
 
   useEffect(() => {
     // Helper to remove existing implant meshes from the scene
@@ -2955,7 +2899,11 @@ const createAutomaticSegmentation = async () => {
   };
 
   const handleScreenshot = () => {
-    handleScreenshotUtil(leftRendererRef.current, leftSceneRef.current, cameraRef.current);
+    const useRightPanel = showComparePanel && activePanel === 'right';
+    const renderer = useRightPanel ? rightRendererRef.current : leftRendererRef.current;
+    const scene = useRightPanel ? rightSceneRef.current : leftSceneRef.current;
+    const cam = useRightPanel ? rightCameraRef.current : cameraRef.current;
+    handleScreenshotUtil(renderer, scene, cam);
   };
 
   const downloadGenerated3D = async () => {
@@ -3392,9 +3340,9 @@ const createAutomaticSegmentation = async () => {
   // Only state values that affect rendering (active/disabled) are in the dep array
   useEffect(() => {
     const toolDefs: ToolDef[] = [
-      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, disabled: loading, onClick: makeOnClick('fileSelect') },
+      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, disabled: loading, onClick: makeOnClick('fileSelect'), hidden: showComparePanel },
       { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
-      { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking') },
+      { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking'), hidden: showComparePanel },
       { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment') },
       { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
       { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
@@ -3407,7 +3355,7 @@ const createAutomaticSegmentation = async () => {
       { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: implantMoveMode, onClick: makeOnClick('implantMove') },
       { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: inertialRotationMode, onClick: makeOnClick('interactiveRotation') },
       { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
-      { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
+      { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge'), hidden: showComparePanel },
       { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
       { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
       { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
