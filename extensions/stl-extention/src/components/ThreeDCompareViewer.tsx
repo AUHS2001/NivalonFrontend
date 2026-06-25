@@ -854,6 +854,48 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     if (isPanelActive('right')) meshRefs.current.right.forEach((mesh, i) => applyColorToMesh(mesh, i));
   }, [labelViewEnabled, LABEL_COLORS, isPanelActive]);
 
+  // Effect to apply/remove label colors when label view is toggled
+  useEffect(() => {
+    // Skip if color mode is enabled (color mode takes priority)
+    if (colorModeRef.current) return;
+
+    const applyLabelColorToMesh = (mesh: THREE.Mesh) => {
+      const material = mesh.material as THREE.MeshPhongMaterial;
+      if (!material || !material.color) return;
+
+      const userData = mesh.userData;
+      const vertebraType = userData?.type;
+
+      // Store original color if not already stored
+      if (!originalColorsRef.current.has(mesh)) {
+        originalColorsRef.current.set(mesh, {
+          color: material.color.getHex(),
+          emissive: material.emissive ? material.emissive.getHex() : 0x000000,
+          emissiveIntensity: material.emissiveIntensity || 0.2,
+        });
+      }
+
+      if (labelViewEnabled) {
+        const color = LABEL_COLORS[vertebraType] || 0x9b59b6;
+        material.color.setHex(color);
+        material.needsUpdate = true;
+      } else {
+        const original = originalColorsRef.current.get(mesh);
+        if (original) {
+          material.color.setHex(original.color);
+          material.needsUpdate = true;
+        }
+      }
+    };
+
+    if (isPanelActive('left')) {
+      meshRefs.current.left.forEach((mesh) => applyLabelColorToMesh(mesh));
+    }
+    if (isPanelActive('right')) {
+      meshRefs.current.right.forEach((mesh) => applyLabelColorToMesh(mesh));
+    }
+  }, [labelViewEnabled, LABEL_COLORS, isPanelActive]);
+
   // ─── Approve handler ───
   const approveEditedFiles = useCallback(() => {
     if (!stlContext?.stlInstanceId) return;
@@ -1363,8 +1405,8 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: makeOnClick('fileSelect'), hidden: true },
       { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
       { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: makeOnClick('linking'), hidden: true },
-      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: makeOnClick('alignment') },
-      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
+      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: makeOnClick('alignment'), hidden: true },
+      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download'), hidden: true },
       { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
       { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
       { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
@@ -1381,7 +1423,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
       { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
       ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
-        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve') }]
+        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve'), hidden: true }]
         : []),
       { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
       { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
@@ -1486,7 +1528,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       {/* ─── Left Panel ─── */}
       <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #ffffff' }}>
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           display: 'flex', alignItems: 'center', gap: '8px',
           marginTop: '12px',
         }}>
@@ -1548,7 +1590,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         {leftError && !leftLoading && (
           <div style={{
             position: 'absolute', top: '50px', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 100, background: 'rgba(255,0,0,0.8)', color: '#fff',
+            zIndex: 10, background: 'rgba(255,0,0,0.8)', color: '#fff',
             padding: '10px 20px', borderRadius: '6px', fontSize: '14px',
           }}>
             {leftError}
@@ -1574,7 +1616,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
         }}
       >
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#ffffff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#ffffff', zIndex: 10,
           display: 'flex', alignItems: 'center', gap: '8px',
           marginTop: '12px',
         }}>
@@ -1687,7 +1729,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
             <button
               onClick={() => fileInputRef.current?.click()}
               style={{
-                position: 'absolute', top: 10, right: 10, zIndex: 100,
+                position: 'absolute', top: 10, right: 10, zIndex: 10,
                 padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
                 backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
                 fontSize: '11px', fontWeight: 500,

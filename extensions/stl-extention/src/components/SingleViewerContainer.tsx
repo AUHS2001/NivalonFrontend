@@ -57,7 +57,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       {/* Start View */}
       <div style={{ flex: 1, position: 'relative', display: 'none'  }}>
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px'
         }}>3D View</div>
@@ -68,7 +68,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       <div style={{ flex: 1, position: 'relative', height: '100%', borderRight: showComparePanel ? '2px solid #ffffff' : 'none' }}>
         {/* 3D View Header with Instructions */}
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -172,7 +172,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
           <button
             onClick={onBrowseLeft}
             style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
               padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
               backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
               fontSize: '11px', fontWeight: 500,
@@ -248,7 +248,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
         display: showComparePanel ? 'block' : 'none',
       }}>
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           display: 'flex', alignItems: 'center', gap: '8px',
           marginTop: '12px',
         }}>
@@ -337,7 +337,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
           <button
             onClick={onBrowseRight}
             style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
               padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
               backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
               fontSize: '11px', fontWeight: 500,

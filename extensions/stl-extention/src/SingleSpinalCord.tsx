@@ -513,12 +513,15 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       }
     };
 
-    // Apply to left meshes (visible view)
-    meshRefs.current.left.forEach((mesh) => applyLabelColorToMesh(mesh));
-    // Also apply to right meshes for consistency
-    meshRefs.current.right.forEach((mesh) => applyLabelColorToMesh(mesh));
+    // Apply to active panel meshes
+    if (isPanelActive('left')) {
+      meshRefs.current.left.forEach((mesh) => applyLabelColorToMesh(mesh));
+    }
+    if (isPanelActive('right')) {
+      meshRefs.current.right.forEach((mesh) => applyLabelColorToMesh(mesh));
+    }
 
-  }, [labelViewEnabled, LABEL_COLORS]);
+  }, [labelViewEnabled, LABEL_COLORS, isPanelActive]);
 
   // Initialize spine labeling hook
   const spineLabeling = useSpineLabeling({
@@ -3343,8 +3346,8 @@ const createAutomaticSegmentation = async () => {
       { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, disabled: loading, onClick: makeOnClick('fileSelect'), hidden: showComparePanel },
       { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
       { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking'), hidden: showComparePanel },
-      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment') },
-      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download') },
+      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment'), hidden: showComparePanel },
+      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download'), hidden: showComparePanel },
       { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
       { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
       { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
@@ -3362,8 +3365,8 @@ const createAutomaticSegmentation = async () => {
       { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
       ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
         ? [
-            { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve') },
-            { id: 'upload', label: 'Upload', icon: 'fa-upload', active: false, disabled: isUploading, onClick: makeOnClick('upload') },
+            { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve'), hidden: showComparePanel },
+            { id: 'upload', label: 'Upload', icon: 'fa-upload', active: false, disabled: isUploading, onClick: makeOnClick('upload'), hidden: showComparePanel },
           ]
         : []),
       { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
