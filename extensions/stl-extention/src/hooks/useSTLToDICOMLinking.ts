@@ -737,7 +737,7 @@ const calculateSpinalPosition = useCallback((meshData: any, viewportHeight: numb
 
     entries.forEach(([vpId, vpInfo]: [string, any]) => {
       const opts = vpInfo?.viewportOptions || {};
-      if (opts.customLayout === 'karachi' || vpId === 'karachiViewport') return;
+      if (opts.customLayout === 'stl' || vpId === 'stlViewport') return;
       try {
         const vp = cornerstoneViewportService.getCornerstoneViewport(vpId);
         if (!vp?.element) return;

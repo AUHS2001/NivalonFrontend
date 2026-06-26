@@ -19,6 +19,10 @@ interface VersionHistoryContextType {
   setIsDownloading: (v: boolean) => void;
   downloadProgress: number;
   setDownloadProgress: (v: number) => void;
+  isUploading: boolean;
+  setIsUploading: (v: boolean) => void;
+  uploadProgress: number;
+  setUploadProgress: (v: number) => void;
 }
 
 const VersionHistoryContext = createContext<VersionHistoryContextType | undefined>(undefined);
@@ -36,6 +40,8 @@ export const VersionHistoryProvider: React.FC<VersionHistoryProviderProps> = ({ 
   const [approveProgress, setApproveProgress] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const toggleVersionHistory = () => {
     setVersionHistoryEnabled(prev => !prev);
@@ -59,6 +65,10 @@ export const VersionHistoryProvider: React.FC<VersionHistoryProviderProps> = ({ 
     setIsDownloading,
     downloadProgress,
     setDownloadProgress,
+    isUploading,
+    setIsUploading,
+    uploadProgress,
+    setUploadProgress,
   };
 
   return (

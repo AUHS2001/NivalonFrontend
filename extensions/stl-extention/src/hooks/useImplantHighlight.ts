@@ -55,8 +55,8 @@ export const useImplantHighlight = ({
     viewportEntries.forEach(([viewportId, viewportInfo]: [string, any]) => {
       const viewportOptions = viewportInfo?.viewportOptions || {};
 
-      // Skip karachi (3D) viewport
-      if (viewportOptions.customLayout === 'karachi' || viewportId === 'karachiViewport') {
+      // Skip STL (3D) viewport
+      if (viewportOptions.customLayout === 'stl' || viewportId === 'stlViewport') {
         return;
       }
 

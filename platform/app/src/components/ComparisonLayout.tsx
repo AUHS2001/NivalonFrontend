@@ -1,4 +1,4 @@
-// KarachiLayout.tsx
+// ComparisonLayout.tsx
 import React from 'react';
 import StlComparison from '../../../../extensions/stl-extention/src/StlComparison';
 

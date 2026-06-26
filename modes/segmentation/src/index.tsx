@@ -100,7 +100,7 @@ function modeFactory({ modeConfiguration }) {
       const { measurementService, toolbarService, toolGroupService, customizationService, hangingProtocolService } =
         servicesManager.services;
 
-      // hangingProtocolService.addProtocol("karachi-layout",karachiHangingProtocol);
+      // hangingProtocolService.addProtocol("stl-layout",stlHangingProtocol);
       measurementService.clearMeasurements();
 
       window.history.pushState(null, '', window.location.href);

@@ -11,7 +11,6 @@ import { extensionManager } from '../../App';
 import { Button, Icons } from '@ohif/ui-next';
 import { log } from 'console';
 
-console.log("afnan here")
 
 const getLoadButton = (onDrop, text, isDir) => {
   return (

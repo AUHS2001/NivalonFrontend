@@ -53,7 +53,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const isLocalCompareLayout = type === 'local-3d-compare';
 
   // Show content if layout type matches or if no layout is set yet (default behavior)
-  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'karachi-layout' || type === 'primary3D' || type === '3d-compare' || type === 'local-3d-compare';
+  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'stl-layout' || type === 'primary3D' || type === '3d-compare' || type === 'local-3d-compare';
 
   return (
     <div style={{

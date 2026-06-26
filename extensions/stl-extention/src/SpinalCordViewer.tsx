@@ -315,7 +315,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         const startCamera = startControlsRef.current.object as THREE.PerspectiveCamera;
         const fov = startCamera.fov * (Math.PI / 180);
         const fitDist = maxDim / (2 * Math.tan(fov / 2));
-        startCamera.position.set(center.x, center.y - fitDist * 1.0, center.z);
+        startCamera.position.set(center.x, center.y - fitDist * 2, center.z);
         startCamera.up.set(0, 0, 1);
         startCamera.lookAt(center);
         startControlsRef.current.target.copy(center);
@@ -375,9 +375,17 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         }
 
         const data = await response.json();
-        console.log('[STL Fetch] Segmentation URLs:', data?.data?.processed?.urls);
-        setTestStls(data?.data?.processed?.urls || []);
-        setVersions(data?.data?.versions || []);
+        const versions = data?.data?.versions || [];
+        setVersions(versions);
+
+        if (versions.length > 0) {
+          const latestVersion = versions.reduce((a, b) => (a.version > b.version ? a : b));
+          console.log('[STL Fetch] Using latest version:', latestVersion.version, latestVersion.urls);
+          setTestStls(latestVersion.urls || []);
+        } else {
+          console.log('[STL Fetch] No versions, using processed URLs:', data?.data?.processed?.urls);
+          setTestStls(data?.data?.processed?.urls || []);
+        }
         versionHistory.getVersionHistory();
       } catch (err: any) {
         setError(err.message);
@@ -570,7 +578,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
         const maxDim = Math.max(size.x, size.y, size.z);
         const fov = startCamera.fov * (Math.PI / 180);
         const fitDist = maxDim / (2 * Math.tan(fov / 2));
-        startCamera.position.set(center.x, center.y - fitDist, center.z);
+        startCamera.position.set(center.x, center.y - fitDist * 2, center.z);
         startCamera.lookAt(center);
         startControls.target.copy(center);
         startControls.update();
@@ -1084,15 +1092,14 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
      { angleMeasurementEnabled === true ? <></> : (
        versionHistoryEnabled ? (
          <>
-           <ControlPanel
-             loading={loading}
-             error={error}
-             approveSuccess={approveSuccess}
+           <ViewerContainer
+             startMountRef={startMountRef}
+             leftMountRef={leftMountRef}
+             rightMountRef={rightMountRef}
+             removalCanvasRef={removalCanvasRef}
+             showRightView={showRightView}
+             show={versionHistoryEnabled}
            >
-             <ImplantViewer
-               showImplantView={showImplantView}
-               onClose={() => {}}
-             />
              <VersionHistory
                versions={versions}
                selectedVersion={versionHistory.selectedVersion}
@@ -1101,15 +1108,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
                onSelectVersion={versionHistory.setSelectedVersion}
                onRestoreVersion={versionHistory.restoreVersion}
              />
-           </ControlPanel>
-           <ViewerContainer
-             startMountRef={startMountRef}
-             leftMountRef={leftMountRef}
-             rightMountRef={rightMountRef}
-             removalCanvasRef={removalCanvasRef}
-             showRightView={showRightView}
-             show={versionHistoryEnabled}
-           />
+           </ViewerContainer>
          </>
        ) : (
          <ViewerContainer

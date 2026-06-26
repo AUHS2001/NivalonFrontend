@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLabelingViewContext } from '../context/LabelingViewContext';
+import { useActivePanelContext } from '../context/ActivePanelContext';
 
 interface SingleViewerContainerProps {
   startMountRef: React.RefObject<HTMLDivElement>;
@@ -20,6 +21,8 @@ interface SingleViewerContainerProps {
   onBrowseRight?: () => void;
   rightHasModel?: boolean;
   rightLoading?: boolean;
+  syncCameras?: boolean;
+  onToggleSync?: () => void;
 }
 
 export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
@@ -41,9 +44,12 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
   onBrowseRight,
   rightHasModel = false,
   rightLoading = false,
+  syncCameras = false,
+  onToggleSync,
 }) => {
 
   const { showRightView, onToggleRightView } = useLabelingViewContext();
+  const { togglePanel, isPanelActive } = useActivePanelContext();
   const showComparePanel = localOnly || compareMode;
 
   return (
@@ -51,7 +57,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       {/* Start View */}
       <div style={{ flex: 1, position: 'relative', display: 'none'  }}>
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
           fontSize: '12px', marginTop: '12px'
         }}>3D View</div>
@@ -62,13 +68,27 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       <div style={{ flex: 1, position: 'relative', height: '100%', borderRight: showComparePanel ? '2px solid #ffffff' : 'none' }}>
         {/* 3D View Header with Instructions */}
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px'
         }}>
-          <div style={{
-            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-            fontSize: '12px', width: 'fit-content'
-          }}>3D View</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+              fontSize: '12px', width: 'fit-content'
+            }}>3D View</div>
+            {showComparePanel && (
+              <div
+                onClick={() => togglePanel('left')}
+                style={{
+                  width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+                  border: `2px solid ${isPanelActive('left') ? '#00ffff' : '#555'}`,
+                  backgroundColor: isPanelActive('left') ? '#00ffff' : 'transparent',
+                  transition: 'all 0.15s ease',
+                }}
+                title={isPanelActive('left') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+              />
+            )}
+          </div>
 
           {/* Interactive Rotation Instructions */}
           {inertialRotationMode && (
@@ -152,7 +172,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
           <button
             onClick={onBrowseLeft}
             style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
               padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
               backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
               fontSize: '11px', fontWeight: 500,
@@ -228,10 +248,41 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
         display: showComparePanel ? 'block' : 'none',
       }}>
         <div style={{
-          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
-          backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
-          fontSize: '12px', marginTop: '12px'
-        }}>Compare Panel</div>
+          position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '12px',
+        }}>
+          <div style={{
+            backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
+            fontSize: '12px',
+          }}>Compare Panel</div>
+          <div
+            onClick={() => togglePanel('right')}
+            style={{
+              width: '14px', height: '14px', borderRadius: '50%', cursor: 'pointer',
+              border: `2px solid ${isPanelActive('right') ? '#00ffff' : '#555'}`,
+              backgroundColor: isPanelActive('right') ? '#00ffff' : 'transparent',
+              transition: 'all 0.15s ease',
+            }}
+            title={isPanelActive('right') ? 'Tools active on this panel' : 'Tools inactive on this panel'}
+          />
+          {onToggleSync && (
+            <button
+              onClick={onToggleSync}
+              style={{
+                padding: '4px 10px', borderRadius: '4px', fontSize: '11px',
+                border: syncCameras ? '1px solid #4FC3F7' : '1px solid #334',
+                backgroundColor: syncCameras ? 'rgba(79,195,247,0.2)' : '#1a1f2e',
+                color: syncCameras ? '#4FC3F7' : '#aab',
+                cursor: 'pointer', fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}
+            >
+              <i className="fas fa-sync-alt" style={{ fontSize: '10px' }} />
+              Sync
+            </button>
+          )}
+        </div>
 
         {/* Loading overlay for right panel */}
         {showComparePanel && rightLoading && (
@@ -286,7 +337,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
           <button
             onClick={onBrowseRight}
             style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 100,
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
               padding: '6px 14px', borderRadius: '4px', border: '1px solid #334',
               backgroundColor: '#1a1f2e', color: '#aab', cursor: 'pointer',
               fontSize: '11px', fontWeight: 500,

@@ -105,10 +105,10 @@ function ToolbarLayoutSelectorWithServices({
           },
         },
         {
-          title: 'Karachi',
-          icon: 'layout-three-row', // You can use a custom icon if available
+          title: 'STL',
+          icon: 'layout-three-row',
           commandOptions: {
-            protocolId: 'karachi-layout',
+            protocolId: 'stl-layout',
           },
         },
         {
@@ -132,7 +132,6 @@ function ToolbarLayoutSelectorWithServices({
   // Unified selection handler that dispatches to the appropriate command
   const handleSelectionChange = useCallback(
     (commandOptions, isPreset) => {
-      console.log(commandOptions,"afnan called");
       localStorage.setItem('myLayout', commandOptions.protocolId)
 
       if (commandOptions && commandOptions.customLayout === '3d-compare') {
@@ -185,41 +184,39 @@ function ToolbarLayoutSelectorWithServices({
         return;
       }
 
-      if (commandOptions && commandOptions.customLayout === 'karachi') {
-        console.log('Applying Karachi layout');
+      if (commandOptions && commandOptions.customLayout === 'stl') {
+        console.log('Applying STL layout');
 
         try {
-          // Create a proper findOrCreateViewport function for Karachi layout
           const findOrCreateViewport = (index) => {
             return {
               displaySetInstanceUIDs: [],
               displaySetOptions: [],
               viewportOptions: {
-                viewportId: `karachiViewport-${index}`,
-                customLayout: 'karachi'
+                viewportId: `stlViewport-${index}`,
+                customLayout: 'stl'
               }
             };
           };
 
-          // Set Karachi layout with proper findOrCreateViewport
           viewportGridService.setLayout({
             numRows: 1,
             numCols: 1,
             layoutType: 'grid',
             layoutOptions: [],
             findOrCreateViewport: findOrCreateViewport,
-            activeViewportId: 'karachiViewport-0',
+            activeViewportId: 'stlViewport-0',
             isHangingProtocolLayout: false,
           });
         } catch (error) {
-          console.error('Error applying Karachi layout:', error);
+          console.error('Error applying STL layout:', error);
         }
         return;
       }
 
 
       if (isPreset) {
-        // If we're leaving a custom layout (karachi, 3d-compare, comparison),
+        // If we're leaving a custom layout (stl, 3d-compare, comparison),
         // force a reset so reuseCachedLayouts doesn't cache corrupt empty-UID state
         const currentState = viewportGridService.getState();
         const currentViewports = currentState?.viewports;
@@ -227,7 +224,7 @@ function ToolbarLayoutSelectorWithServices({
         if (currentViewports) {
           currentViewports.forEach((vp) => {
             const cl = vp?.viewportOptions?.customLayout;
-            if (cl === 'karachi' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison') {
+            if (cl === 'stl' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison') {
               leavingCustomLayout = true;
             }
           });
