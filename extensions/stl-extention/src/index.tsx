@@ -159,8 +159,14 @@ export default {
     const actions = {
       toggleSpineLabelOverlayAction: () => {
         console.log('toggleSpineLabelOverlay command fired');
-        // Allow toggle even without STL data — showSpineLabelOverlay will restore from cache if available
-        toggleSpineLabelOverlay(servicesManager);
+        try {
+          // Allow toggle even without STL data — showSpineLabelOverlay will restore from cache if available
+          toggleSpineLabelOverlay(servicesManager);
+          // Also dispatch CustomEvent so SpineLabelOverlayContext stays in sync
+          window.dispatchEvent(new CustomEvent('spineLabelOverlayToggle'));
+        } catch (err) {
+          console.error('toggleSpineLabelOverlay error:', err);
+        }
       },
     };
     const definitions = {

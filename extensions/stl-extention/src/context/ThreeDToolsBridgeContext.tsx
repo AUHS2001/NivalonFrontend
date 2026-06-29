@@ -9,6 +9,7 @@ export interface ToolDef {
   danger?: boolean;
   hidden?: boolean;
   onClick: () => void;
+  children?: ToolDef[];
 }
 
 interface ThreeDToolsBridgeContextType {

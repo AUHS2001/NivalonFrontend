@@ -58,9 +58,9 @@ function getVertebraInfo(fileName: string, url: string) {
 function createLeftMaterial(organType: string) {
   if (organType === 'I') {
     return new THREE.MeshPhongMaterial({
-      color: 0x00ff00, specular: 0x111111, shininess: 30, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.9,
-      emissive: new THREE.Color(0x00ff00), emissiveIntensity: 0.3,
+      color: 0x85CFF9, specular: 0x444444, shininess: 60, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.95,
+      emissive: new THREE.Color(0x85CFF9), emissiveIntensity: 0.08,
     });
   }
   if (organType === 'A') {
@@ -444,6 +444,8 @@ const LocalThreeDCompareViewer: React.FC<LocalThreeDCompareViewerProps> = ({
     rotation: () => {},
     implantMove: () => {},
     interactiveRotation: () => {},
+    smooth: () => {},
+    wrap: () => {},
     merge: () => {},
     clickRemoval: () => {},
     labelView: () => {},
@@ -461,31 +463,46 @@ const LocalThreeDCompareViewer: React.FC<LocalThreeDCompareViewerProps> = ({
   useEffect(() => {
     const noop = makeOnClick;
     const toolDefs: ToolDef[] = [
-      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: noop('fileSelect') },
-      { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: false, danger: true, onClick: noop('boneRemoval') },
-      { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: noop('linking') },
-      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: noop('alignment') },
-      { id: 'download', label: 'Download', icon: 'fa-download', active: false, onClick: noop('download') },
-      { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: false, onClick: noop('brightness') },
-      { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: false, onClick: noop('measurement') },
-      { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: false, onClick: noop('angle') },
-      { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: false, onClick: noop('horizontal') },
-      { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: false, onClick: noop('vertical') },
-      { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: false, onClick: noop('longitudinal') },
-      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: false, onClick: noop('rotation') },
-      { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: false, onClick: noop('implantMove') },
-      { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: false, onClick: noop('interactiveRotation') },
-      { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: noop('screenshot') },
-      { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: noop('merge') },
-      { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: false, danger: true, onClick: noop('clickRemoval') },
-      { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: false, onClick: noop('labelView') },
-      { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: false, onClick: noop('spineLabeling') },
-      { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: false, onClick: noop('colorMode') },
-      ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
-        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, onClick: noop('approve') }]
-        : []),
-      { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: false, onClick: noop('versionHistory') },
-      { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: false, onClick: noop('implant') },
+      { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: noop('fileSelect'), hidden: true },
+      { id: 'file', label: 'File', icon: 'fa-folder', active: false, onClick: () => {}, children: [
+        { id: 'upload', label: 'Upload', icon: 'fa-upload', active: false, onClick: noop('upload'), hidden: !JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve') },
+        { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, onClick: noop('approve'), hidden: !JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve') },
+        { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: false, onClick: noop('implant') },
+        { id: 'download', label: 'Download', icon: 'fa-download', active: false, onClick: noop('download') },
+        { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: noop('screenshot') },
+        { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: false, onClick: noop('versionHistory') },
+      ]},
+      { id: 'removing', label: 'Removing', icon: 'fa-eraser', active: false, onClick: () => {}, children: [
+        { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: false, danger: true, onClick: noop('boneRemoval') },
+        { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: false, danger: true, onClick: noop('clickRemoval') },
+      ]},
+      { id: 'movements', label: 'Movements', icon: 'fa-arrows-alt', active: false, onClick: () => {}, children: [
+        { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: false, onClick: noop('horizontal') },
+        { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: false, onClick: noop('vertical') },
+        { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: false, onClick: noop('longitudinal') },
+        { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: false, onClick: noop('interactiveRotation') },
+        { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: false, onClick: noop('implantMove') },
+      ]},
+      { id: 'calculations', label: 'Calculations', icon: 'fa-calculator', active: false, onClick: () => {}, children: [
+        { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: false, onClick: noop('measurement') },
+        { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: false, onClick: noop('angle') },
+      ]},
+      { id: 'smoothing', label: 'Smoothing', icon: 'fa-wave-square', active: false, onClick: () => {}, children: [
+        { id: 'smooth', label: 'Smooth', icon: 'fa-bezier-curve', active: false, onClick: noop('smooth') },
+        { id: 'wrap', label: 'Wrap', icon: 'fa-border-all', active: false, onClick: noop('wrap') },
+      ]},
+      { id: 'labeling', label: 'Labeling', icon: 'fa-tags', active: false, onClick: () => {}, children: [
+        { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: false, onClick: noop('labelView') },
+        { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: false, onClick: noop('spineLabeling') },
+        { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: false, onClick: noop('colorMode') },
+        { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: false, onClick: noop('brightness') },
+      ]},
+      { id: 'connections', label: 'Connections', icon: 'fa-project-diagram', active: false, onClick: () => {}, children: [
+        { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: noop('linking') },
+        { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: noop('alignment') },
+        { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: noop('merge') },
+      ]},
+      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: false, onClick: noop('rotation'), hidden: true },
       { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: true, onClick: noop('undo'), hidden: true },
     ];
     registerTools(toolDefs);

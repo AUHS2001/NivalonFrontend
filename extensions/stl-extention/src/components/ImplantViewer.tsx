@@ -162,12 +162,12 @@ export const ImplantViewer: React.FC<ImplantViewerProps> = ({
 
       // Create material
       const material = new THREE.MeshPhongMaterial({
-        color: 0x00ff00,
-        specular: 0x000000,
-        shininess: 0,
+        color: 0x85CFF9,
+        specular: 0x444444,
+        shininess: 60,
         side: THREE.DoubleSide,
-        emissive: brightnessEnabled ? new THREE.Color(0x00ff00) : new THREE.Color(0x00ff00),
-        emissiveIntensity: brightnessEnabled ? brightness * 0.5 : 0,
+        emissive: new THREE.Color(0x85CFF9),
+        emissiveIntensity: brightnessEnabled ? brightness * 0.3 : 0.08,
       });
 
       // Create mesh
@@ -217,8 +217,8 @@ export const ImplantViewer: React.FC<ImplantViewerProps> = ({
     if (!meshRef.current || !meshRef.current.material) return;
 
     const material = meshRef.current.material as THREE.MeshPhongMaterial;
-    material.emissive = brightnessEnabled ? new THREE.Color(0x00ff00) : new THREE.Color(0x00ff00);
-    material.emissiveIntensity = brightnessEnabled ? brightness * 0.5 : 0;
+    material.emissive = new THREE.Color(0x85CFF9);
+    material.emissiveIntensity = brightnessEnabled ? brightness * 0.3 : 0.08;
     material.needsUpdate = true;
   }, [brightnessEnabled, brightness]);
 

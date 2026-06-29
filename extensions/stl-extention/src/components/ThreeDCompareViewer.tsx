@@ -25,6 +25,8 @@ import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { useImplantContext } from '../context/ImplantContext';
 import { useVersionHistory } from '../hooks/useVersionHistory';
 import { useActivePanelContext } from '../context/ActivePanelContext';
+import SmoothDialog from './SmoothDialog';
+import { laplacianSmooth } from '../utils/smoothGeometry';
 
 interface ThreeDCompareViewerProps {
   servicesManager: any;
@@ -76,9 +78,9 @@ function getVertebraInfo(fileName: string, url: string) {
 function createLeftMaterial(organType: string) {
   if (organType === 'I') {
     return new THREE.MeshPhongMaterial({
-      color: 0x00ff00, specular: 0x111111, shininess: 30, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.9,
-      emissive: new THREE.Color(0x00ff00), emissiveIntensity: 0.3,
+      color: 0x85CFF9, specular: 0x444444, shininess: 60, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.95,
+      emissive: new THREE.Color(0x85CFF9), emissiveIntensity: 0.08,
     });
   }
   if (organType === 'A') {
@@ -301,6 +303,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   const [implantMoveMode, setImplantMoveMode] = useState(false);
   const [inertialRotationMode, setInertialRotationMode] = useState(false);
   const [colorModeEnabled, setColorModeEnabled] = useState(false);
+  const [showSmoothDialog, setShowSmoothDialog] = useState(false);
   const colorModeRef = useRef(false);
   const originalColorsRef = useRef<Map<THREE.Mesh, { color: number; emissive: number; emissiveIntensity: number }>>(new Map());
   const [showMerge, setShowMerge] = useState(false);
@@ -1384,6 +1387,8 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     rotation: handleToggleRotation2,
     implantMove: handleToggleImplantMove,
     interactiveRotation: handleToggleInertialRotation,
+    smooth: () => setShowSmoothDialog(true),
+    wrap: () => {},  // Disabled in compare mode
     screenshot: handleScreenshot,
     linking: () => {},
     alignment: () => {},
@@ -1403,30 +1408,45 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
   useEffect(() => {
     const toolDefs: ToolDef[] = [
       { id: 'fileSelect', label: 'File Select', icon: 'fa-folder-open', active: false, onClick: makeOnClick('fileSelect'), hidden: true },
-      { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
-      { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: makeOnClick('linking'), hidden: true },
-      { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: makeOnClick('alignment'), hidden: true },
-      { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download'), hidden: true },
-      { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
-      { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
-      { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
-      { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: rotationMode, onClick: makeOnClick('horizontal') },
-      { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: rotationMode1, onClick: makeOnClick('vertical') },
-      { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: rotationMode3, onClick: makeOnClick('longitudinal') },
-      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation') },
-      { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: implantMoveMode, onClick: makeOnClick('implantMove') },
-      { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: inertialRotationMode, onClick: makeOnClick('interactiveRotation') },
-      { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
-      { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: makeOnClick('merge'), hidden: true },
-      { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
-      { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
-      { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
-      { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
-      ...(JSON.parse(localStorage.getItem('userPermissions') || '[]').includes('case:approve')
-        ? [{ id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve'), hidden: true }]
-        : []),
-      { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
-      { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
+      { id: 'file', label: 'File', icon: 'fa-folder', active: showImplantView || versionHistoryEnabled, onClick: () => {}, children: [
+        { id: 'upload', label: 'Upload', icon: 'fa-upload', active: false, disabled: false, onClick: makeOnClick('upload'), hidden: true },
+        { id: 'approve', label: 'Approve', icon: 'fa-check', active: false, disabled: isApproving, onClick: makeOnClick('approve'), hidden: true },
+        { id: 'implant', label: 'Implant', icon: 'fa-plus-square', active: showImplantView, onClick: makeOnClick('implant') },
+        { id: 'download', label: 'Download', icon: 'fa-download', active: false, disabled: isDownloading, onClick: makeOnClick('download'), hidden: true },
+        { id: 'screenshot', label: 'Screenshot', icon: 'fa-camera', active: false, onClick: makeOnClick('screenshot') },
+        { id: 'versionHistory', label: 'Version History', icon: 'fa-history', active: versionHistoryEnabled, onClick: makeOnClick('versionHistory') },
+      ]},
+      { id: 'removing', label: 'Removing', icon: 'fa-eraser', active: removalMode || clickRemovalMode, danger: removalMode || clickRemovalMode, onClick: () => {}, children: [
+        { id: 'boneRemoval', label: 'Bone Removal', icon: 'fa-cut', active: removalMode, danger: true, onClick: makeOnClick('boneRemoval') },
+        { id: 'clickRemoval', label: 'Click Removal', icon: 'fa-trash', active: clickRemovalMode, danger: true, onClick: makeOnClick('clickRemoval') },
+      ]},
+      { id: 'movements', label: 'Movements', icon: 'fa-arrows-alt', active: rotationMode || rotationMode1 || rotationMode3 || inertialRotationMode || implantMoveMode, onClick: () => {}, children: [
+        { id: 'horizontal', label: 'Horizontal', icon: 'fa-arrows-alt-h', active: rotationMode, onClick: makeOnClick('horizontal') },
+        { id: 'vertical', label: 'Vertical', icon: 'fa-arrows-alt-v', active: rotationMode1, onClick: makeOnClick('vertical') },
+        { id: 'longitudinal', label: 'Longitudinal', icon: 'fa-expand-arrows-alt', active: rotationMode3, onClick: makeOnClick('longitudinal') },
+        { id: 'interactiveRotation', label: 'Interactive Rotation', icon: 'fa-cube', active: inertialRotationMode, onClick: makeOnClick('interactiveRotation') },
+        { id: 'implantMove', label: 'Implant Move', icon: 'fa-hand-rock', active: implantMoveMode, onClick: makeOnClick('implantMove') },
+      ]},
+      { id: 'calculations', label: 'Calculations', icon: 'fa-calculator', active: measurementEnabled || angleMeasurementEnabled, onClick: () => {}, children: [
+        { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
+        { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
+      ]},
+      { id: 'smoothing', label: 'Smoothing', icon: 'fa-wave-square', active: showSmoothDialog, onClick: () => {}, children: [
+        { id: 'smooth', label: 'Smooth', icon: 'fa-bezier-curve', active: showSmoothDialog, onClick: makeOnClick('smooth') },
+        { id: 'wrap', label: 'Wrap', icon: 'fa-border-all', active: false, disabled: true, onClick: makeOnClick('wrap') },
+      ]},
+      { id: 'labeling', label: 'Labeling', icon: 'fa-tags', active: labelViewEnabled || spineLabelingMode || colorModeEnabled || brightnessEnabled, onClick: () => {}, children: [
+        { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
+        { id: 'spineLabeling', label: 'Spine Labeling', icon: 'fa-tag', active: spineLabelingMode, onClick: makeOnClick('spineLabeling') },
+        { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
+        { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
+      ]},
+      { id: 'connections', label: 'Connections', icon: 'fa-project-diagram', active: false, onClick: () => {}, hidden: true, children: [
+        { id: 'linking', label: 'Linking', icon: 'fa-link', active: false, onClick: makeOnClick('linking') },
+        { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: false, onClick: makeOnClick('alignment') },
+        { id: 'merge', label: 'Merge', icon: 'fa-object-group', active: false, onClick: makeOnClick('merge') },
+      ]},
+      { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation'), hidden: true },
       { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: true, onClick: makeOnClick('undo'), hidden: true },
     ];
     registerTools(toolDefs);
@@ -1434,7 +1454,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
     removalMode, clickRemovalMode, brightnessEnabled, measurementEnabled,
     angleMeasurementEnabled, isDownloading,
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
-    implantMoveMode, inertialRotationMode, colorModeEnabled,
+    implantMoveMode, inertialRotationMode, showSmoothDialog, colorModeEnabled,
     labelViewEnabled, spineLabelingMode, isApproving, versionHistoryEnabled, showImplantView,
     registerTools, makeOnClick,
   ]);
@@ -1518,6 +1538,39 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       rightCtrl.removeEventListener('change', onRightChange);
     };
   }, [syncCameras]);
+
+  // ─── Smooth dialog helpers ───
+  const smoothMeshNames = React.useMemo(() => {
+    return meshRefs.current.left.map((mesh, i) => ({
+      index: i,
+      name: mesh.userData.fullName || mesh.userData.fileName || `STL ${i + 1}`,
+    }));
+  }, [meshRefs.current.left.length]);
+
+  const handleApplySmooth = useCallback(
+    async ({ iterations, lambda, selectedIndices, onProgress }: { iterations: number; lambda: number; selectedIndices: number[]; onProgress: (p: number) => void }) => {
+      const totalMeshes = selectedIndices.length;
+      let completed = 0;
+      for (const idx of selectedIndices) {
+        const leftMesh = meshRefs.current.left[idx];
+        const rightMesh = meshRefs.current.right[idx];
+        const perMeshProgress = (p: number) => {
+          const base = (completed / totalMeshes) * 100;
+          const portion = (p / 100) * (1 / totalMeshes) * 100;
+          onProgress(Math.round(base + portion));
+        };
+        if (leftMesh) {
+          await laplacianSmooth(leftMesh.geometry, iterations, lambda, perMeshProgress);
+        }
+        if (rightMesh) {
+          await laplacianSmooth(rightMesh.geometry, iterations, lambda);
+        }
+        completed++;
+        onProgress(Math.round((completed / totalMeshes) * 100));
+      }
+    },
+    []
+  );
 
   return (
     <div style={{
@@ -1847,6 +1900,13 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
           reader.readAsArrayBuffer(file);
           e.target.value = '';
         }}
+      />
+
+      <SmoothDialog
+        isOpen={showSmoothDialog}
+        onClose={() => setShowSmoothDialog(false)}
+        meshNames={smoothMeshNames}
+        onApply={handleApplySmooth}
       />
     </div>
   );
