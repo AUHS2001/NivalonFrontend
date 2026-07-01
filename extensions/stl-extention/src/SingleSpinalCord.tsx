@@ -205,7 +205,9 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [rightLoading, setRightLoading] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
   const [clickRemovalUndoStack, setClickRemovalUndoStack] = useState<RemovalUndoItem[]>([]);
-  const undoOrderRef = useRef<('bone' | 'click')[]>([]);
+  const undoOrderRef = useRef<('bone' | 'click' | 'movement')[]>([]);
+  const movementUndoStackRef = useRef<Array<{ left: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }>; right: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }> }>>([]);
+  const [movementUndoCount, setMovementUndoCount] = useState(0);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
@@ -574,6 +576,25 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     clearAngleMeasurements
   } = useAngleMeasurementContext();
 
+  // Snapshot all mesh transforms for movement undo
+  const snapshotMeshTransforms = useCallback(() => {
+    const snap = { left: [] as Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }>, right: [] as Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }> };
+    meshRefs.current.left.forEach(m => snap.left.push({ pos: m.position.clone(), quat: m.quaternion.clone() }));
+    meshRefs.current.right.forEach(m => snap.right.push({ pos: m.position.clone(), quat: m.quaternion.clone() }));
+    return snap;
+  }, []);
+
+  const restoreMeshTransforms = useCallback((snap: { left: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }>; right: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }> }) => {
+    snap.left.forEach((s, i) => {
+      const m = meshRefs.current.left[i];
+      if (m) { m.position.copy(s.pos); m.quaternion.copy(s.quat); }
+    });
+    snap.right.forEach((s, i) => {
+      const m = meshRefs.current.right[i];
+      if (m) { m.position.copy(s.pos); m.quaternion.copy(s.quat); }
+    });
+  }, []);
+
   useEffect(() => {
     const useRight = showComparePanel && activePanel === 'right';
     const mount = useRight ? rightMountRef.current : leftMountRef.current;
@@ -586,6 +607,9 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    let preMovementSnap: ReturnType<typeof snapshotMeshTransforms> | null = null;
+    let didMove = false;
+
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode) return;
       const rect = mount.getBoundingClientRect();
@@ -595,6 +619,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(nonImplantMeshes);
       if (intersects.length > 0) {
+        preMovementSnap = snapshotMeshTransforms();
+        didMove = false;
         ctrlRefH.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
@@ -607,6 +633,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const deltaX = event.clientX - initialMousePos.current.x;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const horizontalAmount = -deltaX * 0.5;
+      if (horizontalAmount !== 0) didMove = true;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
         const mesh = meshRefs.current[primaryKey][i];
         if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
@@ -620,6 +647,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     };
 
     const onMouseUp = () => {
+      if (didMove && preMovementSnap) {
+        movementUndoStackRef.current.push(preMovementSnap);
+        undoOrderRef.current.push('movement');
+        setMovementUndoCount(c => c + 1);
+      }
+      preMovementSnap = null;
+      didMove = false;
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
       ctrlRefH.current!.enabled = true;
@@ -648,6 +682,9 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    let preMovementSnap: ReturnType<typeof snapshotMeshTransforms> | null = null;
+    let didMove = false;
+
     const onMouseDown = (event: MouseEvent) => {
       if (!rotationMode1) return;
       const rect = mount.getBoundingClientRect();
@@ -657,6 +694,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
       const intersects = raycaster.intersectObjects(nonImplantMeshes);
       if (intersects.length > 0) {
+        preMovementSnap = snapshotMeshTransforms();
+        didMove = false;
         ctrlRefV.current!.enabled = false;
         isRotatingRef.current = true;
         initialMousePos.current = { x: event.clientX, y: event.clientY };
@@ -669,6 +708,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       const deltaY = event.clientY - initialMousePos.current.y;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
       const verticalAmount = -deltaY * 0.5;
+      if (verticalAmount !== 0) didMove = true;
       for (let i = selectedMeshIndex.current; i >= 0; i--) {
         const mesh = meshRefs.current[primaryKey][i];
         if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
@@ -682,6 +722,13 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     };
 
     const onMouseUp = () => {
+      if (didMove && preMovementSnap) {
+        movementUndoStackRef.current.push(preMovementSnap);
+        undoOrderRef.current.push('movement');
+        setMovementUndoCount(c => c + 1);
+      }
+      preMovementSnap = null;
+      didMove = false;
       isRotatingRef.current = false;
       selectedMeshIndex.current = null;
       ctrlRefV.current!.enabled = true;
@@ -773,6 +820,9 @@ useEffect(() => {
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
+  let preMovementSnap: ReturnType<typeof snapshotMeshTransforms> | null = null;
+  let didMove = false;
+
   const onMouseDown = (event: MouseEvent) => {
     if (!rotationMode3) return;
     const rect = mount.getBoundingClientRect();
@@ -782,6 +832,8 @@ useEffect(() => {
     const nonImplantMeshes = meshRefs.current[primaryKey].filter(m => !m.userData?.isImplant && m.userData?.type !== 'I');
     const intersects = raycaster.intersectObjects(nonImplantMeshes);
     if (intersects.length > 0) {
+      preMovementSnap = snapshotMeshTransforms();
+      didMove = false;
       ctrlRefFB.current!.enabled = false;
       isRotatingRef.current = true;
       initialMousePos.current = { x: event.clientX, y: event.clientY };
@@ -794,6 +846,7 @@ useEffect(() => {
     const deltaY = event.clientY - initialMousePos.current.y;
     initialMousePos.current = { x: event.clientX, y: event.clientY };
     const depthAmount = deltaY * 0.5;
+    if (depthAmount !== 0) didMove = true;
     for (let i = selectedMeshIndex.current; i >= 0; i--) {
       const mesh = meshRefs.current[primaryKey][i];
       if (mesh?.userData?.isImplant || mesh?.userData?.type === 'I') continue;
@@ -807,6 +860,13 @@ useEffect(() => {
   };
 
   const onMouseUp = () => {
+    if (didMove && preMovementSnap) {
+      movementUndoStackRef.current.push(preMovementSnap);
+      undoOrderRef.current.push('movement');
+      setMovementUndoCount(c => c + 1);
+    }
+    preMovementSnap = null;
+    didMove = false;
     isRotatingRef.current = false;
     selectedMeshIndex.current = null;
     ctrlRefFB.current!.enabled = true;
@@ -835,6 +895,8 @@ useEffect(() => {
   let isDragging = false;
   let lastX = 0;
   let lastY = 0;
+  let preMovementSnap: ReturnType<typeof snapshotMeshTransforms> | null = null;
+  let didMove = false;
 
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
@@ -856,6 +918,8 @@ useEffect(() => {
     if (!primaryImplant) return;
     const intersects = raycaster.intersectObject(primaryImplant);
     if (intersects.length > 0) {
+      preMovementSnap = snapshotMeshTransforms();
+      didMove = false;
       isDragging = true;
       lastX = event.clientX;
       lastY = event.clientY;
@@ -871,6 +935,7 @@ useEffect(() => {
     const deltaY = event.clientY - lastY;
     lastX = event.clientX;
     lastY = event.clientY;
+    if (deltaX !== 0 || deltaY !== 0) didMove = true;
     const { primaryImplant, otherImplant } = getImplantMeshes();
     if (event.shiftKey) {
       const rotateSpeed = 0.03;
@@ -884,6 +949,13 @@ useEffect(() => {
   };
 
   const onMouseUp = () => {
+    if (didMove && preMovementSnap) {
+      movementUndoStackRef.current.push(preMovementSnap);
+      undoOrderRef.current.push('movement');
+      setMovementUndoCount(c => c + 1);
+    }
+    preMovementSnap = null;
+    didMove = false;
     isDragging = false;
     if (ctrlRefIM.current) ctrlRefIM.current.enabled = true;
   };
@@ -922,6 +994,8 @@ useEffect(() => {
   let currentBoneIndex: number | null = null;
   let accumulatedRotation = 0;
   let gizmoCreated = false;
+  let preRotationSnap: ReturnType<typeof snapshotMeshTransforms> | null = null;
+  let didRotate = false;
 
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
@@ -1266,6 +1340,8 @@ useEffect(() => {
 
         // Clicked on a ring - start rotating on that axis
         if (hitObj.userData.axis) {
+          preRotationSnap = snapshotMeshTransforms();
+          didRotate = false;
           activeAxis = hitObj.userData.axis;
           isRotating = true;
 
@@ -1378,6 +1454,7 @@ useEffect(() => {
     if (isRotating && activeAxis) {
       // Get rotation amount based on angular movement
       const delta = getRotationDelta(e, activeAxis);
+      if (delta !== 0) didRotate = true;
 
       // Apply rotation directly - no smoothing, no momentum
       rotateBone(delta, activeAxis);
@@ -1399,6 +1476,15 @@ useEffect(() => {
       (rotationArc.material as THREE.Material).dispose();
       rotationArc = null;
     }
+
+    // Push to movement undo stack if rotation occurred
+    if (didRotate && preRotationSnap) {
+      movementUndoStackRef.current.push(preRotationSnap);
+      undoOrderRef.current.push('movement');
+      setMovementUndoCount(c => c + 1);
+    }
+    preRotationSnap = null;
+    didRotate = false;
 
     // Reset state - rotation stops immediately
     isRotating = false;
@@ -3244,6 +3330,14 @@ const createAutomaticSegmentation = async () => {
     }
   };
 
+  const undoMovement = () => {
+    const snap = movementUndoStackRef.current.pop();
+    if (!snap) return;
+    restoreMeshTransforms(snap);
+    setMovementUndoCount(c => Math.max(0, c - 1));
+    updateMeasurementsOnBoneMove();
+  };
+
   const handleUnifiedUndo = () => {
     const order = undoOrderRef.current;
     if (order.length === 0) return;
@@ -3251,6 +3345,8 @@ const createAutomaticSegmentation = async () => {
     order.pop();
     if (lastType === 'bone') {
       handleUndo();
+    } else if (lastType === 'movement') {
+      undoMovement();
     } else {
       undoClickRemoval();
     }
@@ -3392,7 +3488,7 @@ const createAutomaticSegmentation = async () => {
         { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
       ]},
       { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation'), hidden: true },
-      { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0 && clickRemovalUndoStack.length === 0, onClick: makeOnClick('undo'), hidden: !isWrapActive },
+      { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0 && clickRemovalUndoStack.length === 0 && movementUndoCount === 0, onClick: makeOnClick('undo'), hidden: true },
     ];
     registerTools(toolDefs);
   }, [
@@ -3400,7 +3496,7 @@ const createAutomaticSegmentation = async () => {
     brightnessEnabled, measurementEnabled, angleMeasurementEnabled,
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
     implantMoveMode, inertialRotationMode, showSmoothDialog, isWrapActive, canActivateWrap, showMerge, clickRemovalMode,
-    clickRemovalUndoStack.length, labelViewEnabled, spineLabelingMode, colorModeEnabled,
+    clickRemovalUndoStack.length, movementUndoCount, labelViewEnabled, spineLabelingMode, colorModeEnabled,
     isApproving, isUploading, versionHistoryEnabled, showImplantView,
     registerTools, makeOnClick,
   ]);
@@ -3883,7 +3979,7 @@ const createAutomaticSegmentation = async () => {
           inertialRotationMode={inertialRotationMode}
           pivotBoneIndex={pivotBoneIndex}
           currentRotationAngle={currentRotationAngle}
-          onResetBone={() => resetBoneRef.current?.()}
+          onResetBone={undefined}
           localOnly={localOnly}
           compareMode={compareMode}
           onBrowseLeft={() => document.getElementById('stl-file-input')?.click()}
