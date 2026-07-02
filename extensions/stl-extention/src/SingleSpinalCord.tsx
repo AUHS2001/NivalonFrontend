@@ -2330,16 +2330,10 @@ const createAutomaticSegmentation = async () => {
     });
   };
 
-  const performVoxelMasking = useCallback((removedVertices: THREE.Vector3[], preComputedBounds?: { min: THREE.Vector3; max: THREE.Vector3 }) => {
-    if (removedVertices.length === 0) return;
-    const stlBounds = preComputedBounds || computeSTLBounds(meshRefs.current.left);
-    const snapshot = maskVoxelsForRemovedVertices(removedVertices, stlBounds, servicesManager);
-    if (snapshot) {
-      voxelUndoStackRef.current.push(snapshot);
-      forceRerenderMPRViewports(servicesManager);
-      markRemovedVoxelsRed(snapshot, servicesManager);
-    }
-  }, [servicesManager]);
+  const performVoxelMasking = useCallback((_removedVertices: THREE.Vector3[], _preComputedBounds?: { min: THREE.Vector3; max: THREE.Vector3 }) => {
+    // DICOM voxel masking and red overlay disabled — removal only affects 3D view
+    return;
+  }, []);
 
   const { removalOutlinePoints: boneRemovalPoints } = useBoneRemoval({
     removalMode: removalMode && isPanelActive('left'),
