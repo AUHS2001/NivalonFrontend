@@ -36,9 +36,9 @@ function getVertebraInfo(fileName: string, url: string) {
 function createMaterial(organType: string) {
   if (organType === 'I') {
     return new THREE.MeshPhongMaterial({
-      color: 0x00ff00, specular: 0x111111, shininess: 30, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.9,
-      emissive: new THREE.Color(0x00ff00), emissiveIntensity: 0.3,
+      color: 0x85CFF9, specular: 0x444444, shininess: 60, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.95,
+      emissive: new THREE.Color(0x85CFF9), emissiveIntensity: 0.08,
     });
   }
   if (organType === 'A')

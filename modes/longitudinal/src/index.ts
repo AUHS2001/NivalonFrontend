@@ -95,7 +95,6 @@ function modeFactory({ modeConfiguration }) {
         'MeasurementTools',
         'Zoom',
         'Pan',
-        'TrackballRotate',
         'WindowLevel',
         'Capture',
         'Layout',

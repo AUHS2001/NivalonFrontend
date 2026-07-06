@@ -243,6 +243,7 @@ function getStudyUID(sm?: any): string | null {
 function saveLabelsToStorage(studyUID: string): void {
   try {
     const data = {
+      version: 2,  // v2: STL coords used directly as DICOM LPS (no bounds-based transform)
       worldPoints: state.worldPoints,
       vertebraNames: state.vertebraNames,
       canalOffsetMM: state.canalOffsetMM,
@@ -279,6 +280,12 @@ function loadLabelsFromStorage(studyUID: string | null): CachedLabelData | null 
     // Validate: vertebra count must match if STL is loaded, otherwise trust cache
     if (state.vertebraCenters.length > 0 && data.vertebraCount !== state.vertebraCenters.length) {
       console.log(`SpineLabelOverlay: cache count mismatch (cached=${data.vertebraCount}, current=${state.vertebraCenters.length}), skipping`);
+      return null;
+    }
+    // Reject old cache versions (coordinate system changed in v2)
+    if (data.version !== 2) {
+      console.log('SpineLabelOverlay: cache version outdated, regenerating');
+      localStorage.removeItem(`spine-labels:${studyUID}`);
       return null;
     }
     if (!Array.isArray(data.worldPoints) || data.worldPoints.length === 0) return null;
@@ -336,33 +343,6 @@ function getViewportsAndBounds(servicesManager: any) {
   });
 
   return { viewports: result, volumeBounds };
-}
-
-function transformSTLToDICOM(
-  stlPoint: THREE.Vector3,
-  stlBounds: { min: THREE.Vector3; max: THREE.Vector3 },
-  volumeBounds: { origin: number[]; dimensions: number[]; spacing: number[] }
-): [number, number, number] {
-  const stlSize = new THREE.Vector3().subVectors(stlBounds.max, stlBounds.min);
-  const stlCenter = new THREE.Vector3().addVectors(stlBounds.min, stlBounds.max).multiplyScalar(0.5);
-  const volumeSize = [
-    volumeBounds.dimensions[0] * volumeBounds.spacing[0],
-    volumeBounds.dimensions[1] * volumeBounds.spacing[1],
-    volumeBounds.dimensions[2] * volumeBounds.spacing[2],
-  ];
-  const volumeCenter = [
-    volumeBounds.origin[0] + volumeSize[0] / 2,
-    volumeBounds.origin[1] + volumeSize[1] / 2,
-    volumeBounds.origin[2] + volumeSize[2] / 2,
-  ];
-  const offset = new THREE.Vector3().subVectors(stlPoint, stlCenter);
-  const uniformScale = volumeSize[2] / stlSize.z;
-
-  return [
-    volumeCenter[0] + offset.x * uniformScale,
-    volumeCenter[1] - offset.y * uniformScale,   // Negate Y: STL +Y is anterior, DICOM LPS +Y is posterior
-    volumeCenter[2] + offset.z * uniformScale,
-  ];
 }
 
 // --- Pure DICOM spinal canal detection (independent of STL) ---
@@ -914,21 +894,25 @@ function drawOnViewport(
   if (!element) return;
 
   let canvas = state.canvases.get(viewportId);
+  const parent = element.parentElement || element;
+  parent.style.position = 'relative';
+
+  // Always verify canvas is still in the DOM (Cornerstone may remove it on re-render)
+  if (canvas && !document.body.contains(canvas)) {
+    canvas = null;
+    state.canvases.delete(viewportId);
+  }
+
   if (!canvas) {
     canvas = document.createElement('canvas');
     canvas.className = 'spine-label-overlay-canvas';
-    canvas.style.cssText = `
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%;
-      pointer-events: none; z-index: 50;
-    `;
-    const parent = element.parentElement || element;
-    parent.style.position = 'relative';
+    canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;';
     parent.appendChild(canvas);
     state.canvases.set(viewportId, canvas);
   }
 
   const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
   canvas.width = rect.width;
   canvas.height = rect.height;
 
@@ -949,14 +933,7 @@ function drawOnViewport(
   const imageData = viewport.getImageData?.();
   const sp = imageData?.spacing || [1, 1, 1];
   const dim = imageData?.dimensions || [512, 512, 100];
-  const ori = imageData?.origin || [0, 0, 0];
   const volumeHeight = dim[2] * sp[2];
-  const volumeYSize = dim[1] * sp[1];
-  const volumeCenter = [
-    ori[0] + (dim[0] * sp[0]) / 2,
-    ori[1] + (dim[1] * sp[1]) / 2,
-    ori[2] + (dim[2] * sp[2]) / 2,
-  ];
 
   const canvasPoints: Array<{ x: number; y: number; distance: number; originalIndex: number }> = [];
 
@@ -991,7 +968,13 @@ function drawOnViewport(
     } catch (e) { /* skip */ }
   });
 
-  if (canvasPoints.length === 0) return;
+  if (canvasPoints.length === 0) {
+    console.log(`SpineLabelOverlay drawOnViewport ${viewportId}: no canvas points mapped (viewType=${viewType})`);
+    return;
+  }
+  // Log sample point coordinates and canvas dimensions for debugging
+  const samplePt = canvasPoints[0];
+  console.log(`SpineLabelOverlay drawOnViewport ${viewportId}: ${canvasPoints.length} points (viewType=${viewType}, canvas=${canvas.width}x${canvas.height}, sample=[${samplePt.x.toFixed(0)},${samplePt.y.toFixed(0)},dist=${samplePt.distance.toFixed(1)}])`);
 
   const color = '#00e5ff';
   const glowColor = 'rgba(0, 229, 255, 0.4)';
@@ -1392,8 +1375,12 @@ function handleWindowMouseUp(_e: MouseEvent) {
 // --- Redraw & listeners ---
 
 function redrawAll(servicesManager: any) {
-  if (state.worldPoints.length < 2) return;
+  if (state.worldPoints.length < 2) {
+    console.log('SpineLabelOverlay redrawAll: skipped — too few points:', state.worldPoints.length);
+    return;
+  }
   const { viewports } = getViewportsAndBounds(servicesManager);
+  console.log('SpineLabelOverlay redrawAll: drawing on', viewports.length, 'viewports with', state.worldPoints.length, 'points');
   viewports.forEach(({ viewportId, viewport }) => {
     drawOnViewport(viewportId, viewport, state.worldPoints, state.vertebraNames);
   });
@@ -1487,6 +1474,7 @@ function removeOverlay() {
 }
 
 export function showSpineLabelOverlay(servicesManager: any) {
+  try {
   // Remove existing first
   removeOverlay();
 
@@ -1516,30 +1504,27 @@ export function showSpineLabelOverlay(servicesManager: any) {
 
   const hasSTL = state.vertebraCenters.length >= 2 && !!state.stlBounds;
 
-  const { volumeBounds } = getViewportsAndBounds(servicesManager);
-  const vb = volumeBounds || {
-    origin: [-250, -250, -500],
-    dimensions: [512, 512, 200],
-    spacing: [1, 1, 2.5],
-  };
-
   // ===== DICOM-based canal detection (independent of STL — always attempted) =====
-  const dicomCenterline = detectCanalPureDICOM(servicesManager);
+  let dicomCenterline: Array<[number, number, number]> | null = null;
+  try {
+    dicomCenterline = detectCanalPureDICOM(servicesManager);
+  } catch (err) {
+    console.warn('SpineLabelOverlay: DICOM canal detection threw error:', err);
+  }
 
   if (hasSTL) {
     // --- Full path: STL data available ---
-    const stlWorldPoints = state.vertebraCenters.map(vc =>
-      transformSTLToDICOM(vc.center, state.stlBounds!, vb)
+    // STL coordinates are already in DICOM LPS world space — use directly
+    const stlWorldPoints: Array<[number, number, number]> = state.vertebraCenters.map(vc =>
+      [vc.center.x, vc.center.y, vc.center.z] as [number, number, number]
     );
     state.vertebraNames = state.vertebraCenters.map(vc => vc.name);
     state.enabled = true;
 
     // Anatomy-based canal offset (fallback if DICOM detection fails)
-    const stlSize = new THREE.Vector3().subVectors(state.stlBounds!.max, state.stlBounds!.min);
-    const volumeSizeZ = vb.dimensions[2] * vb.spacing[2];
-    const uniformScale = volumeSizeZ / stlSize.z;
+    // STL is in mm (same scale as DICOM), no scaling needed
     const fallbackOffset = state.avgVertebraYExtent > 0
-      ? state.avgVertebraYExtent * uniformScale * 0.20
+      ? state.avgVertebraYExtent * 0.20
       : 15;
 
     if (dicomCenterline && dicomCenterline.length >= 5) {
@@ -1621,6 +1606,10 @@ export function showSpineLabelOverlay(servicesManager: any) {
       saveLabelsToStorage(saveUID);
     }
   }, 300);
+  } catch (err) {
+    console.error('showSpineLabelOverlay error:', err);
+    state.enabled = false;
+  }
 }
 
 export function hideSpineLabelOverlay() {

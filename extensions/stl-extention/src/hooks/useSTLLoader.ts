@@ -140,17 +140,17 @@ export const useSTLLoader = ({
 
   const createMeshMaterial = useCallback((color: number, isRightView: boolean = false, isStartView: boolean = false, organType?: string) => {
     
-    // IMPLANT (Type 'I'): Always use GREEN in all views
+    // IMPLANT (Type 'I'): Light blue metallic look
     if (organType === 'I') {
       return new THREE.MeshPhongMaterial({
-        color: 0x00ff00, // BRIGHT GREEN for implants
-        specular: 0x111111,
-        shininess: 30,
+        color: 0x85CFF9,
+        specular: 0x444444,
+        shininess: 60,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.9,
-        emissive: new THREE.Color(0x00ff00),
-        emissiveIntensity: 0.3
+        opacity: 0.95,
+        emissive: new THREE.Color(0x85CFF9),
+        emissiveIntensity: 0.08
       });
     }
 
@@ -312,7 +312,7 @@ export const useSTLLoader = ({
           S: 0xf1c40f,    // Sacral - Yellow
           A: 0x3498db,    // Aorta - Blue (for vertebrae coloring)
           H: 0xe74c3c,    // Heart - Red (for vertebrae coloring)
-          I: 0x00ff00,    // Implant - BRIGHT GREEN
+          I: 0x85CFF9,    // Implant - Light Blue
           X: 0x00ff00,    // Unknown - Green (so they stand out)
         };
 
@@ -392,8 +392,8 @@ export const useSTLLoader = ({
           const size = new THREE.Vector3();
           bbox.getSize(size);
 
-          // Implant color is always BRIGHT GREEN (0x00ff00)
-          const implantColor = 0x00ff00;
+          // Implant color - Light Blue
+          const implantColor = 0x85CFF9;
 
           // Position implant at the center of vertebrae (LPS: Z is vertical)
           // Since geometry is now centered, we just position the mesh directly

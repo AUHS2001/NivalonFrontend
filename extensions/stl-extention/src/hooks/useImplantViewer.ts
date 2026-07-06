@@ -75,18 +75,18 @@ export const useImplantViewer = ({
         geometry.computeVertexNormals();
         geometry.computeBoundingBox();
 
-        // IMPLANT: Always use GREEN
-        const implantColor = 0x00ff00; // BRIGHT GREEN
-        
+        // IMPLANT: Light blue metallic
+        const implantColor = 0x85CFF9;
+
         const mat = new THREE.MeshPhongMaterial({
           color: implantColor,
-          specular: 0x111111,
-          shininess: 30,
+          specular: 0x444444,
+          shininess: 60,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.9,
+          opacity: 0.95,
           emissive: new THREE.Color(implantColor),
-          emissiveIntensity: brightnessEnabled ? brightness * 0.5 : 0.3,
+          emissiveIntensity: brightnessEnabled ? brightness * 0.3 : 0.08,
         });
 
         const mesh = new THREE.Mesh(geometry, mat);
@@ -169,8 +169,8 @@ export const useImplantViewer = ({
     // Set up lighting for implants
     implantScene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
-    // Key light with green tint for implants
-    const keyLight = new THREE.DirectionalLight(0x00ff00, 0.7);
+    // Key light with soft white for implants
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
     keyLight.position.set(1, 1, 1).normalize();
     implantScene.add(keyLight);
 
@@ -252,8 +252,8 @@ export const useImplantViewer = ({
   // Handle brightness changes for implant
   useEffect(() => {
     if (implantMesh && implantMesh.material) {
-      // Ensure implant stays green even with brightness changes
-      const implantColor = 0x00ff00;
+      // Ensure implant color stays consistent with brightness changes
+      const implantColor = 0x85CFF9;
       
       if (Array.isArray(implantMesh.material)) {
         implantMesh.material.forEach(material => {

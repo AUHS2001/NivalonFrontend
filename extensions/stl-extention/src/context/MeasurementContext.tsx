@@ -244,6 +244,8 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     originalPoint2: THREE.Vector3;
     point1BonePos: THREE.Vector3 | null;
     point2BonePos: THREE.Vector3 | null;
+    point1BoneQuat: THREE.Quaternion | null;
+    point2BoneQuat: THREE.Quaternion | null;
   }>>(new Map());
 
   // Find bone attachment using the actual intersected mesh from raycasting
@@ -251,8 +253,9 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     boneIndex: number | null;
     localOffset: THREE.Vector3 | null;
     initialBonePos: THREE.Vector3 | null;
+    initialBoneQuat: THREE.Quaternion | null;
   } => {
-    if (!meshRefs.current || !intersectedMesh) return { boneIndex: null, localOffset: null, initialBonePos: null };
+    if (!meshRefs.current || !intersectedMesh) return { boneIndex: null, localOffset: null, initialBonePos: null, initialBoneQuat: null };
 
     const meshes = meshRefs.current.left;
 
@@ -268,10 +271,11 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
         return {
           boneIndex: rightIndex,
           localOffset,
-          initialBonePos: bone.position.clone()
+          initialBonePos: bone.position.clone(),
+          initialBoneQuat: bone.quaternion.clone()
         };
       }
-      return { boneIndex: null, localOffset: null, initialBonePos: null };
+      return { boneIndex: null, localOffset: null, initialBonePos: null, initialBoneQuat: null };
     }
 
     const bone = meshes[boneIndex];
@@ -281,7 +285,8 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
     return {
       boneIndex,
       localOffset,
-      initialBonePos: bone.position.clone()
+      initialBonePos: bone.position.clone(),
+      initialBoneQuat: bone.quaternion.clone()
     };
   }, []);
 
@@ -482,12 +487,14 @@ export const MeasurementProvider: React.FC<MeasurementProviderProps> = ({ childr
         point2LocalOffset: point2Attachment.localOffset
       });
 
-      // Store original point positions and initial bone positions
+      // Store original point positions, initial bone positions and quaternions
       measurementOriginalDataRef.current.set(measurementId, {
         originalPoint1: currentTempPoints[0].clone(),
         originalPoint2: currentTempPoints[1].clone(),
         point1BonePos: point1Attachment.initialBonePos,
-        point2BonePos: point2Attachment.initialBonePos
+        point2BonePos: point2Attachment.initialBonePos,
+        point1BoneQuat: point1Attachment.initialBoneQuat,
+        point2BoneQuat: point2Attachment.initialBoneQuat
       });
 
       // Clear temporary visuals and refs for next measurement
@@ -649,11 +656,15 @@ const setupMeasurementMode = useCallback((config: {
       if (attachment.point1BoneIndex !== null && originalData.point1BonePos) {
         const bone = meshes[attachment.point1BoneIndex];
         if (bone) {
-          // Calculate how much the bone has moved from its initial position
-          const boneMovement = bone.position.clone().sub(originalData.point1BonePos);
-          // Note: Geometries are now transformed to LPS during loading, no inversion needed
-          // Apply that movement to the ORIGINAL point position
-          newPoint1 = originalData.originalPoint1.clone().add(boneMovement);
+          // Local offset from bone position to measurement point (at creation time)
+          const localOffset = originalData.originalPoint1.clone().sub(originalData.point1BonePos);
+          // Apply bone rotation if quaternion changed
+          if (originalData.point1BoneQuat) {
+            const relativeQuat = bone.quaternion.clone().multiply(originalData.point1BoneQuat.clone().invert());
+            localOffset.applyQuaternion(relativeQuat);
+          }
+          // Final position = current bone position + rotated local offset
+          newPoint1 = bone.position.clone().add(localOffset);
           hasUpdate = true;
         }
       }
@@ -662,11 +673,12 @@ const setupMeasurementMode = useCallback((config: {
       if (attachment.point2BoneIndex !== null && originalData.point2BonePos) {
         const bone = meshes[attachment.point2BoneIndex];
         if (bone) {
-          // Calculate how much the bone has moved from its initial position
-          const boneMovement = bone.position.clone().sub(originalData.point2BonePos);
-          // Note: Geometries are now transformed to LPS during loading, no inversion needed
-          // Apply that movement to the ORIGINAL point position
-          newPoint2 = originalData.originalPoint2.clone().add(boneMovement);
+          const localOffset = originalData.originalPoint2.clone().sub(originalData.point2BonePos);
+          if (originalData.point2BoneQuat) {
+            const relativeQuat = bone.quaternion.clone().multiply(originalData.point2BoneQuat.clone().invert());
+            localOffset.applyQuaternion(relativeQuat);
+          }
+          newPoint2 = bone.position.clone().add(localOffset);
           hasUpdate = true;
         }
       }
