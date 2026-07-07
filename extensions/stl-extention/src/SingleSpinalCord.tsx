@@ -208,6 +208,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const undoOrderRef = useRef<('bone' | 'click' | 'movement')[]>([]);
   const movementUndoStackRef = useRef<Array<{ left: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }>; right: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }> }>>([]);
   const [movementUndoCount, setMovementUndoCount] = useState(0);
+  const [rendererReady, setRendererReady] = useState(false);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
@@ -573,7 +574,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     toggleAngleMeasurement,
     setupAngleMeasurementMode,
     cleanupAngleMeasurementMode,
-    clearAngleMeasurements
+    clearAngleMeasurements,
+    updateAngleMeasurementsOnBoneMove
   } = useAngleMeasurementContext();
 
   // Snapshot all mesh transforms for movement undo
@@ -644,6 +646,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -667,7 +670,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+  }, [rotationMode, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   // VERTICAL - UP/DOWN (Motion)
   useEffect(() => {
@@ -719,6 +722,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -742,7 +746,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode1, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+  }, [rotationMode1, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 
   useEffect(() => {
@@ -789,6 +793,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -805,7 +810,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-}, [rotationMode2, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [rotationMode2, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // FORWARD - BACKWARD (Motion)
 useEffect(() => {
@@ -857,6 +862,7 @@ useEffect(() => {
       }
     }
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   const onMouseUp = () => {
@@ -880,7 +886,7 @@ useEffect(() => {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   };
-}, [rotationMode3, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [rotationMode3, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // IMPLANT MOVE MODE - When active, clicking on implant moves only the implant
 useEffect(() => {
@@ -1046,6 +1052,7 @@ useEffect(() => {
     }
     setCurrentRotationAngle(0);
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Expose reset all bones function via ref
@@ -1205,6 +1212,7 @@ useEffect(() => {
     }
 
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Store original state for reset
@@ -1235,6 +1243,7 @@ useEffect(() => {
     accumulatedRotation = 0;
     setCurrentRotationAngle(0);
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Track last mouse angle for rotation calculation
@@ -1522,7 +1531,7 @@ useEffect(() => {
       });
     }
   };
-}, [inertialRotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [inertialRotationMode, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   const applyBoneAndRainbowToAllViewports = () => {
     console.log('🎨 Applying bone preset with OHIF services...');
@@ -1697,7 +1706,7 @@ useEffect(() => {
       cleanupMeasurementMode();
       cleanupAngleMeasurementMode();
     };
-  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel, showComparePanel]);
+  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel, showComparePanel, rendererReady]);
 
 
 
@@ -2469,10 +2478,12 @@ const createAutomaticSegmentation = async () => {
 
   // Three.js Viewer and Controls Setup
   useEffect(() => {
+    const leftMount = leftMountRef.current;
+    const rightMount = rightMountRef.current;
+    if (!leftMount || !rightMount) return;
+
     const leftScene = leftSceneRef.current;
     const rightScene = rightSceneRef.current;
-    const leftMount = leftMountRef.current!;
-    const rightMount = rightMountRef.current!;
 
     leftScene.background = new THREE.Color(0x000000);
     rightScene.background = new THREE.Color(0x000000);
@@ -2513,6 +2524,8 @@ const createAutomaticSegmentation = async () => {
     rightRenderer.domElement.style.display = 'block';
     rightRendererRef.current = rightRenderer;
     rightMount.appendChild(rightRenderer.domElement);
+
+    setRendererReady(true);
 
     // Create separate controls with their own cameras
     const leftControls = new OrbitControls(leftCamera, leftRenderer.domElement);
@@ -3330,6 +3343,7 @@ const createAutomaticSegmentation = async () => {
     restoreMeshTransforms(snap);
     setMovementUndoCount(c => Math.max(0, c - 1));
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   const handleUnifiedUndo = () => {

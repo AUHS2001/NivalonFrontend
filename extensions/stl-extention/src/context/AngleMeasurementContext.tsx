@@ -98,6 +98,7 @@ interface AngleMeasurementContextType extends AngleMeasurementState {
   getAngleMeasurementStats: () => any;
   calculateAnglesBetweenVertebrae: () => any[];
   updateAngleMeasurement: (id: string, measurement: AngleMeasurement) => void;
+  updateAngleMeasurementsOnBoneMove: () => void;
 }
 
 // Context
@@ -111,12 +112,22 @@ interface AngleMeasurementProviderProps {
 export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(angleMeasurementReducer, initialState);
 
-  // Refs for Three.js objects
-  const leftRendererRef = useRef<THREE.WebGLRenderer>();
-  const leftSceneRef = useRef<THREE.Scene>();
-  const cameraRef = useRef<THREE.PerspectiveCamera>();
-  const meshRefs = useRef<any>();
-  const leftControlsRef = useRef<any>();
+  // Refs for Three.js objects — store the CONFIG ref objects themselves so we
+  // always read the latest .current from the component, even if setup ran before
+  // the renderer was created.
+  const configRefsRef = useRef<{
+    leftRendererRef?: React.MutableRefObject<THREE.WebGLRenderer | undefined>;
+    leftSceneRef?: React.MutableRefObject<THREE.Scene | undefined>;
+    cameraRef?: React.MutableRefObject<THREE.PerspectiveCamera | undefined>;
+    meshRefs?: React.MutableRefObject<any>;
+    leftControlsRef?: React.MutableRefObject<any>;
+  }>({});
+  // Convenience getters that read through the stored config refs
+  const leftRendererRef = { get current() { return configRefsRef.current.leftRendererRef?.current; } } as { current: THREE.WebGLRenderer | undefined };
+  const leftSceneRef = { get current() { return configRefsRef.current.leftSceneRef?.current; } } as { current: THREE.Scene | undefined };
+  const cameraRef = { get current() { return configRefsRef.current.cameraRef?.current; } } as { current: THREE.PerspectiveCamera | undefined };
+  const meshRefs = { get current() { return configRefsRef.current.meshRefs?.current; } } as { current: any };
+  const leftControlsRef = { get current() { return configRefsRef.current.leftControlsRef?.current; } } as { current: any };
   
   // Other refs
   const tempAnglePointsRef = useRef<THREE.Vector3[]>([]);
@@ -132,10 +143,14 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     textLabel: undefined
   });
   const clickHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
+  const mouseDownHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
   const mouseMoveHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
   const mouseUpHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
   const angleMeasurementIdCounter = useRef<number>(0);
-  
+
+  // Track intersected meshes for each temp angle point (for accurate bone attachment)
+  const tempAnglePointMeshesRef = useRef<(THREE.Mesh | null)[]>([]);
+
   // Dragging refs
   const isDraggingRef = useRef<boolean>(false);
   const dragStartPointRef = useRef<THREE.Vector3 | null>(null);
@@ -150,6 +165,22 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
   const originalStartBonePosRef = useRef<THREE.Vector3 | null>(null);
   const originalEndBonePosRef = useRef<THREE.Vector3 | null>(null);
   const originalVertexBonePosRef = useRef<THREE.Vector3 | null>(null);
+
+  // Per-measurement bone attachment data for tracking bone movements
+  const angleMeasurementBoneDataRef = useRef<Map<string, {
+    point0BoneIndex: number | null;
+    originalPoint0: THREE.Vector3;
+    originalPoint0BonePos: THREE.Vector3 | null;
+    originalPoint0BoneQuat: THREE.Quaternion | null;
+    point1BoneIndex: number | null;
+    originalPoint1: THREE.Vector3;
+    originalPoint1BonePos: THREE.Vector3 | null;
+    originalPoint1BoneQuat: THREE.Quaternion | null;
+    point2BoneIndex: number | null;
+    originalPoint2: THREE.Vector3;
+    originalPoint2BonePos: THREE.Vector3 | null;
+    originalPoint2BoneQuat: THREE.Quaternion | null;
+  }>>(new Map());
 
   // Sync ref with state
   useEffect(() => {
@@ -456,8 +487,8 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     };
   }, []);
 
-  // Helper: Get surface intersection
-  const getSurfaceIntersection = useCallback((mouse: THREE.Vector2): THREE.Vector3 | null => {
+  // Helper: Get surface intersection (returns point and the mesh that was hit)
+  const getSurfaceIntersection = useCallback((mouse: THREE.Vector2): { point: THREE.Vector3; mesh: THREE.Mesh } | null => {
     if (!leftRendererRef.current || !cameraRef.current || !meshRefs.current) {
       return null;
     }
@@ -475,7 +506,10 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     }
 
     const intersects = raycaster.intersectObjects(meshes, false);
-    return intersects.length > 0 ? intersects[0].point : null;
+    if (intersects.length > 0) {
+      return { point: intersects[0].point, mesh: intersects[0].object as THREE.Mesh };
+    }
+    return null;
   }, []);
 
   // Helper: Find the closest bone to a point
@@ -509,6 +543,67 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     });
     
     return closestBone;
+  }, []);
+
+  // Helper: Find bone index from intersected mesh or by closest bounding box
+  const findClosestBoneWithIndex = useCallback((position: THREE.Vector3, intersectedMesh?: THREE.Mesh | null): {
+    boneIndex: number | null;
+    initialBonePos: THREE.Vector3 | null;
+    initialBoneQuat: THREE.Quaternion | null;
+  } => {
+    if (!meshRefs.current) return { boneIndex: null, initialBonePos: null, initialBoneQuat: null };
+
+    const meshes = meshRefs.current.left || [];
+
+    // If we have the actual intersected mesh, find its exact index
+    if (intersectedMesh) {
+      let boneIndex = meshes.findIndex((mesh: THREE.Mesh) => mesh === intersectedMesh);
+      // If hit was on a right mesh, find corresponding left mesh by index
+      if (boneIndex === -1) {
+        const rightMeshes = meshRefs.current.right || [];
+        const rightIndex = rightMeshes.findIndex((mesh: THREE.Mesh) => mesh === intersectedMesh);
+        if (rightIndex !== -1 && meshes[rightIndex]) {
+          boneIndex = rightIndex;
+        }
+      }
+      if (boneIndex !== -1) {
+        const bone = meshes[boneIndex];
+        return {
+          boneIndex,
+          initialBonePos: bone.position.clone(),
+          initialBoneQuat: bone.quaternion.clone()
+        };
+      }
+    }
+
+    // Fallback: find closest bone by bounding box center
+    let closestIndex: number | null = null;
+    let closestDistance = Infinity;
+
+    meshes.forEach((mesh: THREE.Mesh, index: number) => {
+      if (!mesh.geometry.boundingBox) {
+        mesh.geometry.computeBoundingBox();
+      }
+      const bbox = mesh.geometry.boundingBox;
+      if (!bbox) return;
+      const center = new THREE.Vector3();
+      bbox.getCenter(center);
+      center.applyMatrix4(mesh.matrixWorld);
+      const distance = position.distanceTo(center);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    if (closestIndex === null) return { boneIndex: null, initialBonePos: null, initialBoneQuat: null };
+
+    const bone = meshes[closestIndex];
+    return {
+      boneIndex: closestIndex,
+      initialBonePos: bone.position.clone(),
+      initialBoneQuat: bone.quaternion.clone()
+    };
   }, []);
 
   // Helper: Get mouse position in normalized device coordinates
@@ -567,12 +662,13 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
       angleTempVisualsRef.current.textLabel.material.map?.dispose();
     }
 
-    angleTempVisualsRef.current = { 
-      points: [], 
-      lines: [], 
-      arc: undefined, 
-      textLabel: undefined 
+    angleTempVisualsRef.current = {
+      points: [],
+      lines: [],
+      arc: undefined,
+      textLabel: undefined
     };
+    tempAnglePointMeshesRef.current = [];
   }, []);
 
   // Helper: Remove measurement visuals
@@ -712,13 +808,36 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
         textLabel: undefined 
       };
 
+      // Store bone attachment data for all 3 points using actual intersected meshes
+      const storedMeshes = tempAnglePointMeshesRef.current;
+      const point0Bone = findClosestBoneWithIndex(currentTempPoints[0], storedMeshes[0] || null);
+      const point1Bone = findClosestBoneWithIndex(currentTempPoints[1], storedMeshes[1] || null);
+      const point2Bone = findClosestBoneWithIndex(currentTempPoints[2], storedMeshes[2] || null);
+      // Clear stored meshes for next measurement
+      tempAnglePointMeshesRef.current = [];
+
+      angleMeasurementBoneDataRef.current.set(measurementId, {
+        point0BoneIndex: point0Bone.boneIndex,
+        originalPoint0: currentTempPoints[0].clone(),
+        originalPoint0BonePos: point0Bone.initialBonePos,
+        originalPoint0BoneQuat: point0Bone.initialBoneQuat,
+        point1BoneIndex: point1Bone.boneIndex,
+        originalPoint1: currentTempPoints[1].clone(),
+        originalPoint1BonePos: point1Bone.initialBonePos,
+        originalPoint1BoneQuat: point1Bone.initialBoneQuat,
+        point2BoneIndex: point2Bone.boneIndex,
+        originalPoint2: currentTempPoints[2].clone(),
+        originalPoint2BonePos: point2Bone.initialBonePos,
+        originalPoint2BoneQuat: point2Bone.initialBoneQuat,
+      });
+
       dispatch({ type: 'ADD_ANGLE_MEASUREMENT', payload: measurement });
       console.log('Angle measurement created successfully');
     } else {
       // Just add the point to tempAnglePoints
       dispatch({ type: 'ADD_TEMP_ANGLE_POINT', payload: position });
     }
-  }, [createMeasurementPoint, createMeasurementLine, createAngleArc, createAngleTextLabel, calculateAngle, generateAngleMeasurementId]);
+  }, [createMeasurementPoint, createMeasurementLine, createAngleArc, createAngleTextLabel, calculateAngle, generateAngleMeasurementId, findClosestBoneWithIndex]);
 
   // Handle angle measurement click
   const handleAngleMeasurementClick = useCallback((event: MouseEvent) => {
@@ -730,10 +849,12 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
       -((event.clientY - rect.top) / rect.height) * 2 + 1
     );
 
-    const surfacePoint = getSurfaceIntersection(mouse);
-    if (surfacePoint) {
-      console.log('Surface intersection found for angle measurement:', surfacePoint);
-      addAngleMeasurementPoint(surfacePoint);
+    const hit = getSurfaceIntersection(mouse);
+    if (hit) {
+      console.log('Surface intersection found for angle measurement:', hit.point);
+      // Store the intersected mesh for bone attachment tracking
+      tempAnglePointMeshesRef.current.push(hit.mesh);
+      addAngleMeasurementPoint(hit.point);
     } else {
       console.log('No surface intersection found for angle measurement');
     }
@@ -942,6 +1063,7 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     });
 
     cleanupAngleTempVisuals();
+    angleMeasurementBoneDataRef.current.clear();
     dispatch({ type: 'CLEAR_ANGLE_MEASUREMENTS' });
   }, [state.angleMeasurements, removeAngleMeasurementVisuals, cleanupAngleTempVisuals]);
 
@@ -953,23 +1075,35 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     if (measurementToRemove && measurementToRemove.visualElements) {
       removeAngleMeasurementVisuals(measurementToRemove.visualElements);
     }
+    angleMeasurementBoneDataRef.current.delete(id);
     dispatch({ type: 'REMOVE_ANGLE_MEASUREMENT', payload: id });
   }, [state.angleMeasurements, removeAngleMeasurementVisuals]);
 
   // Setup angle measurement mode
   const setupAngleMeasurementMode = useCallback((config: AngleMeasurementConfig) => {
-    leftRendererRef.current = config.leftRendererRef.current;
-    leftSceneRef.current = config.leftSceneRef.current;
-    cameraRef.current = config.cameraRef.current;
-    meshRefs.current = config.meshRefs.current;
-    leftControlsRef.current = config.leftControlsRef?.current;
+    // Only overwrite config refs if the new config has a valid renderer,
+    // OR we don't have a valid renderer yet. This prevents a second caller
+    // (e.g. SpinalCordViewer re-mount) from clobbering a working config.
+    const currentRenderer = configRefsRef.current.leftRendererRef?.current;
+    const newRenderer = config.leftRendererRef?.current;
 
-    console.log('Setting up angle measurement mode with bone dragging');
+    if (newRenderer || !currentRenderer) {
+      configRefsRef.current = {
+        leftRendererRef: config.leftRendererRef as React.MutableRefObject<THREE.WebGLRenderer | undefined>,
+        leftSceneRef: config.leftSceneRef as React.MutableRefObject<THREE.Scene | undefined>,
+        cameraRef: config.cameraRef as React.MutableRefObject<THREE.PerspectiveCamera | undefined>,
+        meshRefs: config.meshRefs,
+        leftControlsRef: config.leftControlsRef,
+      };
+    }
 
     const canvas = leftRendererRef.current?.domElement;
     if (!canvas) return;
 
     // Remove any existing handlers
+    if (mouseDownHandlerRef.current) {
+      canvas.removeEventListener('mousedown', mouseDownHandlerRef.current);
+    }
     if (clickHandlerRef.current) {
       canvas.removeEventListener('click', clickHandlerRef.current);
     }
@@ -982,18 +1116,18 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     }
 
     // Set up new handlers
+    mouseDownHandlerRef.current = handleMouseDown;
     clickHandlerRef.current = handleAngleMeasurementClick;
     mouseMoveHandlerRef.current = handleMouseMove;
     mouseUpHandlerRef.current = handleMouseUp;
-    
+
     if (state.angleMeasurementEnabled) {
-      canvas.addEventListener('mousedown', handleMouseDown);
+      canvas.addEventListener('mousedown', mouseDownHandlerRef.current);
       canvas.addEventListener('click', clickHandlerRef.current);
       canvas.addEventListener('mousemove', mouseMoveHandlerRef.current);
       canvas.addEventListener('mouseup', mouseUpHandlerRef.current);
       canvas.addEventListener('mouseleave', mouseUpHandlerRef.current);
       canvas.style.cursor = 'crosshair';
-      console.log('Event listeners added for angle measurement and bone dragging');
     } else {
       canvas.style.cursor = 'default';
     }
@@ -1004,8 +1138,9 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     const canvas = leftRendererRef.current?.domElement;
     if (!canvas) return;
 
-    canvas.removeEventListener('mousedown', handleMouseDown);
-    
+    if (mouseDownHandlerRef.current) {
+      canvas.removeEventListener('mousedown', mouseDownHandlerRef.current);
+    }
     if (clickHandlerRef.current) {
       canvas.removeEventListener('click', clickHandlerRef.current);
     }
@@ -1016,7 +1151,7 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
       canvas.removeEventListener('mouseup', mouseUpHandlerRef.current);
       canvas.removeEventListener('mouseleave', mouseUpHandlerRef.current);
     }
-    
+
     canvas.style.cursor = 'default';
     cleanupAngleTempVisuals();
     
@@ -1036,7 +1171,7 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     
     dispatch({ type: 'SET_IS_DRAGGING_ANGLE_POINT', payload: false });
     dispatch({ type: 'CLEAR_TEMP_ANGLE_POINTS' });
-  }, [cleanupAngleTempVisuals, handleMouseDown]);
+  }, [cleanupAngleTempVisuals]);
 
   // Export angle measurements
   const exportAngleMeasurements = useCallback((): string => {
@@ -1123,24 +1258,123 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     dispatch({ type: 'UPDATE_ANGLE_MEASUREMENT', payload: { id, measurement } });
   }, []);
 
-  // Effect to handle measurement mode changes
-  useEffect(() => {
-    if (state.angleMeasurementEnabled && leftRendererRef.current) {
-      setupAngleMeasurementMode({
-        leftRendererRef: leftRendererRef,
-        leftSceneRef: leftSceneRef,
-        cameraRef: cameraRef,
-        meshRefs: meshRefs,
-        leftControlsRef: leftControlsRef
-      });
-    } else {
-      cleanupAngleMeasurementMode();
-    }
+  // Update all angle measurements when bones move (called from movement tools)
+  const updateAngleMeasurementsOnBoneMove = useCallback(() => {
+    if (!meshRefs.current || state.angleMeasurements.length === 0) return;
 
-    return () => {
-      cleanupAngleMeasurementMode();
-    };
-  }, [state.angleMeasurementEnabled, setupAngleMeasurementMode, cleanupAngleMeasurementMode]);
+    const meshes = meshRefs.current.left;
+
+    state.angleMeasurements.forEach(measurement => {
+      const boneData = angleMeasurementBoneDataRef.current.get(measurement.id);
+      if (!boneData) return;
+
+      let newPoint0 = boneData.originalPoint0.clone();
+      let newPoint1 = boneData.originalPoint1.clone();
+      let newPoint2 = boneData.originalPoint2.clone();
+      let hasUpdate = false;
+
+      // Update point 0 (start)
+      if (boneData.point0BoneIndex !== null && boneData.originalPoint0BonePos) {
+        const bone = meshes[boneData.point0BoneIndex];
+        if (bone) {
+          const localOffset = boneData.originalPoint0.clone().sub(boneData.originalPoint0BonePos);
+          if (boneData.originalPoint0BoneQuat) {
+            const relativeQuat = bone.quaternion.clone().multiply(boneData.originalPoint0BoneQuat.clone().invert());
+            localOffset.applyQuaternion(relativeQuat);
+          }
+          newPoint0 = bone.position.clone().add(localOffset);
+          hasUpdate = true;
+        }
+      }
+
+      // Update point 1 (vertex/apex)
+      if (boneData.point1BoneIndex !== null && boneData.originalPoint1BonePos) {
+        const bone = meshes[boneData.point1BoneIndex];
+        if (bone) {
+          const localOffset = boneData.originalPoint1.clone().sub(boneData.originalPoint1BonePos);
+          if (boneData.originalPoint1BoneQuat) {
+            const relativeQuat = bone.quaternion.clone().multiply(boneData.originalPoint1BoneQuat.clone().invert());
+            localOffset.applyQuaternion(relativeQuat);
+          }
+          newPoint1 = bone.position.clone().add(localOffset);
+          hasUpdate = true;
+        }
+      }
+
+      // Update point 2 (end)
+      if (boneData.point2BoneIndex !== null && boneData.originalPoint2BonePos) {
+        const bone = meshes[boneData.point2BoneIndex];
+        if (bone) {
+          const localOffset = boneData.originalPoint2.clone().sub(boneData.originalPoint2BonePos);
+          if (boneData.originalPoint2BoneQuat) {
+            const relativeQuat = bone.quaternion.clone().multiply(boneData.originalPoint2BoneQuat.clone().invert());
+            localOffset.applyQuaternion(relativeQuat);
+          }
+          newPoint2 = bone.position.clone().add(localOffset);
+          hasUpdate = true;
+        }
+      }
+
+      if (hasUpdate) {
+        // Recalculate angle
+        const angleData = calculateAngle(newPoint0, newPoint1, newPoint2);
+
+        // Update measurement data
+        measurement.points[0].copy(newPoint0);
+        measurement.points[1].copy(newPoint1);
+        measurement.points[2].copy(newPoint2);
+        measurement.angle = angleData.angle;
+        measurement.startPoint.copy(newPoint0);
+        measurement.vertex.copy(newPoint1);
+        measurement.endPoint.copy(newPoint2);
+        measurement.direction1 = angleData.startDir;
+        measurement.direction2 = angleData.endDir;
+        measurement.normal = angleData.normal;
+
+        // Update visuals
+        const v = measurement.visualElements;
+        if (v) {
+          // Update point positions
+          if (v.points[0]) v.points[0].position.copy(newPoint0);
+          if (v.points[1]) v.points[1].position.copy(newPoint1);
+          if (v.points[2]) v.points[2].position.copy(newPoint2);
+
+          // Update lines (lines go from vertex to start/end)
+          if (v.lines[0]) updateLineGeometry(v.lines[0], newPoint1, newPoint0);
+          if (v.lines[1]) updateLineGeometry(v.lines[1], newPoint1, newPoint2);
+
+          // Update arc
+          if (v.arc) {
+            const arcRadius = Math.max(
+              Math.min(angleData.startDir.length() * 0.3, angleData.endDir.length() * 0.3),
+              1.5
+            );
+            updateArcGeometry(v.arc, newPoint1, angleData.startDir, angleData.endDir, angleData.angle, arcRadius);
+          }
+
+          // Update text label
+          if (v.textLabel) {
+            const arcRadius = Math.max(
+              Math.min(angleData.startDir.length() * 0.3, angleData.endDir.length() * 0.3),
+              1.5
+            );
+            const textPosition = new THREE.Vector3()
+              .copy(newPoint1)
+              .add(angleData.startDir.clone().normalize().multiplyScalar(arcRadius * 0.5))
+              .add(angleData.endDir.clone().normalize().multiplyScalar(arcRadius * 0.5))
+              .add(angleData.normal.clone().multiplyScalar(0.5));
+            updateAngleTextLabel(v.textLabel, angleData.angle, textPosition, 1.5);
+          }
+        }
+      }
+    });
+
+    // Force re-render
+    dispatch({ type: 'SET_IS_MEASURING_ANGLE', payload: state.isMeasuringAngle });
+  }, [state.angleMeasurements, state.isMeasuringAngle, calculateAngle, updateLineGeometry, updateArcGeometry, updateAngleTextLabel]);
+
+  // Note: setup/cleanup is driven by the consuming component (SingleSpinalCord / SpinalCordViewer),
+  // NOT by an internal effect here, to avoid duplicate listener registration.
 
   const value: AngleMeasurementContextType = {
     ...state,
@@ -1154,6 +1388,7 @@ export const AngleMeasurementProvider: React.FC<AngleMeasurementProviderProps> =
     getAngleMeasurementStats,
     calculateAnglesBetweenVertebrae,
     updateAngleMeasurement,
+    updateAngleMeasurementsOnBoneMove,
   };
 
   return (
