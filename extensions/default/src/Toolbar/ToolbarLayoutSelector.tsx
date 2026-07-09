@@ -12,7 +12,7 @@ function ToolbarLayoutSelectorWithServices({
   columns = 4,
   ...props
 }) {
-  const { customizationService, viewportGridService } = servicesManager.services;
+  const { customizationService, viewportGridService, toolbarService } = servicesManager.services;
 
   // Get the presets from the customization service
   const commonPresets = customizationService?.getCustomization('layoutSelector.commonPresets') || [
@@ -132,7 +132,15 @@ function ToolbarLayoutSelectorWithServices({
   // Unified selection handler that dispatches to the appropriate command
   const handleSelectionChange = useCallback(
     (commandOptions, isPreset) => {
-      localStorage.setItem('myLayout', commandOptions.protocolId)
+      localStorage.setItem('myLayout', commandOptions.protocolId);
+
+      // Refresh toolbar so Magnify evaluate re-runs with new layout
+      setTimeout(() => {
+        const viewportId = viewportGridService.getActiveViewportId();
+        if (toolbarService?.refreshToolbarState) {
+          toolbarService.refreshToolbarState({ viewportId });
+        }
+      }, 500);
 
       if (commandOptions && commandOptions.customLayout === '3d-compare') {
         console.log('Applying 3D Compare layout');

@@ -27,6 +27,7 @@ export default function getToolbarModule({ servicesManager, extensionManager }: 
     displaySetService,
     viewportGridService,
     segmentationService,
+    hangingProtocolService,
   } = servicesManager.services;
 
   return [
@@ -404,6 +405,24 @@ export default function getToolbarModule({ servicesManager, extensionManager }: 
     {
       name: 'evaluate.cornerstoneTool',
       evaluate: ({ viewportId, button, toolNames, disabledText }) => {
+        // Magnify tool is only available in Frame View layout
+        // Must check BEFORE toolGroup check so it runs even during layout transitions
+        if (button?.id === 'Magnify') {
+          let isFrameView = false;
+          try {
+            const activeProtocol = hangingProtocolService?.getActiveProtocol();
+            const protocolId = activeProtocol?.protocol?.id;
+            isFrameView = protocolId === '@ohif/frameView' || protocolId === 'frame-view';
+          } catch (e) {
+            // fallback to localStorage
+            const currentLayout = localStorage.getItem('myLayout');
+            isFrameView = currentLayout === '@ohif/frameView' || currentLayout === 'frame-view';
+          }
+          if (!isFrameView) {
+            return getDisabledState('Zoom-in is only available in Frame View layout');
+          }
+        }
+
         const toolGroup = toolGroupService.getToolGroupForViewport(viewportId);
 
         if (!toolGroup) {
