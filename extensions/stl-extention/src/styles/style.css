@@ -117,3 +117,80 @@
 .modal-backdrop {
   backdrop-filter: blur(4px);
 }
+
+/* ── Brightness Slider ── */
+.brightness-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  margin: 6px 0;
+}
+
+/* Webkit track */
+.brightness-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: transparent; /* gradient set inline */
+}
+
+/* Webkit thumb */
+.brightness-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #9ceaff, #0A6FFD);
+  border: 2px solid #0d1b2a;
+  box-shadow: 0 0 6px rgba(10, 111, 253, 0.5);
+  margin-top: -6px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brightness-slider:hover::-webkit-slider-thumb,
+.brightness-slider:focus::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px rgba(10, 111, 253, 0.8), 0 0 24px rgba(156, 234, 255, 0.3);
+}
+
+/* Firefox track */
+.brightness-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: transparent;
+  border: none;
+}
+
+/* Firefox progress (filled portion) */
+.brightness-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(90deg, #0A6FFD, #9ceaff);
+}
+
+/* Firefox thumb */
+.brightness-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #9ceaff, #0A6FFD);
+  border: 2px solid #0d1b2a;
+  box-shadow: 0 0 6px rgba(10, 111, 253, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brightness-slider:hover::-moz-range-thumb,
+.brightness-slider:focus::-moz-range-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px rgba(10, 111, 253, 0.8), 0 0 24px rgba(156, 234, 255, 0.3);
+}
+
+.brightness-slider:focus {
+  outline: none;
+}

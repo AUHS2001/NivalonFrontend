@@ -526,18 +526,38 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
             {brightnessEnabled && (
               <div style={{ marginTop: "18px" }}>
-                <label style={{ fontSize: "12px", display: "block", marginBottom: "5px", color: "#9ceaff" }}>
-                  Brightness Level: {brightness.toFixed(1)}
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "12px", color: "#9ceaff", fontWeight: 500 }}>Brightness</span>
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: brightness > 100 ? "#9ceaff" : brightness < 100 ? "#6b8aad" : "#c0d8f0"
+                  }}>
+                    {brightness}%
+                  </span>
+                </div>
                 <input
                   type="range"
-                  min="0.1"
-                  max="100.0"
-                  step="0.1"
+                  min="0"
+                  max="200"
+                  step="1"
                   value={brightness}
-                  onChange={(e) => handleBrightnessChange(parseFloat(e.target.value))}
-                  style={{ width: "100%" }}
+                  onChange={(e) => handleBrightnessChange(parseInt(e.target.value))}
+                  className="brightness-slider"
+                  style={{
+                    background: `linear-gradient(90deg, #0A6FFD ${(brightness / 200) * 100}%, #1a2236 ${(brightness / 200) * 100}%)`
+                  }}
                 />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "#4a6a8a" }}>Dark</span>
+                  <span
+                    style={{ fontSize: "10px", color: "#0A6FFD", cursor: "pointer", userSelect: "none" }}
+                    onClick={() => handleBrightnessChange(100)}
+                  >
+                    Reset
+                  </span>
+                  <span style={{ fontSize: "10px", color: "#4a6a8a" }}>Bright</span>
+                </div>
               </div>
             )}
 

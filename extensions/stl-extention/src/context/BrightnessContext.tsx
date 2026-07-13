@@ -17,7 +17,7 @@ interface BrightnessProviderProps {
 
 export const BrightnessProvider: React.FC<BrightnessProviderProps> = ({ children }) => {
   const [brightnessEnabled, setBrightnessEnabled] = useState(false);
-  const [brightness, setBrightness] = useState(1.0);
+  const [brightness, setBrightness] = useState(100);
 
   const toggleBrightness = () => {
     setBrightnessEnabled(prev => !prev);
