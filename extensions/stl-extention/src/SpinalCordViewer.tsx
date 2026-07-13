@@ -72,6 +72,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
   const [brightness, setBrightness] = useState(1.0);
   const [undoStack, setUndoStack] = useState<THREE.BufferGeometry[][]>([]);
   const [removalMode, setRemovalMode] = useState(false);
+  const [rendererReady, setRendererReady] = useState(false);
   const [removalOutline, setRemovalOutline] = useState<{ x: number, y: number }[]>([]);
   const [removing, setRemoving] = useState(false);
   const [tetsStls, setTestStls] = useState<string[]>([]);
@@ -399,10 +400,12 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
 
   // Three.js Viewer and Controls Setup
   useEffect(() => {
+    const leftMount = leftMountRef.current;
+    const rightMount = rightMountRef.current;
+    if (!leftMount || !rightMount) return;
+
     const leftScene = leftSceneRef.current;
     const rightScene = rightSceneRef.current;
-    const leftMount = leftMountRef.current!;
-    const rightMount = rightMountRef.current!;
 
     leftScene.background = new THREE.Color(0x000000);
     rightScene.background = new THREE.Color(0x000000);
@@ -427,6 +430,8 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     rightRenderer.setPixelRatio(window.devicePixelRatio);
     rightRendererRef.current = rightRenderer;
     rightMount.appendChild(rightRenderer.domElement);
+
+    setRendererReady(true);
 
     const leftControls = new OrbitControls(camera, leftRenderer.domElement);
     const rightControls = new OrbitControls(camera, rightRenderer.domElement);
@@ -919,7 +924,7 @@ const SpinalCordViewer: React.FC<SpinalCordViewerProps> = ({
     return () => {
       cleanupAngleMeasurementMode();
     };
-  }, []);
+  }, [setupAngleMeasurementMode, cleanupAngleMeasurementMode, rendererReady]);
 
   return (
     <div style={{

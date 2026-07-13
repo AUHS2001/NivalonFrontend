@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MergedTopology } from './wrapMeshEditor';
 
 /**
  * Volume-preserving Laplacian smoothing.
@@ -173,6 +174,105 @@ export async function laplacianSmooth(
   // ── 6. Write merged positions back to ALL duplicate vertices ──
   for (let m = 0; m < mergedCount; m++) {
     const group = mergedGroups[m];
+    const px = mp[m * 3];
+    const py = mp[m * 3 + 1];
+    const pz = mp[m * 3 + 2];
+    for (let g = 0; g < group.length; g++) {
+      const vi = group[g];
+      positions[vi * 3]     = px;
+      positions[vi * 3 + 1] = py;
+      positions[vi * 3 + 2] = pz;
+    }
+  }
+
+  posAttr.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+}
+
+/**
+ * Localized Laplacian smoothing with Gaussian falloff.
+ *
+ * Smooths vertices within `radius` of `center`, weighting the smoothing
+ * strength by a Gaussian so edges of the brush blend smoothly into the
+ * unmodified surface.  Operates on a precomputed MergedTopology so it
+ * can be called at interactive rates (no vertex-merge overhead per call).
+ */
+export function localLaplacianSmooth(
+  geometry: THREE.BufferGeometry,
+  topology: MergedTopology,
+  center: THREE.Vector3,
+  radius: number,
+  iterations: number = 2,
+  lambda: number = 0.5,
+): void {
+  const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
+  if (!posAttr) return;
+
+  const positions = posAttr.array as Float32Array;
+  const mp = topology.positions;
+  const radiusSq = radius * radius;
+  const sigma = radius / 3;
+  const twoSigmaSq = 2 * sigma * sigma;
+
+  // Find merged vertices within radius and compute Gaussian weights
+  const localIndices: number[] = [];
+  const weights: number[] = [];
+  const localSet = new Set<number>();
+
+  for (let m = 0; m < topology.mergedCount; m++) {
+    const dx = mp[m * 3]     - center.x;
+    const dy = mp[m * 3 + 1] - center.y;
+    const dz = mp[m * 3 + 2] - center.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq <= radiusSq) {
+      localIndices.push(m);
+      weights.push(Math.exp(-distSq / twoSigmaSq));
+      localSet.add(m);
+    }
+  }
+
+  if (localIndices.length === 0) return;
+
+  // Iterative weighted Laplacian smoothing
+  for (let iter = 0; iter < iterations; iter++) {
+    // Snapshot current positions of local vertices
+    const prevPos = new Map<number, [number, number, number]>();
+    for (const m of localIndices) {
+      prevPos.set(m, [mp[m * 3], mp[m * 3 + 1], mp[m * 3 + 2]]);
+    }
+
+    for (let i = 0; i < localIndices.length; i++) {
+      const m = localIndices[i];
+      const w = weights[i];
+      const neighbors = topology.adjList[m];
+      const nLen = neighbors.length;
+      if (nLen === 0) continue;
+
+      let avgX = 0, avgY = 0, avgZ = 0;
+      for (let j = 0; j < nLen; j++) {
+        const n = neighbors[j];
+        const p = prevPos.get(n);
+        if (p) {
+          avgX += p[0]; avgY += p[1]; avgZ += p[2];
+        } else {
+          avgX += mp[n * 3]; avgY += mp[n * 3 + 1]; avgZ += mp[n * 3 + 2];
+        }
+      }
+      avgX /= nLen; avgY /= nLen; avgZ /= nLen;
+
+      const prev = prevPos.get(m)!;
+      const effectiveLambda = lambda * w;
+      mp[m * 3]     = prev[0] + effectiveLambda * (avgX - prev[0]);
+      mp[m * 3 + 1] = prev[1] + effectiveLambda * (avgY - prev[1]);
+      mp[m * 3 + 2] = prev[2] + effectiveLambda * (avgZ - prev[2]);
+    }
+  }
+
+  // Write merged positions back to all duplicate original vertices
+  for (const m of localIndices) {
+    const group = topology.mergedGroups[m];
     const px = mp[m * 3];
     const py = mp[m * 3 + 1];
     const pz = mp[m * 3 + 2];

@@ -106,6 +106,13 @@ const cornerstoneExtension: Types.Extensions.Extension = {
       cornerstoneViewportService.EVENTS.VIEWPORT_DATA_CHANGED,
     ]);
 
+    // Refresh toolbar on layout changes (e.g., for Magnify layout restriction)
+    const { viewportGridService } = servicesManager.services;
+    toolbarService.registerEventForToolbarUpdate(viewportGridService, [
+      viewportGridService.EVENTS.LAYOUT_CHANGED,
+      viewportGridService.EVENTS.ACTIVE_VIEWPORT_ID_CHANGED,
+    ]);
+
     toolbarService.registerEventForToolbarUpdate(segmentationService, [
       segmentationService.EVENTS.SEGMENTATION_REMOVED,
       segmentationService.EVENTS.SEGMENTATION_MODIFIED,

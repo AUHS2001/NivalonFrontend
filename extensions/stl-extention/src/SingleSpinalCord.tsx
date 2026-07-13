@@ -29,6 +29,9 @@ import { SingleViewerContainer } from './components/SingleViewerContainer';
 import SmoothDialog from './components/SmoothDialog';
 import { laplacianSmooth } from './utils/smoothGeometry';
 import { useWrapMode } from './hooks/useWrapMode';
+import { useFreehandSmooth } from './hooks/useFreehandSmooth';
+import FreehandSmoothDialog from './components/FreehandSmoothDialog';
+import type { FreehandSmoothSettings } from './components/FreehandSmoothDialog';
 import { useMeasurementContext } from './context/MeasurementContext';
 import { useThreeDToolsBridge, ToolDef } from './context/ThreeDToolsBridgeContext';
 import { useBrightnessContext } from './context/BrightnessContext';
@@ -208,6 +211,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const undoOrderRef = useRef<('bone' | 'click' | 'movement')[]>([]);
   const movementUndoStackRef = useRef<Array<{ left: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }>; right: Array<{ pos: THREE.Vector3; quat: THREE.Quaternion }> }>>([]);
   const [movementUndoCount, setMovementUndoCount] = useState(0);
+  const [rendererReady, setRendererReady] = useState(false);
   const voxelUndoStackRef = useRef<VoxelUndoSnapshot[]>([]);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [downloadTotalBytes, setDownloadTotalBytes] = useState(0);
@@ -362,11 +366,21 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   // Color mode state
   const [colorModeEnabled, setColorModeEnabled] = useState(false);
   const [showSmoothDialog, setShowSmoothDialog] = useState(false);
+  const [showFreehandSmoothDialog, setShowFreehandSmoothDialog] = useState(false);
   const { isWrapActive, activateWrap, deactivateWrap, canActivateWrap } = useWrapMode({
     leftRendererRef, leftSceneRef, cameraRef,
     meshRefs, leftControlsRef, servicesManager: propServicesManager,
     onBeforeActivate: () => {
       // Snapshot geometries for undo before wrap modifications
+      const prevGeometries = meshRefs.current.left.map(mesh => mesh.geometry.clone());
+      setUndoStack(stack => [...stack, prevGeometries]);
+      undoOrderRef.current.push('bone');
+    },
+  });
+  const { isFreehandSmoothActive, isDragMode, toggleDragMode, activateFreehandSmooth, deactivateFreehandSmooth } = useFreehandSmooth({
+    leftRendererRef, leftSceneRef, cameraRef,
+    meshRefs, leftControlsRef,
+    onBeforeActivate: () => {
       const prevGeometries = meshRefs.current.left.map(mesh => mesh.geometry.clone());
       setUndoStack(stack => [...stack, prevGeometries]);
       undoOrderRef.current.push('bone');
@@ -573,7 +587,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
     toggleAngleMeasurement,
     setupAngleMeasurementMode,
     cleanupAngleMeasurementMode,
-    clearAngleMeasurements
+    clearAngleMeasurements,
+    updateAngleMeasurementsOnBoneMove
   } = useAngleMeasurementContext();
 
   // Snapshot all mesh transforms for movement undo
@@ -644,6 +659,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -667,7 +683,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+  }, [rotationMode, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   // VERTICAL - UP/DOWN (Motion)
   useEffect(() => {
@@ -719,6 +735,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -742,7 +759,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [rotationMode1, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+  }, [rotationMode1, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 
   useEffect(() => {
@@ -789,6 +806,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
         }
       }
       updateMeasurementsOnBoneMove();
+      updateAngleMeasurementsOnBoneMove();
     };
 
     const onMouseUp = () => {
@@ -805,7 +823,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-}, [rotationMode2, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [rotationMode2, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // FORWARD - BACKWARD (Motion)
 useEffect(() => {
@@ -857,6 +875,7 @@ useEffect(() => {
       }
     }
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   const onMouseUp = () => {
@@ -880,7 +899,7 @@ useEffect(() => {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   };
-}, [rotationMode3, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [rotationMode3, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
 // IMPLANT MOVE MODE - When active, clicking on implant moves only the implant
 useEffect(() => {
@@ -1046,6 +1065,7 @@ useEffect(() => {
     }
     setCurrentRotationAngle(0);
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Expose reset all bones function via ref
@@ -1205,6 +1225,7 @@ useEffect(() => {
     }
 
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Store original state for reset
@@ -1235,6 +1256,7 @@ useEffect(() => {
     accumulatedRotation = 0;
     setCurrentRotationAngle(0);
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   // Track last mouse angle for rotation calculation
@@ -1522,7 +1544,7 @@ useEffect(() => {
       });
     }
   };
-}, [inertialRotationMode, updateMeasurementsOnBoneMove, activePanel, showComparePanel]);
+}, [inertialRotationMode, updateMeasurementsOnBoneMove, updateAngleMeasurementsOnBoneMove, activePanel, showComparePanel]);
 
   const applyBoneAndRainbowToAllViewports = () => {
     console.log('🎨 Applying bone preset with OHIF services...');
@@ -1697,7 +1719,7 @@ useEffect(() => {
       cleanupMeasurementMode();
       cleanupAngleMeasurementMode();
     };
-  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel, showComparePanel]);
+  }, [setupMeasurementMode, cleanupMeasurementMode, setupAngleMeasurementMode, cleanupAngleMeasurementMode, activePanel, showComparePanel, rendererReady]);
 
 
 
@@ -2469,10 +2491,12 @@ const createAutomaticSegmentation = async () => {
 
   // Three.js Viewer and Controls Setup
   useEffect(() => {
+    const leftMount = leftMountRef.current;
+    const rightMount = rightMountRef.current;
+    if (!leftMount || !rightMount) return;
+
     const leftScene = leftSceneRef.current;
     const rightScene = rightSceneRef.current;
-    const leftMount = leftMountRef.current!;
-    const rightMount = rightMountRef.current!;
 
     leftScene.background = new THREE.Color(0x000000);
     rightScene.background = new THREE.Color(0x000000);
@@ -2513,6 +2537,8 @@ const createAutomaticSegmentation = async () => {
     rightRenderer.domElement.style.display = 'block';
     rightRendererRef.current = rightRenderer;
     rightMount.appendChild(rightRenderer.domElement);
+
+    setRendererReady(true);
 
     // Create separate controls with their own cameras
     const leftControls = new OrbitControls(leftCamera, leftRenderer.domElement);
@@ -3330,6 +3356,7 @@ const createAutomaticSegmentation = async () => {
     restoreMeshTransforms(snap);
     setMovementUndoCount(c => Math.max(0, c - 1));
     updateMeasurementsOnBoneMove();
+    updateAngleMeasurementsOnBoneMove();
   };
 
   const handleUnifiedUndo = () => {
@@ -3423,7 +3450,8 @@ const createAutomaticSegmentation = async () => {
     implantMove: handleToggleImplantMove,
     interactiveRotation: handleToggleInertialRotation,
     smooth: () => setShowSmoothDialog(true),
-    wrap: () => { if (isWrapActive) deactivateWrap(); else activateWrap(); },
+    wrap: () => { if (isWrapActive) deactivateWrap(); else { if (isFreehandSmoothActive) deactivateFreehandSmooth(); activateWrap(); } },
+    freehandSmooth: () => { if (isFreehandSmoothActive) deactivateFreehandSmooth(); else { if (isWrapActive) deactivateWrap(); setShowFreehandSmoothDialog(true); } },
     screenshot: handleScreenshot,
     merge: showMerge ? removeBoneAndRainbowFromAllViewports : applyBoneAndRainbowToAllViewports,
     clickRemoval: () => onToggleClickRemoval(!clickRemovalMode),
@@ -3466,9 +3494,10 @@ const createAutomaticSegmentation = async () => {
         { id: 'measurement', label: 'Measurement', icon: 'fa-ruler', active: measurementEnabled, onClick: makeOnClick('measurement') },
         { id: 'angle', label: 'Angle', icon: 'fa-angle-double-right', active: angleMeasurementEnabled, onClick: makeOnClick('angle') },
       ]},
-      { id: 'smoothing', label: 'Smoothing', icon: 'fa-wave-square', active: showSmoothDialog || isWrapActive, onClick: () => {}, children: [
+      { id: 'smoothing', label: 'Smoothing', icon: 'fa-wave-square', active: showSmoothDialog || isWrapActive || isFreehandSmoothActive, onClick: () => {}, children: [
         { id: 'smooth', label: 'Smooth', icon: 'fa-bezier-curve', active: showSmoothDialog, onClick: makeOnClick('smooth') },
         { id: 'wrap', label: 'Wrap', icon: 'fa-border-all', active: isWrapActive, disabled: !canActivateWrap, onClick: makeOnClick('wrap') },
+        { id: 'freehandSmooth', label: 'Free Hand', icon: 'fa-paint-brush', active: isFreehandSmoothActive, onClick: makeOnClick('freehandSmooth') },
       ]},
       { id: 'labeling', label: 'Labeling', icon: 'fa-tags', active: labelViewEnabled || spineLabelingMode || colorModeEnabled || brightnessEnabled, onClick: () => {}, children: [
         { id: 'labelView', label: 'Label View', icon: 'fa-columns', active: labelViewEnabled, onClick: makeOnClick('labelView') },
@@ -3489,7 +3518,7 @@ const createAutomaticSegmentation = async () => {
     loading, removalMode, undoStack.length, isLinkingActive, centerLineEnabled, isDownloading,
     brightnessEnabled, measurementEnabled, angleMeasurementEnabled,
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
-    implantMoveMode, inertialRotationMode, showSmoothDialog, isWrapActive, canActivateWrap, showMerge, clickRemovalMode,
+    implantMoveMode, inertialRotationMode, showSmoothDialog, isWrapActive, isFreehandSmoothActive, canActivateWrap, showMerge, clickRemovalMode,
     clickRemovalUndoStack.length, movementUndoCount, labelViewEnabled, spineLabelingMode, colorModeEnabled,
     isApproving, isUploading, versionHistoryEnabled, showImplantView,
     registerTools, makeOnClick,
@@ -3985,6 +4014,34 @@ const createAutomaticSegmentation = async () => {
           syncCameras={syncCameras}
           onToggleSync={showComparePanel ? () => setSyncCameras(prev => !prev) : undefined}
         >
+          {/* Drag/Smooth Toggle Button - Only shows when freehand smooth is active */}
+          {isFreehandSmoothActive && (
+            <button
+              onClick={toggleDragMode}
+              style={{
+                position: 'absolute',
+                top: '10px',
+                left: '10px',
+                zIndex: 200,
+                backgroundColor: isDragMode ? '#2196F3' : '#00BCD4',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '8px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'background-color 0.2s'
+              }}
+              title={isDragMode ? 'Click to switch back to smoothing' : 'Click to drag/rotate the view'}
+            >
+              <i className={`fas ${isDragMode ? 'fa-hand-paper' : 'fa-paint-brush'}`} />
+              {isDragMode ? 'Drag Mode' : 'Smooth Mode'}
+            </button>
+          )}
           {/* Transparency Toggle Button - Only shows when centerline is enabled */}
           {centerLineEnabled && (
             <button
@@ -4021,6 +4078,14 @@ const createAutomaticSegmentation = async () => {
         onClose={() => setShowSmoothDialog(false)}
         meshNames={smoothMeshNames}
         onApply={handleApplySmooth}
+      />
+      <FreehandSmoothDialog
+        isOpen={showFreehandSmoothDialog}
+        onClose={() => setShowFreehandSmoothDialog(false)}
+        onApply={(settings: FreehandSmoothSettings) => {
+          setShowFreehandSmoothDialog(false);
+          activateFreehandSmooth(settings.iterations, settings.lambda);
+        }}
       />
     </CenterLineProvider>
   );
