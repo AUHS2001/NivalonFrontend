@@ -127,6 +127,14 @@ function ToolbarLayoutSelectorWithServices({
             customLayout: 'local-3d-compare',
           },
         },
+        {
+          title: 'OVF',
+          icon: 'layout-single',
+          commandOptions: {
+            protocolId: 'ovf-layout',
+            customLayout: 'ovf',
+          },
+        },
       ];
 
   // Unified selection handler that dispatches to the appropriate command
@@ -222,6 +230,31 @@ function ToolbarLayoutSelectorWithServices({
         return;
       }
 
+      if (commandOptions && commandOptions.customLayout === 'ovf') {
+        console.log('Applying OVF layout');
+        try {
+          viewportGridService.setLayout({
+            numRows: 1,
+            numCols: 1,
+            layoutType: 'grid',
+            layoutOptions: [],
+            findOrCreateViewport: (index) => ({
+              displaySetInstanceUIDs: [],
+              displaySetOptions: [],
+              viewportOptions: {
+                viewportId: `ovfViewport-${index}`,
+                customLayout: 'ovf',
+              },
+            }),
+            activeViewportId: 'ovfViewport-0',
+            isHangingProtocolLayout: false,
+          });
+        } catch (error) {
+          console.error('Error applying OVF layout:', error);
+        }
+        return;
+      }
+
 
       if (isPreset) {
         // If we're leaving a custom layout (stl, 3d-compare, comparison),
@@ -232,7 +265,7 @@ function ToolbarLayoutSelectorWithServices({
         if (currentViewports) {
           currentViewports.forEach((vp) => {
             const cl = vp?.viewportOptions?.customLayout;
-            if (cl === 'stl' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison') {
+            if (cl === 'stl' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison' || cl === 'ovf') {
               leavingCustomLayout = true;
             }
           });

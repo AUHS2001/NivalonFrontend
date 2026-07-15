@@ -8,6 +8,7 @@ import STLLayout from './STLLayout';
 import ComparisonLayout from './ComparisonLayout';
 import ThreeDCompareLayout from './ThreeDCompareLayout';
 import LocalThreeDCompareLayout from './LocalThreeDCompareLayout';
+import OVFLayout from './OVFLayout';
 import { loadSeriesFully } from '../services/lazyLoadService';
 
 function ViewerViewportGrid(props: withAppTypes) {
@@ -85,6 +86,22 @@ function ViewerViewportGrid(props: withAppTypes) {
           displaySetInstanceUIDs: [],
           displaySetOptions: [],
           viewportOptions: { customLayout: 'local-3d-compare' },
+        }),
+        isHangingProtocolLayout: true,
+      });
+      return;
+    }
+
+    if (protocol.id === 'ovf-layout') {
+      viewportGridService.setLayout({
+        numRows: 1,
+        numCols: 1,
+        layoutType: 'grid',
+        layoutOptions: [],
+        findOrCreateViewport: () => ({
+          displaySetInstanceUIDs: [],
+          displaySetOptions: [],
+          viewportOptions: { customLayout: 'ovf' },
         }),
         isHangingProtocolLayout: true,
       });
@@ -513,6 +530,26 @@ function ViewerViewportGrid(props: withAppTypes) {
             className="flex h-full w-full min-w-[5px] flex-col"
           >
             <LocalThreeDCompareLayout servicesManager={servicesManager} commandsManager={commandsManager} />
+          </div>
+        );
+        continue;
+      }
+
+      if (viewportOptions?.customLayout === 'ovf') {
+        viewportPanes[i] = (
+          <div
+            key={viewportId}
+            data-cy="viewport-pane"
+            style={{
+              position: 'absolute',
+              top: viewportY * 100 + '%',
+              left: viewportX * 100 + '%',
+              width: viewportWidth * 100 + '%',
+              height: viewportHeight * 100 + '%',
+            }}
+            className="flex h-full w-full min-w-[5px] flex-col"
+          >
+            <OVFLayout servicesManager={servicesManager} commandsManager={commandsManager} dataSource={dataSource} />
           </div>
         );
         continue;

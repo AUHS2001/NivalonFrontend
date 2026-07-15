@@ -84,6 +84,16 @@ export default {
         disabled: false,
       });
 
+      protocolPresets.push({
+        icon: 'layout-common-1x1',
+        title: 'OVF',
+        commandOptions: {
+          protocolId: 'ovf-layout',
+          customLayout: 'ovf',
+        },
+        disabled: false,
+      });
+
       return [...protocolPresets];
     };
 
