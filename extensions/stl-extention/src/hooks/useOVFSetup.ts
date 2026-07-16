@@ -77,7 +77,7 @@ export function useOVFSetup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const { setVertebraLegend, colorsDisabled, hiddenVertebrae } = useOvfLegendContext();
+  const { setVertebraLegend, colorsDisabled, hiddenVertebrae, selectedPreset } = useOvfLegendContext();
   const originalColorsRef = useRef<Map<THREE.Mesh, number>>(new Map());
 
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -523,6 +523,21 @@ export function useOVFSetup({
     });
     renderBoth();
   }, [hiddenVertebrae, renderBoth]);
+
+  // ─── Apply volume rendering preset ───
+  useEffect(() => {
+    if (!selectedPreset) return;
+    const re = csRenderingEngineRef.current;
+    if (!re || re.hasBeenDestroyed) return;
+    const vp = re.getViewport(OVF_VIEWPORT_ID) as any;
+    if (!vp) return;
+    const presets = (CONSTANTS as any).VIEWPORT_PRESETS || [];
+    const preset = presets.find((p: any) => p.name === selectedPreset);
+    if (preset) {
+      vp.setProperties({ preset });
+      vp.render();
+    }
+  }, [selectedPreset]);
 
   // ─── Resize handler ───
   useEffect(() => {

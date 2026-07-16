@@ -1,5 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Measurement } from '../types/three.types';
+
+// Volume preset preview images
+import imgCTAAA from '../../../../platform/ui-next/assets/images/CT-AAA.png';
+import imgCTAAA2 from '../../../../platform/ui-next/assets/images/CT-AAA2.png';
+import imgCTAir from '../../../../platform/ui-next/assets/images/CT-Air.png';
+import imgCTBone from '../../../../platform/ui-next/assets/images/CT-Bone.png';
+import imgCTBones from '../../../../platform/ui-next/assets/images/CT-Bones.png';
+import imgCTCardiac from '../../../../platform/ui-next/assets/images/CT-Cardiac.png';
+import imgCTCardiac2 from '../../../../platform/ui-next/assets/images/CT-Cardiac2.png';
+import imgCTCardiac3 from '../../../../platform/ui-next/assets/images/CT-Cardiac3.png';
+import imgCTChestCE from '../../../../platform/ui-next/assets/images/CT-Chest-Contrast-Enhanced.png';
+import imgCTChestV from '../../../../platform/ui-next/assets/images/CT-Chest-Vessels.png';
+import imgCTCoronary from '../../../../platform/ui-next/assets/images/CT-Coronary-Arteries.png';
+import imgCTCoronary2 from '../../../../platform/ui-next/assets/images/CT-Coronary-Arteries-2.png';
+import imgCTCoronary3 from '../../../../platform/ui-next/assets/images/CT-Coronary-Arteries-3.png';
+import imgCTCroppedBone from '../../../../platform/ui-next/assets/images/CT-Cropped-Volume-Bone.png';
+import imgCTFat from '../../../../platform/ui-next/assets/images/CT-Fat.png';
+import imgCTLiver from '../../../../platform/ui-next/assets/images/CT-Liver-Vasculature.png';
+import imgCTLung from '../../../../platform/ui-next/assets/images/CT-Lung.png';
+import imgCTMIP from '../../../../platform/ui-next/assets/images/CT-MIP.png';
+import imgCTMuscle from '../../../../platform/ui-next/assets/images/CT-Muscle.png';
+import imgCTPulmonary from '../../../../platform/ui-next/assets/images/CT-Pulmonary-Arteries.png';
+import imgCTSoftTissue from '../../../../platform/ui-next/assets/images/CT-Soft-Tissue.png';
+import imgMRAngio from '../../../../platform/ui-next/assets/images/MR-Angio.png';
+import imgMRDefault from '../../../../platform/ui-next/assets/images/MR-Default.png';
+import imgMRMIP from '../../../../platform/ui-next/assets/images/MR-MIP.png';
+import imgMRT2Brain from '../../../../platform/ui-next/assets/images/MR-T2-Brain.png';
+
+const PRESET_IMAGES: Record<string, string> = {
+  'CT-AAA': imgCTAAA, 'CT-AAA2': imgCTAAA2, 'CT-Air': imgCTAir,
+  'CT-Bone': imgCTBone, 'CT-Bones': imgCTBones,
+  'CT-Cardiac': imgCTCardiac, 'CT-Cardiac2': imgCTCardiac2, 'CT-Cardiac3': imgCTCardiac3,
+  'CT-Chest-Contrast-Enhanced': imgCTChestCE, 'CT-Chest-Vessels': imgCTChestV,
+  'CT-Coronary-Arteries': imgCTCoronary, 'CT-Coronary-Arteries-2': imgCTCoronary2, 'CT-Coronary-Arteries-3': imgCTCoronary3,
+  'CT-Cropped-Volume-Bone': imgCTCroppedBone, 'CT-Fat': imgCTFat,
+  'CT-Liver-Vasculature': imgCTLiver, 'CT-Lung': imgCTLung, 'CT-MIP': imgCTMIP,
+  'CT-Muscle': imgCTMuscle, 'CT-Pulmonary-Arteries': imgCTPulmonary,
+  'CT-Soft-Tissue': imgCTSoftTissue,
+  'MR-Angio': imgMRAngio, 'MR-Default': imgMRDefault, 'MR-MIP': imgMRMIP, 'MR-T2-Brain': imgMRT2Brain,
+};
 import { useMeasurementContext } from '../context/MeasurementContext';
 import { useBrightnessContext } from '../context/BrightnessContext';
 import { useBoneRemovalContext } from '../context/BoneRemovalContext';
@@ -48,7 +88,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleCompareLeftVisibility,
     toggleAllCompareLeftVisibility,
   } = useStlVisibilityContext();
-  const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility } = useOvfLegendContext();
+  const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset } = useOvfLegendContext();
+  const [showPresetPopup, setShowPresetPopup] = useState(false);
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
@@ -243,6 +284,164 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 >
                   {colorsDisabled ? 'Enable Colors' : 'Disable Colors'}
                 </button>
+
+                <button
+                  onClick={() => setShowPresetPopup(true)}
+                  style={{
+                    width: '100%',
+                    marginTop: '8px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #555',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: '#ccc',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Volume Presets
+                </button>
+              </div>
+            )}
+
+            {/* Volume Presets Popup */}
+            {showPresetPopup && (
+              <div
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 3000,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.6)',
+                }}
+                onClick={() => setShowPresetPopup(false)}
+              >
+                <div
+                  style={{
+                    background: '#1a1f2e',
+                    borderRadius: '10px',
+                    border: '1px solid #333',
+                    padding: '20px',
+                    width: '480px',
+                    maxHeight: '80vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '14px',
+                  }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', color: '#9fcfff', fontWeight: 600 }}>
+                      Volume Presets
+                    </h4>
+                    <button
+                      onClick={() => setShowPresetPopup(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#888',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        padding: '2px 6px',
+                      }}
+                    >
+                      <i className="fas fa-times" />
+                    </button>
+                  </div>
+                  <div style={{
+                    overflowY: 'auto',
+                    flex: 1,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '10px',
+                    padding: '4px',
+                  }}>
+                    {[
+                      'CT-AAA', 'CT-AAA2', 'CT-Bone', 'CT-Bones',
+                      'CT-Cardiac', 'CT-Cardiac2', 'CT-Cardiac3',
+                      'CT-Chest-Contrast-Enhanced', 'CT-Chest-Vessels',
+                      'CT-Coronary-Arteries', 'CT-Coronary-Arteries-2', 'CT-Coronary-Arteries-3',
+                      'CT-Cropped-Volume-Bone', 'CT-Fat',
+                      'CT-Liver-Vasculature', 'CT-Lung', 'CT-MIP',
+                      'CT-Muscle', 'CT-Pulmonary-Arteries',
+                      'CT-Soft-Tissue', 'CT-Air',
+                      'MR-Angio', 'MR-Default', 'MR-MIP', 'MR-T2-Brain',
+                    ].map((name) => {
+                      const isSelected = selectedPreset === name;
+                      return (
+                        <div
+                          key={name}
+                          onClick={() => {
+                            setSelectedPreset(name);
+                            setShowPresetPopup(false);
+                          }}
+                          style={{
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            border: isSelected ? '2px solid #43a047' : '2px solid transparent',
+                            backgroundColor: isSelected ? 'rgba(67, 160, 71, 0.1)' : 'rgba(255,255,255,0.03)',
+                            padding: '6px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            transition: 'border-color 0.15s',
+                          }}
+                        >
+                          {PRESET_IMAGES[name] ? (
+                            <img
+                              src={PRESET_IMAGES[name]}
+                              alt={name}
+                              style={{
+                                width: '100%',
+                                height: '80px',
+                                objectFit: 'cover',
+                                borderRadius: '4px',
+                                backgroundColor: '#000',
+                              }}
+                            />
+                          ) : (
+                            <div style={{
+                              width: '100%',
+                              height: '80px',
+                              borderRadius: '4px',
+                              backgroundColor: '#111',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#555',
+                              fontSize: '10px',
+                            }}>
+                              No preview
+                            </div>
+                          )}
+                          <span style={{
+                            marginTop: '4px',
+                            fontSize: '10px',
+                            color: isSelected ? '#66bb6a' : '#aaa',
+                            fontWeight: isSelected ? 600 : 400,
+                            textAlign: 'center',
+                            lineHeight: '1.2',
+                            wordBreak: 'break-word',
+                          }}>
+                            {name}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
