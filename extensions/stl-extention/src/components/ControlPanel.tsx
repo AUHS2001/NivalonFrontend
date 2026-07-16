@@ -48,7 +48,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleCompareLeftVisibility,
     toggleAllCompareLeftVisibility,
   } = useStlVisibilityContext();
-  const { vertebraLegend } = useOvfLegendContext();
+  const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility } = useOvfLegendContext();
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
@@ -99,8 +99,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             )}
 
-            {/* OVF Vertebrae Legend — only when OVF layout is active */}
-            {isOvfLayout && vertebraLegend.length > 0 && (
+            {/* OVF Vertebrae Legend — shows when OVF data is available */}
+            {vertebraLegend.length > 0 && (
               <div style={{ marginBottom: '20px', padding: '10px' }}>
                 <div style={{
                   display: "flex",
@@ -130,41 +130,65 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   }}>
                     Vertebrae
                   </span>
-                  {vertebraLegend.map((entry, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '5px 8px',
-                        borderBottom: '1px solid #1a2030',
-                        fontSize: '12px',
-                      }}
-                    >
+                  {vertebraLegend.map((entry, i) => {
+                    const isHidden = hiddenVertebrae.has(entry.name);
+                    return (
                       <div
+                        key={i}
                         style={{
-                          width: '12px',
-                          height: '12px',
-                          borderRadius: '3px',
-                          backgroundColor: entry.color,
-                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '5px 8px',
+                          borderBottom: '1px solid #1a2030',
+                          fontSize: '12px',
+                          backgroundColor: isHidden ? 'rgba(255,255,255,0.05)' : 'transparent',
                         }}
-                      />
-                      <span style={{ color: '#ddd' }}>{entry.name}</span>
-                    </div>
-                  ))}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            style={{
+                              width: '12px',
+                              height: '12px',
+                              borderRadius: '3px',
+                              backgroundColor: isHidden ? '#555' : entry.color,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ color: isHidden ? '#888' : '#ddd' }}>{entry.name}</span>
+                        </div>
+                        <button
+                          onClick={() => toggleVertebraVisibility(entry.name)}
+                          style={{
+                            fontSize: '12px',
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '4px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: isHidden ? '#888' : '#87dbfc',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <i className={`fas ${isHidden ? 'fa-eye-slash' : 'fa-eye'}`} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <button
                   style={{
                     width: '100%',
                     marginTop: '12px',
-                    padding: '8px 12px',
+                    padding: '5px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #1e88e5',
-                    backgroundColor: 'rgba(30, 136, 229, 0.15)',
-                    color: '#4fc3f7',
+                    border: '1px solid #555',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: '#ccc',
                     fontSize: '13px',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -181,7 +205,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   style={{
                     width: '100%',
                     marginTop: '8px',
-                    padding: '8px 12px',
+                    padding: '5px 12px',
                     borderRadius: '6px',
                     border: '1px solid #555',
                     backgroundColor: 'rgba(255, 255, 255, 0.06)',
@@ -197,11 +221,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 >
                   Show Calculations
                 </button>
+
+                <button
+                  onClick={() => setColorsDisabled(!colorsDisabled)}
+                  style={{
+                    width: '100%',
+                    marginTop: '8px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    border: colorsDisabled ? '1px solid #43a047' : '1px solid #555',
+                    backgroundColor: colorsDisabled ? 'rgba(67, 160, 71, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                    color: colorsDisabled ? '#66bb6a' : '#ccc',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {colorsDisabled ? 'Enable Colors' : 'Disable Colors'}
+                </button>
               </div>
             )}
 
             {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
-            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && !isLocalCompareLayout && !isOvfLayout && stlFiles.length > 0 && (
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && !isLocalCompareLayout && vertebraLegend.length === 0 && stlFiles.length > 0 && (
               <div style={{ marginBottom: '20px', padding: '10px' }}>
                 <div style={{
                   display: "flex",
@@ -737,7 +783,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             )}
 
             {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
-            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length === 0 && !isLocalCompareLayout && !isOvfLayout && (
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length === 0 && !isLocalCompareLayout && vertebraLegend.length === 0 && (
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',

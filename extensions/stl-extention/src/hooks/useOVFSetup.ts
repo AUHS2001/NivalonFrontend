@@ -77,7 +77,8 @@ export function useOVFSetup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const { setVertebraLegend } = useOvfLegendContext();
+  const { setVertebraLegend, colorsDisabled, hiddenVertebrae } = useOvfLegendContext();
+  const originalColorsRef = useRef<Map<THREE.Mesh, number>>(new Map());
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -402,9 +403,11 @@ export function useOVFSetup({
               side: THREE.DoubleSide,
             });
             const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = info!.fullName;
 
             if (!cancelledRef.current) {
               scene.add(mesh);
+              originalColorsRef.current.set(mesh, color);
               legendEntries.push({
                 name: info!.fullName,
                 color: `#${color.toString(16).padStart(6, '0')}`,
@@ -484,6 +487,42 @@ export function useOVFSetup({
       setLoading(false);
     }
   }, [stlInstanceId, userToken, renderBoth]);
+
+  // ─── Toggle STL mesh colors (white bone vs colored) ───
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const BONE_WHITE = 0xe8e0d8;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshPhongMaterial;
+      if (!mat || !mat.color) return;
+      if (colorsDisabled) {
+        mat.color.setHex(BONE_WHITE);
+        mat.opacity = 1.0;
+      } else {
+        const orig = originalColorsRef.current.get(mesh);
+        if (orig !== undefined) {
+          mat.color.setHex(orig);
+          mat.opacity = 0.85;
+        }
+      }
+    });
+    renderBoth();
+  }, [colorsDisabled, renderBoth]);
+
+  // ─── Toggle individual vertebra visibility ───
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.name) return;
+      mesh.visible = !hiddenVertebrae.has(mesh.name);
+    });
+    renderBoth();
+  }, [hiddenVertebrae, renderBoth]);
 
   // ─── Resize handler ───
   useEffect(() => {
