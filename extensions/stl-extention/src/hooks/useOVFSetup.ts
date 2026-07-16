@@ -12,6 +12,7 @@ import {
 } from '@cornerstonejs/core';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
 import { SERVER_URL, fetchFile } from '../../../../config/server';
+import { useOvfLegendContext } from '../context/OvfLegendContext';
 
 /**
  * Two-layer rendering:
@@ -48,7 +49,6 @@ interface UseOVFSetupReturn {
   loading: boolean;
   error: string | null;
   loadProgress: number;
-  vertebraLegend: Array<{ name: string; color: string }>;
 }
 
 function getVertebraInfo(fileName: string) {
@@ -77,7 +77,7 @@ export function useOVFSetup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const [vertebraLegend, setVertebraLegend] = useState<Array<{ name: string; color: string }>>([]);
+  const { setVertebraLegend } = useOvfLegendContext();
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -518,6 +518,7 @@ export function useOVFSetup({
     return () => {
       cancelledRef.current = true;
       clearTimeout(timeout);
+      setVertebraLegend([]);
       if (csIdleTimerRef.current) clearTimeout(csIdleTimerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (animLoopRef.current) cancelAnimationFrame(animLoopRef.current);
@@ -554,7 +555,7 @@ export function useOVFSetup({
     };
   }, [setupThreeJS, setupCornerstoneViewport, loadSTLMeshes]);
 
-  return { loading, error, loadProgress, vertebraLegend };
+  return { loading, error, loadProgress };
 }
 
 export default useOVFSetup;

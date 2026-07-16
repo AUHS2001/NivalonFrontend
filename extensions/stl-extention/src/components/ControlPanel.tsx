@@ -8,6 +8,7 @@ import { useLabelingViewContext } from '../context/LabelingViewContext';
 import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { useImplantContext } from '../context/ImplantContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
+import { useOvfLegendContext } from '../context/OvfLegendContext';
 
 interface ControlPanelProps {
   loading: boolean;
@@ -47,13 +48,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleCompareLeftVisibility,
     toggleAllCompareLeftVisibility,
   } = useStlVisibilityContext();
+  const { vertebraLegend } = useOvfLegendContext();
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
   const isLocalCompareLayout = type === 'local-3d-compare';
+  const isOvfLayout = type === 'ovf-layout';
 
   // Show content if layout type matches or if no layout is set yet (default behavior)
-  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'stl-layout' || type === 'primary3D' || type === '3d-compare' || type === 'local-3d-compare';
+  const shouldShowContent = !type || type === 'fourUp' || type === 'main3D' || type === 'stl-layout' || type === 'primary3D' || type === '3d-compare' || type === 'local-3d-compare' || type === 'ovf-layout';
 
   return (
     <div style={{
@@ -96,8 +99,109 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             )}
 
+            {/* OVF Vertebrae Legend — only when OVF layout is active */}
+            {isOvfLayout && vertebraLegend.length > 0 && (
+              <div style={{ marginBottom: '20px', padding: '10px' }}>
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                  padding: "5px"
+                }}>
+                  <h4 style={{ fontSize: "14px", margin: 0, color: "#9fcfff" }}>OVF Screening</h4>
+                  <span style={{ fontSize: "11px", color: "#888" }}>{vertebraLegend.length} vertebrae</span>
+                </div>
+                <div style={{
+                  maxHeight: "600px",
+                  overflowY: "auto",
+                  border: "1px solid #1a2030",
+                  borderRadius: "4px",
+                  padding: "8px"
+                }}>
+                  <span style={{
+                    color: '#aaa',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    marginBottom: '6px',
+                    display: 'block',
+                  }}>
+                    Vertebrae
+                  </span>
+                  {vertebraLegend.map((entry, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '5px 8px',
+                        borderBottom: '1px solid #1a2030',
+                        fontSize: '12px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '3px',
+                          backgroundColor: entry.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ color: '#ddd' }}>{entry.name}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  style={{
+                    width: '100%',
+                    marginTop: '12px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #1e88e5',
+                    backgroundColor: 'rgba(30, 136, 229, 0.15)',
+                    color: '#4fc3f7',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Fracture Detection Report
+                </button>
+
+                <button
+                  style={{
+                    width: '100%',
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #555',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: '#ccc',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Show Calculations
+                </button>
+              </div>
+            )}
+
             {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
-            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && !isLocalCompareLayout && stlFiles.length > 0 && (
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && !isLocalCompareLayout && !isOvfLayout && stlFiles.length > 0 && (
               <div style={{ marginBottom: '20px', padding: '10px' }}>
                 <div style={{
                   display: "flex",
@@ -633,7 +737,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             )}
 
             {!loading && !showImplantView && !versionHistoryEnabled && !removalMode && !showRightView &&
-            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length === 0 && !isLocalCompareLayout && (
+            !brightnessEnabled && !measurementEnabled && !clickRemovalMode && stlFiles.length === 0 && !isLocalCompareLayout && !isOvfLayout && (
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',

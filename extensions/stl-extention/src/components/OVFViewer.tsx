@@ -13,7 +13,7 @@ const OVFViewer: React.FC<OVFViewerProps> = ({ servicesManager, commandsManager,
   const csContainerRef = useRef<HTMLDivElement>(null);
   const threeCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const { loading, error, loadProgress, vertebraLegend } = useOVFSetup({
+  const { loading, error, loadProgress } = useOVFSetup({
     servicesManager,
     commandsManager,
     extensionManager,
@@ -100,62 +100,6 @@ const OVFViewer: React.FC<OVFViewerProps> = ({ servicesManager, commandsManager,
           </span>
         </div>
 
-        {/* Legend (bottom-left) */}
-        {vertebraLegend.length > 0 && (
-          <div
-            style={{
-              padding: '12px 16px',
-              maxHeight: '40%',
-              overflow: 'auto',
-            }}
-          >
-            <div
-              style={{
-                background: 'rgba(0,0,0,0.6)',
-                borderRadius: '6px',
-                padding: '8px 12px',
-                display: 'inline-flex',
-                flexDirection: 'column',
-                gap: '3px',
-                maxWidth: '200px',
-              }}
-            >
-              <span
-                style={{
-                  color: '#aaa',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  marginBottom: '2px',
-                }}
-              >
-                Vertebrae
-              </span>
-              {vertebraLegend.map((entry, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '2px',
-                      backgroundColor: entry.color,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ color: '#ddd', fontSize: '11px' }}>{entry.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Loading overlay */}
