@@ -53,6 +53,7 @@ import { SpineLabelingProvider } from '../../../extensions/stl-extention/src/con
 import { SpineLabelOverlayProvider } from '../../../extensions/stl-extention/src/context/SpineLabelOverlayContext';
 import { ThreeDToolsBridgeProvider } from '../../../extensions/stl-extention/src/context/ThreeDToolsBridgeContext';
 import { ActivePanelProvider } from '../../../extensions/stl-extention/src/context/ActivePanelContext';
+import { OvfLegendProvider } from '../../../extensions/stl-extention/src/context/OvfLegendContext';
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -182,6 +183,7 @@ function App({
   return (
     <CombinedProviders>
       <ActivePanelProvider>
+      <OvfLegendProvider>
       <ThreeDToolsBridgeProvider>
       <SpineLabelOverlayProvider>
       <SpineLabelingProvider>
@@ -216,6 +218,7 @@ function App({
       </SpineLabelingProvider>
       </SpineLabelOverlayProvider>
       </ThreeDToolsBridgeProvider>
+      </OvfLegendProvider>
       </ActivePanelProvider>
     </CombinedProviders>
   );
