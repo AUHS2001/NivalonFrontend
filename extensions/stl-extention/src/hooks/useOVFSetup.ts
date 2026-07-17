@@ -52,9 +52,15 @@ interface UseOVFSetupReturn {
 }
 
 function getVertebraInfo(fileName: string) {
+  // Match patterns like C7, T12, L3, S1, or standalone S (sacrum merged)
   const match = fileName.match(/(C|T|L|S)(\d+)/i);
   if (match) {
     return { type: match[1].toUpperCase(), number: parseInt(match[2]), fullName: match[0].toUpperCase() };
+  }
+  // Handle standalone letter without number (e.g. S.stl = merged sacrum)
+  const soloMatch = fileName.match(/^(C|T|L|S)\.stl$/i);
+  if (soloMatch) {
+    return { type: soloMatch[1].toUpperCase(), number: 0, fullName: soloMatch[1].toUpperCase() };
   }
   return null;
 }
