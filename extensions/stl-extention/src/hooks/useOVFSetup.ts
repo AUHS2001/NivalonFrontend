@@ -98,6 +98,8 @@ export function useOVFSetup({
   const csIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
   const contextMenuHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const volumeReadyRef = useRef(false);
+  const isResizingRef = useRef(false);
 
   const getDataSource = useCallback(() => {
     if (dataSource) return dataSource;
@@ -112,7 +114,7 @@ export function useOVFSetup({
   const pushCameraToCS = useCallback(() => {
     const camera = cameraRef.current;
     const re = csRenderingEngineRef.current;
-    if (!camera || !re || re.hasBeenDestroyed) return;
+    if (!camera || !re || re.hasBeenDestroyed || !volumeReadyRef.current) return;
     try {
       const vp = re.getViewport(OVF_VIEWPORT_ID);
       if (!vp) return;
@@ -342,6 +344,7 @@ export function useOVFSetup({
         }
       } catch (e) { console.warn('[OVF] Color/LOD setup error:', e); }
 
+      volumeReadyRef.current = true;
       viewport.render();
     } catch (err) {
       console.error('[OVF] Cornerstone setup error:', err);
@@ -550,15 +553,23 @@ export function useOVFSetup({
     const container = containerRef.current;
     if (!container) return;
     const handleResize = () => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (cameraRef.current) {
-        cameraRef.current.aspect = w / h;
-        cameraRef.current.updateProjectionMatrix();
+      if (isResizingRef.current) return;
+      isResizingRef.current = true;
+      try {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (cameraRef.current) {
+          cameraRef.current.aspect = w / h;
+          cameraRef.current.updateProjectionMatrix();
+        }
+        if (rendererRef.current) rendererRef.current.setSize(w, h);
+        if (volumeReadyRef.current && csRenderingEngineRef.current && !csRenderingEngineRef.current.hasBeenDestroyed) {
+          csRenderingEngineRef.current.resize();
+        }
+        renderBoth();
+      } finally {
+        isResizingRef.current = false;
       }
-      if (rendererRef.current) rendererRef.current.setSize(w, h);
-      if (csRenderingEngineRef.current) csRenderingEngineRef.current.resize();
-      renderBoth();
     };
     const observer = new ResizeObserver(handleResize);
     observer.observe(container);
@@ -577,6 +588,7 @@ export function useOVFSetup({
 
     return () => {
       cancelledRef.current = true;
+      volumeReadyRef.current = false;
       clearTimeout(timeout);
       setVertebraLegend([]);
       if (csIdleTimerRef.current) clearTimeout(csIdleTimerRef.current);
