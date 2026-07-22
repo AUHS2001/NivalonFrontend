@@ -9,6 +9,7 @@ import {
   volumeLoader,
   cache as csCache,
   getRenderingEngine,
+  eventTarget,
 } from '@cornerstonejs/core';
 import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
 import { SERVER_URL, fetchFile } from '../../../../config/server';
@@ -263,36 +264,107 @@ export function useOVFSetup({
 
       const ovfVolumeId = `${OVF_VOLUME_PREFIX}:${ctDisplaySet.displaySetInstanceUID}`;
       ovfVolumeIdRef.current = ovfVolumeId;
-      if (csCache.getVolume(ovfVolumeId)) {
-        try { csCache.removeVolumeLoadObject(ovfVolumeId); } catch (e) { /* ok */ }
+
+      // Robust cache cleanup — remove any stale volume from previous loads
+      try {
+        if (csCache.getVolume(ovfVolumeId)) {
+          csCache.removeVolumeLoadObject(ovfVolumeId);
+        }
+      } catch (e) {
+        // If removeVolumeLoadObject fails, force-remove from internal cache
+        try { (csCache as any)._volumeCache?.delete(ovfVolumeId); } catch (_) {}
       }
 
       const volume = await volumeLoader.createAndCacheVolume(ovfVolumeId, { imageIds });
-      await volume.load();
 
-      // Wait until scalar data is actually available for VTK rendering
-      const waitForScalarData = () => new Promise<void>((resolve) => {
-        const check = (attempt = 0) => {
-          if (cancelledRef.current) { resolve(); return; }
-          const vol = csCache.getVolume(ovfVolumeId);
-          const hasData = vol && (vol as any).scalarData?.length > 0 ||
-                          (vol as any).imageData?.getPointData?.()?.getScalars?.()?.getNumberOfTuples?.() > 0;
-          if (hasData || attempt > 50) { resolve(); return; }
-          setTimeout(() => check(attempt + 1), 100);
+      // Disable auto-rendering during loading — prevents Cornerstone from
+      // triggering progressive renders before all frames are loaded,
+      // which would cause VTK shader compilation with incomplete data
+      (volume as any).autoRenderOnLoad = false;
+
+      // ── Wait for ALL image frames to finish loading ──
+      // volume.load() is NOT a Promise — it starts async frame loading and returns void.
+      // We MUST wait for loadStatus.loaded === true before calling setVolumes(),
+      // because setVolumes() → createVolumeActor() builds VTK mapper + shader
+      // which requires scalar data to be populated. Without this wait, shader
+      // compilation crashes: "Cannot read properties of null ('isAttributeUsed')"
+      await new Promise<void>((resolve) => {
+        let resolved = false;
+        const done = (source: string) => {
+          if (resolved) return;
+          resolved = true;
+          console.log(`[OVF] Volume loading complete (${source})`);
+          cleanupListener();
+          resolve();
         };
-        check();
+
+        // 1) Event listener — fires when ALL frames finish loading
+        const onVolumeLoaded = (evt: any) => {
+          const evtVolumeId = evt?.detail?.volumeId;
+          if (!evtVolumeId || evtVolumeId === ovfVolumeId) {
+            done('event');
+          }
+        };
+        const loadingCompletedEvent = Enums.Events.IMAGE_VOLUME_LOADING_COMPLETED
+          || 'CORNERSTONE_IMAGE_VOLUME_LOADING_COMPLETED';
+        try {
+          eventTarget.addEventListener(loadingCompletedEvent, onVolumeLoaded);
+        } catch (_) { /* eventTarget may not support this event */ }
+
+        const cleanupListener = () => {
+          try { eventTarget.removeEventListener(loadingCompletedEvent, onVolumeLoaded); } catch (_) {}
+        };
+
+        // 2) Polling fallback — check loadStatus.loaded every 200ms
+        const poll = () => {
+          if (resolved) return;
+          if (cancelledRef.current) { done('cancelled'); return; }
+          if ((volume as any).loadStatus?.loaded) { done('poll'); return; }
+          setTimeout(poll, 200);
+        };
+
+        // 3) Safety timeout — 60 seconds max
+        setTimeout(() => { if (!resolved) done('timeout'); }, 60000);
+
+        // Check if already loaded (e.g. from cache)
+        if ((volume as any).loadStatus?.loaded) {
+          done('already-loaded');
+          return;
+        }
+
+        // Start loading — pass callback on FIRST call
+        // IMPORTANT: load() ignores callback if loadStatus.loading is already true,
+        // so we must pass the callback on the first invocation
+        try {
+          (volume as any).load((status: any) => {
+            // Callback fires when ALL frames are processed (framesProcessed === totalNumFrames)
+            done('callback');
+          });
+        } catch (_) {
+          try { (volume as any).load(); } catch (__) {}
+        }
+
+        // Start polling as secondary check (delayed to give callback/event priority)
+        setTimeout(poll, 500);
       });
-      await waitForScalarData();
       if (cancelledRef.current) return;
 
       const viewport = renderingEngine.getViewport(OVF_VIEWPORT_ID);
       if (!viewport) return;
 
-      await (viewport as any).setVolumes([{ volumeId: ovfVolumeId }]);
+      // setVolumes() creates VTK mapper — wrap in try-catch
+      try {
+        await (viewport as any).setVolumes([{ volumeId: ovfVolumeId }]);
+      } catch (setVolErr) {
+        console.error('[OVF] setVolumes failed:', setVolErr);
+        return;
+      }
 
       const presets = (CONSTANTS as any).VIEWPORT_PRESETS || [];
       const bonePreset = presets.find((p: any) => p.name === 'CT-Bone');
-      if (bonePreset) (viewport as any).setProperties({ preset: bonePreset });
+      if (bonePreset) {
+        try { (viewport as any).setProperties({ preset: bonePreset }); } catch (_) {}
+      }
 
       // High-quality bone volume rendering
       try {
@@ -361,18 +433,12 @@ export function useOVFSetup({
 
       volumeReadyRef.current = true;
 
-      // Render with retry — VTK shader compilation can fail if GPU isn't ready
-      const tryRender = (attempt = 0) => {
-        try {
-          viewport.render();
-        } catch (renderErr) {
-          console.warn(`[OVF] Render attempt ${attempt + 1} failed:`, renderErr);
-          if (attempt < 3 && !cancelledRef.current) {
-            setTimeout(() => tryRender(attempt + 1), 500);
-          }
-        }
-      };
-      tryRender();
+      // Render — wrapped in try-catch to prevent Error Boundary crash
+      try {
+        viewport.render();
+      } catch (renderErr) {
+        console.warn('[OVF] Initial render failed:', renderErr);
+      }
     } catch (err) {
       console.error('[OVF] Cornerstone setup error:', err);
     }
