@@ -270,6 +270,21 @@ export function useOVFSetup({
       const volume = await volumeLoader.createAndCacheVolume(ovfVolumeId, { imageIds });
       await volume.load();
 
+      // Wait until scalar data is actually available for VTK rendering
+      const waitForScalarData = () => new Promise<void>((resolve) => {
+        const check = (attempt = 0) => {
+          if (cancelledRef.current) { resolve(); return; }
+          const vol = csCache.getVolume(ovfVolumeId);
+          const hasData = vol && (vol as any).scalarData?.length > 0 ||
+                          (vol as any).imageData?.getPointData?.()?.getScalars?.()?.getNumberOfTuples?.() > 0;
+          if (hasData || attempt > 50) { resolve(); return; }
+          setTimeout(() => check(attempt + 1), 100);
+        };
+        check();
+      });
+      await waitForScalarData();
+      if (cancelledRef.current) return;
+
       const viewport = renderingEngine.getViewport(OVF_VIEWPORT_ID);
       if (!viewport) return;
 
@@ -345,7 +360,19 @@ export function useOVFSetup({
       } catch (e) { console.warn('[OVF] Color/LOD setup error:', e); }
 
       volumeReadyRef.current = true;
-      viewport.render();
+
+      // Render with retry — VTK shader compilation can fail if GPU isn't ready
+      const tryRender = (attempt = 0) => {
+        try {
+          viewport.render();
+        } catch (renderErr) {
+          console.warn(`[OVF] Render attempt ${attempt + 1} failed:`, renderErr);
+          if (attempt < 3 && !cancelledRef.current) {
+            setTimeout(() => tryRender(attempt + 1), 500);
+          }
+        }
+      };
+      tryRender();
     } catch (err) {
       console.error('[OVF] Cornerstone setup error:', err);
     }
@@ -543,8 +570,10 @@ export function useOVFSetup({
     const presets = (CONSTANTS as any).VIEWPORT_PRESETS || [];
     const preset = presets.find((p: any) => p.name === selectedPreset);
     if (preset) {
-      vp.setProperties({ preset });
-      vp.render();
+      try {
+        vp.setProperties({ preset });
+        vp.render();
+      } catch (e) { console.warn('[OVF] Preset render error:', e); }
     }
   }, [selectedPreset]);
 
@@ -564,7 +593,7 @@ export function useOVFSetup({
         }
         if (rendererRef.current) rendererRef.current.setSize(w, h);
         if (volumeReadyRef.current && csRenderingEngineRef.current && !csRenderingEngineRef.current.hasBeenDestroyed) {
-          csRenderingEngineRef.current.resize();
+          try { csRenderingEngineRef.current.resize(); } catch (e) { console.warn('[OVF] Resize render error:', e); }
         }
         renderBoth();
       } finally {
