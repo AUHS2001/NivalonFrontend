@@ -44,7 +44,20 @@ const reuseCachedLayout = (state, hangingProtocolService: HangingProtocolService
 
   hangingProtocolStageIndexMap[cacheId] = hpInfo;
 
-  if (storeId && custom) {
+  // Skip caching viewport state when viewports contain custom layouts
+  // (e.g., OVF, 3d-compare, STL standalone). These layouts bypass the
+  // hanging protocol service, so the HP service still reports the previous
+  // protocol (e.g., fourUp). Caching here would corrupt that protocol's
+  // cache with custom layout state.
+  let hasCustomLayout = false;
+  state.viewports.forEach((vp) => {
+    const cl = vp?.viewportOptions?.customLayout;
+    if (cl === 'ovf' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison') {
+      hasCustomLayout = true;
+    }
+  });
+
+  if (storeId && custom && !hasCustomLayout) {
     setViewportGridState(storeId, { ...state });
   }
 

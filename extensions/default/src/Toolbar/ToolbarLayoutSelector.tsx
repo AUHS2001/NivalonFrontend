@@ -71,42 +71,42 @@ function ToolbarLayoutSelectorWithServices({
           title: '3D four up',
           icon: 'layout-four-up',
           commandOptions: {
-            protocolId: '3d-four-up',
+            protocolId: 'fourUp',
           },
         },
         {
           title: '3D main',
           icon: 'layout-three-row',
           commandOptions: {
-            protocolId: '3d-main',
+            protocolId: 'main3D',
           },
         },
         {
           title: 'Axial Primary',
           icon: 'layout-side-by-side',
           commandOptions: {
-            protocolId: 'axial-primary',
+            protocolId: 'primaryAxial',
           },
         },
         {
           title: '3D only',
           icon: 'layout-single',
           commandOptions: {
-            protocolId: '3d-only',
+            protocolId: 'stl-layout',
           },
         },
         {
           title: '3D primary',
           icon: 'layout-side-by-side',
           commandOptions: {
-            protocolId: '3d-primary',
+            protocolId: 'primary3D',
           },
         },
         {
           title: 'Frame View',
           icon: 'icon-stack',
           commandOptions: {
-            protocolId: 'frame-view',
+            protocolId: '@ohif/frameView',
           },
         },
         {
@@ -142,11 +142,18 @@ function ToolbarLayoutSelectorWithServices({
         },
       ];
 
+  // Check if currently in a custom layout (OVF, STL, etc.)
+  const currentGridState = viewportGridService.getState();
+  const isInCustomLayout = currentGridState?.viewports?.some?.(
+    vp => ['stl', '3d-compare', 'local-3d-compare', 'comparison', 'ovf'].includes(vp?.viewportOptions?.customLayout)
+  );
+
   // Disable layouts that require 3D STL data when study is not reconstructable
-  const requires3D = ['3d-four-up', '3d-main', '3d-only', '3d-primary', 'ovf-layout'];
+  // But when in a custom layout (e.g. OVF), enable all options so user can switch away
+  const requires3D = ['fourUp', 'main3D', 'stl-layout', 'primary3D', 'ovf-layout'];
   const filteredAdvancedPresets = advancedPresets.map(p => ({
     ...p,
-    disabled: p.disabled || (!has3D && requires3D.includes(p.commandOptions?.protocolId)),
+    disabled: isInCustomLayout ? false : (p.disabled || (!has3D && requires3D.includes(p.commandOptions?.protocolId))),
   }));
 
   // Unified selection handler that dispatches to the appropriate command
@@ -268,30 +275,37 @@ function ToolbarLayoutSelectorWithServices({
       }
 
 
-      if (isPreset) {
-        // If we're leaving a custom layout (stl, 3d-compare, comparison),
-        // force a reset so reuseCachedLayouts doesn't cache corrupt empty-UID state
-        const currentState = viewportGridService.getState();
-        const currentViewports = currentState?.viewports;
-        let leavingCustomLayout = false;
-        if (currentViewports) {
-          currentViewports.forEach((vp) => {
-            const cl = vp?.viewportOptions?.customLayout;
-            if (cl === 'stl' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison' || cl === 'ovf') {
-              leavingCustomLayout = true;
-            }
-          });
-        }
+      // Check if we're leaving a custom layout (stl, 3d-compare, ovf, etc.)
+      // This must run for BOTH preset and common preset paths
+      const currentState = viewportGridService.getState();
+      const currentViewports = currentState?.viewports;
+      let leavingCustomLayout = false;
+      if (currentViewports) {
+        currentViewports.forEach((vp) => {
+          const cl = vp?.viewportOptions?.customLayout;
+          if (cl === 'stl' || cl === '3d-compare' || cl === 'local-3d-compare' || cl === 'comparison' || cl === 'ovf') {
+            leavingCustomLayout = true;
+          }
+        });
+      }
 
+      if (isPreset) {
         commandsManager.run({
           commandName: 'setHangingProtocol',
           commandOptions: {
             ...commandOptions,
-            ...(leavingCustomLayout ? { reset: true } : {}),
+            reset: true,
           },
         });
       } else {
         // Common preset or custom grid selection
+        if (leavingCustomLayout) {
+          // Reset hanging protocol first to clear custom layout viewport state
+          commandsManager.run({
+            commandName: 'setHangingProtocol',
+            commandOptions: { protocolId: 'default', reset: true },
+          });
+        }
         commandsManager.run({
           commandName: 'setViewportGridLayout',
           commandOptions,
