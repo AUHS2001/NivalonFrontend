@@ -38,8 +38,30 @@ class CornerstoneCacheService {
   ): Promise<StackViewportData | VolumeViewportData> {
     const viewportType = viewportOptions.viewportType as string;
 
-    const cs3DViewportType = getCornerstoneViewportType(viewportType, displaySets);
+    let cs3DViewportType = getCornerstoneViewportType(viewportType, displaySets);
     let viewportData: StackViewportData | VolumeViewportData;
+
+    // Guard: fall back to stack viewport for display sets that cannot be
+    // reconstructed into a volume. Creating a volume with depth=1 causes
+    // VTK.js to freeze the main thread in cornerstone 5.x.
+    if (
+      (cs3DViewportType === Enums.ViewportType.ORTHOGRAPHIC ||
+        cs3DViewportType === Enums.ViewportType.VOLUME_3D) &&
+      displaySets.length > 0 &&
+      !displaySets[0].isReconstructable
+    ) {
+      const numFrames =
+        displaySets[0].numImageFrames ??
+        displaySets[0].instances?.length ??
+        displaySets[0].images?.length ??
+        0;
+      if (numFrames <= 1) {
+        console.warn(
+          `[CornerstoneCacheService] Display set has ${numFrames} frame(s) and is not reconstructable. Falling back to stack viewport.`
+        );
+        cs3DViewportType = Enums.ViewportType.STACK;
+      }
+    }
 
     if (
       cs3DViewportType === Enums.ViewportType.ORTHOGRAPHIC ||

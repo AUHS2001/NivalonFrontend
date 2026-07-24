@@ -12,7 +12,12 @@ function ToolbarLayoutSelectorWithServices({
   columns = 4,
   ...props
 }) {
-  const { customizationService, viewportGridService, toolbarService } = servicesManager.services;
+  const { customizationService, viewportGridService, toolbarService, displaySetService } = servicesManager.services;
+
+  // Check if any active display set is reconstructable (has 3D volume data)
+  const has3D = displaySetService
+    ?.getActiveDisplaySets?.()
+    ?.some(ds => ds.isReconstructable);
 
   // Get the presets from the customization service
   const commonPresets = customizationService?.getCustomization('layoutSelector.commonPresets') || [
@@ -136,6 +141,13 @@ function ToolbarLayoutSelectorWithServices({
           },
         },
       ];
+
+  // Disable layouts that require 3D STL data when study is not reconstructable
+  const requires3D = ['3d-four-up', '3d-main', '3d-only', '3d-primary', 'ovf-layout'];
+  const filteredAdvancedPresets = advancedPresets.map(p => ({
+    ...p,
+    disabled: p.disabled || (!has3D && requires3D.includes(p.commandOptions?.protocolId)),
+  }));
 
   // Unified selection handler that dispatches to the appropriate command
   const handleSelectionChange = useCallback(
@@ -301,7 +313,7 @@ function ToolbarLayoutSelectorWithServices({
         <LayoutSelector.Trigger tooltip="Change layout" />
         <LayoutSelector.Content>
           {/* Left side - Presets */}
-          {(commonPresets.length > 0 || advancedPresets.length > 0) && (
+          {(commonPresets.length > 0 || filteredAdvancedPresets.length > 0) && (
             <div className="bg-popover flex flex-col gap-2.5 rounded-lg p-2">
               {commonPresets.length > 0 && (
                 <>
@@ -319,9 +331,9 @@ function ToolbarLayoutSelectorWithServices({
                 </>
               )}
 
-              {advancedPresets.length > 0 && (
+              {filteredAdvancedPresets.length > 0 && (
                 <LayoutSelector.PresetSection title="Advanced">
-                  {advancedPresets.map((preset, index) => (
+                  {filteredAdvancedPresets.map((preset, index) => (
                     <LayoutSelector.Preset
                       key={`advanced-preset-${index}`}
                       title={preset.title}
