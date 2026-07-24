@@ -14,6 +14,8 @@ interface OvfLegendContextType {
   toggleVertebraVisibility: (name: string) => void;
   selectedPreset: string | null;
   setSelectedPreset: (preset: string | null) => void;
+  tissueOpacity: number;
+  setTissueOpacity: (value: number) => void;
 }
 
 const OvfLegendContext = createContext<OvfLegendContextType | undefined>(undefined);
@@ -23,6 +25,7 @@ export const OvfLegendProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [colorsDisabled, setColorsDisabled] = useState(false);
   const [hiddenVertebrae, setHiddenVertebrae] = useState<Set<string>>(new Set());
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [tissueOpacity, setTissueOpacity] = useState(0);
 
   const toggleVertebraVisibility = useCallback((name: string) => {
     setHiddenVertebrae(prev => {
@@ -34,7 +37,7 @@ export const OvfLegendProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   return (
-    <OvfLegendContext.Provider value={{ vertebraLegend, setVertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset }}>
+    <OvfLegendContext.Provider value={{ vertebraLegend, setVertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset, tissueOpacity, setTissueOpacity }}>
       {children}
     </OvfLegendContext.Provider>
   );

@@ -56,7 +56,17 @@ function modeFactory({ modeConfiguration }) {
      * Services and other resources.
      */
     onModeEnter: ({ servicesManager, extensionManager, commandsManager }: withAppTypes) => {
-      const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
+      const { measurementService, toolbarService, toolGroupService, hangingProtocolService } = servicesManager.services;
+
+      // Register custom attribute so fourUp protocol can match reconstructable studies
+      hangingProtocolService.addCustomAttribute(
+        'hasReconstructableDisplaySet',
+        'Has Reconstructable Display Set',
+        (studyMetadata, options) => {
+          const displaySets = options?.displaySets || [];
+          return displaySets.some(ds => ds.isReconstructable);
+        }
+      );
 
       measurementService.clearMeasurements();
 

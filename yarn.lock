@@ -1317,6 +1317,14 @@
     pirates "^4.0.6"
     source-map-support "^0.5.16"
 
+"@babel/runtime-corejs2@7.26.10":
+  version "7.26.10"
+  resolved "https://registry.yarnpkg.com/@babel/runtime-corejs2/-/runtime-corejs2-7.26.10.tgz#46c1289c6f181391235fb00af13e6c246cb5c8ae"
+  integrity sha512-JfoPiD7f/vvd/PaOfu5cr9CyzwDMPg4T0nX3MQr6IgTq49DhjvUcmjmjA7j6+xih1Evq+QKZnge1SoIlYozv/Q==
+  dependencies:
+    core-js "^2.6.12"
+    regenerator-runtime "^0.14.0"
+
 "@babel/runtime-corejs2@^7.17.8":
   version "7.27.6"
   resolved "https://registry.npmjs.org/@babel/runtime-corejs2/-/runtime-corejs2-7.27.6.tgz"
@@ -1324,16 +1332,16 @@
   dependencies:
     core-js "^2.6.12"
 
-"@babel/runtime-corejs3@^7.22.5":
-  version "7.27.6"
-  resolved "https://registry.npmjs.org/@babel/runtime-corejs3/-/runtime-corejs3-7.27.6.tgz"
-  integrity sha512-vDVrlmRAY8z9Ul/HxT+8ceAru95LQgkSKiXkSYZvqtbkPSfhZJgpRp45Cldbh1GJ1kxzQkI70AqyrTI58KpaWQ==
+"@babel/runtime-corejs3@7.29.2":
+  version "7.29.2"
+  resolved "https://registry.yarnpkg.com/@babel/runtime-corejs3/-/runtime-corejs3-7.29.2.tgz#cb86ad06e7a1d39224afb12a874301085e071846"
+  integrity sha512-Lc94FOD5+0aXhdb0Tdg3RUtqT6yWbI/BbFWvlaSJ3gAb9Ks+99nHRDKADVqC37er4eCB0fHyWT+y+K3QOvJKbw==
   dependencies:
-    core-js-pure "^3.30.2"
+    core-js-pure "^3.48.0"
 
 "@babel/runtime@7.22.11":
   version "7.22.11"
-  resolved "https://registry.npmjs.org/@babel/runtime/-/runtime-7.22.11.tgz"
+  resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.22.11.tgz#7a9ba3bbe406ad6f9e8dd4da2ece453eb23a77a4"
   integrity sha512-ee7jVNlWN09+KftVOu9n7S8gQzD/Z6hN/I8VBRXW4P1+Xe7kJGXMwu8vds4aGIMHZnNbdpSWCfZZtinytpcAvA==
   dependencies:
     regenerator-runtime "^0.14.0"
@@ -1434,19 +1442,35 @@
     gl-matrix "^3.4.3"
     ndarray "^1.0.19"
 
-"@cornerstonejs/ai@^3.24.0":
-  version "3.24.0"
-  resolved "https://registry.npmjs.org/@cornerstonejs/ai/-/ai-3.24.0.tgz"
-  integrity sha512-vmpbnFyc0CaOyd212XXtRGEpGoFHB3oujofXuRXi+dxqVS3Jq5ch0yxJ0iyjT3yn0wpu02NNAaxI8ebZ1DO06Q==
+"@cornerstonejs/adapters@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/adapters/-/adapters-5.6.10.tgz#47563d8ff125b7765ac3af91eaf1ca41df7d68a4"
+  integrity sha512-PpIRVd2yw/WBMs4wz8O+0p44KgBolKz5oZxFDUPb+kRefUq0o198hefuUQ0UpP4sRUHaW/u5PzTvIl/zGEDcNA==
   dependencies:
-    "@babel/runtime-corejs2" "^7.17.8"
-    buffer "^6.0.3"
-    dcmjs "^0.42.0"
-    gl-matrix "^3.4.3"
-    lodash.clonedeep "^4.5.0"
-    ndarray "^1.0.19"
+    "@babel/runtime-corejs2" "7.26.10"
+    buffer "6.0.3"
+    dcmjs "0.52.0"
+    gl-matrix "3.4.3"
+    ndarray "1.0.19"
+
+"@cornerstonejs/ai@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/ai/-/ai-5.6.10.tgz#27a59b7648d61eb23c9eb40d200a2c203dce8c4b"
+  integrity sha512-wtMYvuJzvZG8C965TmnfOYeFEHUmujq8KfeOfFZUi+SoYrd3jarHX5y2nmfnp7xDJhGM8OHCVlVV4DWV5ya+qw==
+  dependencies:
+    "@babel/runtime-corejs2" "7.26.10"
+    buffer "6.0.3"
+    dcmjs "0.52.0"
+    gl-matrix "3.4.3"
+    lodash.clonedeep "4.5.0"
+    ndarray "1.0.19"
     onnxruntime-common "1.17.1"
     onnxruntime-web "1.17.1"
+
+"@cornerstonejs/calculate-suv@1.0.3":
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/calculate-suv/-/calculate-suv-1.0.3.tgz#6d99a72032c0f90cebf44dc6f0b12a5f1102e884"
+  integrity sha512-2SwVJKzC1DzyxdxJtCht9dhTND2GFjLwhhkDyyC7vJq5tIgbhxgPk1CSwovO1pxmoybAXzjOxnaubllxLgoT+w==
 
 "@cornerstonejs/calculate-suv@^1.1.0":
   version "1.1.0"
@@ -1473,7 +1497,7 @@
   resolved "https://registry.npmjs.org/@cornerstonejs/codec-openjph/-/codec-openjph-2.4.7.tgz"
   integrity sha512-qvP4q4JDib7mi9r7LqKOwqz7YZ8gjtDX4ZCezeYf8+eb7MBXCz5uXAMeVF3yz9Axw4XiIMdB/pqXkm8tqCl13w==
 
-"@cornerstonejs/core@^3.16.0", "@cornerstonejs/core@^3.24.0":
+"@cornerstonejs/core@^3.24.0":
   version "3.24.0"
   resolved "https://registry.npmjs.org/@cornerstonejs/core/-/core-3.24.0.tgz"
   integrity sha512-Ep5hVrM5XMVuExL2i8tiVuFGqoi1QyaZpU3WzxqhH75nNpckSi/ZYqic4rI3qb/V4IKYv2R+8Gp4Jptl110u4A==
@@ -1482,6 +1506,17 @@
     comlink "^4.4.1"
     gl-matrix "^3.4.3"
     loglevel "^1.9.2"
+
+"@cornerstonejs/core@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/core/-/core-5.6.10.tgz#3c592e48039ec873ac77f370c9ad09308700c97e"
+  integrity sha512-3GL551UyerQ4GKq00zh7ggJnTmLA8rgDBDPipJdlgn8sFdth11Waja7oJyLwTPEUyMEAJHXsalZlbEB0QKZDQA==
+  dependencies:
+    "@cornerstonejs/utils" "5.6.10"
+    "@kitware/vtk.js" "36.4.1"
+    comlink "4.4.2"
+    gl-matrix "3.4.3"
+    loglevel "1.9.2"
 
 "@cornerstonejs/dicom-image-loader@^3.24.0":
   version "3.24.0"
@@ -1498,29 +1533,47 @@
     pako "^2.0.4"
     uuid "^9.0.0"
 
-"@cornerstonejs/labelmap-interpolation@^3.24.0":
-  version "3.24.0"
-  resolved "https://registry.npmjs.org/@cornerstonejs/labelmap-interpolation/-/labelmap-interpolation-3.24.0.tgz"
-  integrity sha512-gKobUWITedLtr3AnoZ8XNQLnv+HnutL8De8bjk7NnhQr51TprU2KjOFbFAiDZJ3ckdrFdCW5z0z7VTolXNEshQ==
+"@cornerstonejs/labelmap-interpolation@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/labelmap-interpolation/-/labelmap-interpolation-5.6.10.tgz#b43110b69c4f109ff653f5915d9ad5597c57e3aa"
+  integrity sha512-ZQcg1TqntCzmOec0CCR0/qHu1JSRw93Qmi4SQSQjY6+Ksn729QyI7S3ziPCEmBZnCsXF2GR29EbLHUP/bJuoKQ==
   dependencies:
     "@itk-wasm/morphological-contour-interpolation" "1.1.0"
     itk-wasm "1.0.0-b.165"
 
-"@cornerstonejs/polymorphic-segmentation@^3.24.0":
-  version "3.24.0"
-  resolved "https://registry.npmjs.org/@cornerstonejs/polymorphic-segmentation/-/polymorphic-segmentation-3.24.0.tgz"
-  integrity sha512-fRaz2MYyImpBIt6MuUPYOdrhxUvq7fgHfV5eoMt+cgUP15vUGfhzlcUXEk+2MzqFnk4WTh8nkFoCos1IWD1ZUg==
+"@cornerstonejs/metadata@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/metadata/-/metadata-5.6.10.tgz#6ecd049a6d9d19f5e6fc72749d40c093518fdc41"
+  integrity sha512-7wPsA3vXV9BMyMsmQ7qt698SP6+wpiXXXnw5m9gLOPFpIDR4x3nFk2UTTpvMSWNt5uz+2fvZeJdOwS4X8X6YAA==
+  dependencies:
+    "@cornerstonejs/calculate-suv" "1.0.3"
+    "@cornerstonejs/utils" "5.6.10"
+    dcmjs "0.52.0"
+    gl-matrix "3.4.3"
+
+"@cornerstonejs/polymorphic-segmentation@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/polymorphic-segmentation/-/polymorphic-segmentation-5.6.10.tgz#15c25fab0ef7ab9e20da339079494c73e5818376"
+  integrity sha512-zjZa47IWcVcbW6Qc0igpWAaXFTE6p7O3TRL7578YOZGk4hwkVasN79IOoZhbAm8pwWUgB9Eiv/L+kk1EDGNNiA==
   dependencies:
     "@icr/polyseg-wasm" "0.4.0"
 
-"@cornerstonejs/tools@^3.16.0", "@cornerstonejs/tools@^3.24.0":
-  version "3.24.0"
-  resolved "https://registry.npmjs.org/@cornerstonejs/tools/-/tools-3.24.0.tgz"
-  integrity sha512-KYkElmvmFwuskKnp9glUIwiHYyVfr1LCqOjhj1y1+rgzxAqlrfaGmS7y8KHOqGHzQwXMMoaEKzRGRviAS915tg==
+"@cornerstonejs/tools@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/tools/-/tools-5.6.10.tgz#d0685fe438d83963b023d084a7a0c09b6a9b49fa"
+  integrity sha512-OdeNFIARZc01ilFH+fxvYfm7U1iXn4e0lxuewxwZpa56+FjdW1jqkPlyRMQKGtN16M8GDvcfKp/Vit2C7Q3+oA==
   dependencies:
     "@types/offscreencanvas" "2019.7.3"
-    comlink "^4.4.1"
-    lodash.get "^4.4.2"
+    clipper2-ts "2.0.1"
+    comlink "4.4.2"
+    lodash.get "4.4.2"
+
+"@cornerstonejs/utils@5.6.10", "@cornerstonejs/utils@^5.6.10":
+  version "5.6.10"
+  resolved "https://registry.yarnpkg.com/@cornerstonejs/utils/-/utils-5.6.10.tgz#8c2140eb9c161eb71e346921be2139442e5abc6d"
+  integrity sha512-VOmyY0siGg0t5FdZPqTPfPGb6M0ztw0CPP/SfieOBpu30fYXs7fuwM/HvV6Wu/AkLqx6Gi3GBRQJOelK5JqRoA==
+  dependencies:
+    dcmjs "0.52.0"
 
 "@cspotcode/source-map-support@^0.8.0":
   version "0.8.1"
@@ -2383,7 +2436,7 @@
 
 "@kitware/vtk.js@32.12.0":
   version "32.12.0"
-  resolved "https://registry.npmjs.org/@kitware/vtk.js/-/vtk.js-32.12.0.tgz"
+  resolved "https://registry.yarnpkg.com/@kitware/vtk.js/-/vtk.js-32.12.0.tgz#11fb13a53332c1370568099690c898941c4a1036"
   integrity sha512-QKO2BCAtNsl0p62RoA7vJbQ2NAJPyf0upPddOoNC+Qpfa1gPTGDatdyPm2/hLF9mYov6Lom7dEpfSVv8/bekzA==
   dependencies:
     "@babel/runtime" "7.22.11"
@@ -2406,7 +2459,7 @@
 
 "@kitware/vtk.js@32.12.1":
   version "32.12.1"
-  resolved "https://registry.npmjs.org/@kitware/vtk.js/-/vtk.js-32.12.1.tgz"
+  resolved "https://registry.yarnpkg.com/@kitware/vtk.js/-/vtk.js-32.12.1.tgz#426fe65112c36c4bf312044dee0aeb641616d09b"
   integrity sha512-IF8WK7WDu84035ws3HZXz8wys8O81mmeFayYFbdBEfKjgZ4k0EGCK25YCGc6Q47Zxq1iutjs3Zs2xAgGjTgGQg==
   dependencies:
     "@babel/runtime" "7.22.11"
@@ -2426,6 +2479,24 @@
     webworker-promise "0.5.0"
     worker-loader "3.0.8"
     xmlbuilder2 "3.0.2"
+
+"@kitware/vtk.js@36.4.1":
+  version "36.4.1"
+  resolved "https://registry.yarnpkg.com/@kitware/vtk.js/-/vtk.js-36.4.1.tgz#9d418e159efb0aabce12275d9aef678af9e5ccbb"
+  integrity sha512-vHgiOZTHS7wgEw6Cbuv6vS+zlTx8HgepPqq0UMTWx6T+OcmP2qJCGRpHI1eTPqKcN2SaEHIK7DSsVatTHZ9OPw==
+  dependencies:
+    "@types/webxr" "0.5.5"
+    commander "9.2.0"
+    d3-scale "4.0.2"
+    fast-deep-equal "3.1.3"
+    fflate "0.7.3"
+    gl-matrix "3.4.3"
+    seedrandom "3.0.5"
+    shelljs "0.8.5"
+    spark-md5 "3.0.2"
+    utif "3.1.0"
+    webworker-promise "0.5.0"
+    xmlbuilder2 "4.0.3"
 
 "@leichtgewicht/ip-codec@^2.0.1":
   version "2.0.5"
@@ -2957,12 +3028,28 @@
     "@oozcitak/url" "1.0.4"
     "@oozcitak/util" "8.3.8"
 
+"@oozcitak/dom@^2.0.2":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@oozcitak/dom/-/dom-2.0.2.tgz#0f447f0b736aa6f36c5556ba811a44e56c71c26c"
+  integrity sha512-GjpKhkSYC3Mj4+lfwEyI1dqnsKTgwGy48ytZEhm4A/xnH/8z9M3ZVXKr/YGQi3uCLs1AEBS+x5T2JPiueEDW8w==
+  dependencies:
+    "@oozcitak/infra" "^2.0.2"
+    "@oozcitak/url" "^3.0.0"
+    "@oozcitak/util" "^10.0.0"
+
 "@oozcitak/infra@1.0.8":
   version "1.0.8"
   resolved "https://registry.npmjs.org/@oozcitak/infra/-/infra-1.0.8.tgz"
   integrity sha512-JRAUc9VR6IGHOL7OGF+yrvs0LO8SlqGnPAMqyzOuFZPSZSXI7Xf2O9+awQPSMXgIWGtgUf/dA6Hs6X6ySEaWTg==
   dependencies:
     "@oozcitak/util" "8.3.8"
+
+"@oozcitak/infra@^2.0.2":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@oozcitak/infra/-/infra-2.0.2.tgz#e2f1cc0eeca3ac5cd551f0326a5f66f00cf1138b"
+  integrity sha512-2g+E7hoE2dgCz/APPOEK5s3rMhJvNxSMBrP+U+j1OWsIbtSpWxxlUjq1lU8RIsFJNYv7NMlnVsCuHcUzJW+8vA==
+  dependencies:
+    "@oozcitak/util" "^10.0.0"
 
 "@oozcitak/url@1.0.4":
   version "1.0.4"
@@ -2972,10 +3059,23 @@
     "@oozcitak/infra" "1.0.8"
     "@oozcitak/util" "8.3.8"
 
+"@oozcitak/url@^3.0.0":
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/@oozcitak/url/-/url-3.0.0.tgz#a03c959c67e28aba9e29b2d35cd50d26cb5f2cc4"
+  integrity sha512-ZKfET8Ak1wsLAiLWNfFkZc/BraDccuTJKR6svTYc7sVjbR+Iu0vtXdiDMY4o6jaFl5TW2TlS7jbLl4VovtAJWQ==
+  dependencies:
+    "@oozcitak/infra" "^2.0.2"
+    "@oozcitak/util" "^10.0.0"
+
 "@oozcitak/util@8.3.8":
   version "8.3.8"
   resolved "https://registry.npmjs.org/@oozcitak/util/-/util-8.3.8.tgz"
   integrity sha512-T8TbSnGsxo6TDBJx/Sgv/BlVJL3tshxZP7Aq5R1mSnM5OcHY2dQaxLMu2+E8u3gN0MLOzdjurqN4ZRVuzQycOQ==
+
+"@oozcitak/util@^10.0.0":
+  version "10.0.0"
+  resolved "https://registry.yarnpkg.com/@oozcitak/util/-/util-10.0.0.tgz#f6b40472d96c210094a556ee5ccb8e77f1bd30af"
+  integrity sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==
 
 "@parcel/watcher@2.0.4":
   version "2.0.4"
@@ -5650,6 +5750,11 @@
     anymatch "^3.0.0"
     source-map "^0.6.0"
 
+"@types/webxr@0.5.5":
+  version "0.5.5"
+  resolved "https://registry.yarnpkg.com/@types/webxr/-/webxr-0.5.5.tgz#9e0a27e809c8f76cc1ef525d9f96b8fd94ef9c42"
+  integrity sha512-HVOsSRTQYx3zpVl0c0FBmmmcY/60BkQLzVnpE9M1aG4f2Z0aKlBWfj4XZ2zr++XNBfkQWYcwhGlmuu44RJPDqg==
+
 "@types/webxr@^0.5.5":
   version "0.5.22"
   resolved "https://registry.npmjs.org/@types/webxr/-/webxr-0.5.22.tgz"
@@ -6121,10 +6226,10 @@ address@^1.0.1:
   resolved "https://registry.npmjs.org/address/-/address-1.2.2.tgz"
   integrity sha512-4B/qKCfeE/ODUaAUpSwfzazo5x29WD4r3vXiWsB7I2mSDAihwEqKO+g8GELZUQSSAo5e1XTYh3ZVfLyxBc12nA==
 
-adm-zip@^0.5.10:
-  version "0.5.16"
-  resolved "https://registry.npmjs.org/adm-zip/-/adm-zip-0.5.16.tgz"
-  integrity sha512-TGw5yVi4saajsSEgz25grObGHEUaDrniwvA2qwSC060KfqGPdglhvPMA2lPIoxs3PQIItj2iag35fONcQqgUaQ==
+adm-zip@0.5.17:
+  version "0.5.17"
+  resolved "https://registry.yarnpkg.com/adm-zip/-/adm-zip-0.5.17.tgz#5c0b65f37aeec5c2a94995c024f931f62e4bbc5a"
+  integrity sha512-+Ut8d9LLqwEvHHJl1+PIHqoyDxFgVN847JTVM3Izi3xHDWPE4UtzzXysMZQs64DMcrJfBeS/uoEP4AD3HQHnQQ==
 
 agent-base@5:
   version "5.1.1"
@@ -7264,6 +7369,14 @@ buffer-xor@^1.0.3:
   resolved "https://registry.npmjs.org/buffer-xor/-/buffer-xor-1.0.3.tgz"
   integrity sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ==
 
+buffer@6.0.3, buffer@^6.0.3:
+  version "6.0.3"
+  resolved "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz"
+  integrity sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==
+  dependencies:
+    base64-js "^1.3.1"
+    ieee754 "^1.2.1"
+
 buffer@^5.2.1, buffer@^5.5.0, buffer@^5.7.1:
   version "5.7.1"
   resolved "https://registry.npmjs.org/buffer/-/buffer-5.7.1.tgz"
@@ -7271,14 +7384,6 @@ buffer@^5.2.1, buffer@^5.5.0, buffer@^5.7.1:
   dependencies:
     base64-js "^1.3.1"
     ieee754 "^1.1.13"
-
-buffer@^6.0.3:
-  version "6.0.3"
-  resolved "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz"
-  integrity sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==
-  dependencies:
-    base64-js "^1.3.1"
-    ieee754 "^1.2.1"
 
 builtin-modules@^3.1.0:
   version "3.3.0"
@@ -7770,6 +7875,11 @@ clipboardy@3.0.0:
     execa "^5.1.1"
     is-wsl "^2.2.0"
 
+clipper2-ts@2.0.1:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/clipper2-ts/-/clipper2-ts-2.0.1.tgz#f696089d9b463f9e58fa3bb4abdd2fa51e5df32d"
+  integrity sha512-raIgNMpYN/PFYk/T9iRzaG99rf5nlXBWL1FyAdR3wjEYSzJy+pPfolLH5bCdRqCFQqn/eYUsF1jb3cQEMxmWGw==
+
 cliui@^6.0.0:
   version "6.0.0"
   resolved "https://registry.npmjs.org/cliui/-/cliui-6.0.0.tgz"
@@ -7923,7 +8033,7 @@ combined-stream@^1.0.8, combined-stream@~1.0.6:
   dependencies:
     delayed-stream "~1.0.0"
 
-comlink@^4.4.1:
+comlink@4.4.2, comlink@^4.4.1:
   version "4.4.2"
   resolved "https://registry.npmjs.org/comlink/-/comlink-4.4.2.tgz"
   integrity sha512-OxGdvBmJuNKSCMO4NTl1L47VRp6xn2wG4F/2hYzB6tiCb709otOxtEYCSvK80PtjODfXXZu8ds+Nw5kVCjqd2g==
@@ -8208,10 +8318,15 @@ core-js-compat@^3.31.0, core-js-compat@^3.33.1, core-js-compat@^3.38.0, core-js-
   dependencies:
     browserslist "^4.25.0"
 
-core-js-pure@^3.23.3, core-js-pure@^3.30.2:
+core-js-pure@^3.23.3:
   version "3.43.0"
   resolved "https://registry.npmjs.org/core-js-pure/-/core-js-pure-3.43.0.tgz"
   integrity sha512-i/AgxU2+A+BbJdMxh3v7/vxi2SbFqxiFmg6VsDwYB4jkucrd1BZNA9a9gphC0fYMG5IBSgQcbQnk865VCLe7xA==
+
+core-js-pure@^3.48.0:
+  version "3.49.0"
+  resolved "https://registry.yarnpkg.com/core-js-pure/-/core-js-pure-3.49.0.tgz#ff8436b7251a3832f5fdbbe3e10f7f2e58e51fb1"
+  integrity sha512-XM4RFka59xATyJv/cS3O3Kml72hQXUeGRuuTmMYFxwzc9/7C8OYTaIR/Ji+Yt8DXzsFLNhat15cE/JP15HrCgw==
 
 core-js@*, core-js@^2.5.7, core-js@^2.6.12:
   version "2.6.12"
@@ -8855,31 +8970,18 @@ dayjs@^1.10.4:
   resolved "https://registry.npmjs.org/dayjs/-/dayjs-1.11.13.tgz"
   integrity sha512-oaMBel6gjolK862uaPQOVTA7q3TZhuSvuMQAAglQDOWYO9A91IrAOUJEyKVlqJlHE0vq5p5UXxzdPfMH/x6xNg==
 
-dcmjs@^0.29.8:
-  version "0.29.13"
-  resolved "https://registry.npmjs.org/dcmjs/-/dcmjs-0.29.13.tgz"
-  integrity sha512-Bf9tKzJNWqk4kbV210N5TLEHDqaZvO3S+MH9vezFAU8WKcG4cR6z4/II3TQVqhLI185eNUL+lhfPCVH1Uu2yTA==
+dcmjs@0.52.0, dcmjs@^0.29.8, dcmjs@^0.42.0:
+  version "0.52.0"
+  resolved "https://registry.yarnpkg.com/dcmjs/-/dcmjs-0.52.0.tgz#487824f2b75330f96f137719cfa90675f1b4e499"
+  integrity sha512-0/mT9NACKnwnOnkUx7JAqmWxRcUr7HiCoptw1KhN2StNYE0Hy6+tmpI7CU+lJuBc4rFpcMCalvI8QO6JkJ+7Fg==
   dependencies:
-    "@babel/runtime-corejs3" "^7.22.5"
-    adm-zip "^0.5.10"
-    gl-matrix "^3.1.0"
-    lodash.clonedeep "^4.5.0"
-    loglevelnext "^3.0.1"
-    ndarray "^1.0.19"
-    pako "^2.0.4"
-
-dcmjs@^0.42.0:
-  version "0.42.0"
-  resolved "https://registry.npmjs.org/dcmjs/-/dcmjs-0.42.0.tgz"
-  integrity sha512-N/SXIzMvAjDRgb8vC8G7DP/2BI1QKpa3TwY47Ok34g5y6ZKIcpAR3sf+Y+OBWkQxvnCTncB6B4tkq/ih8xjmXA==
-  dependencies:
-    "@babel/runtime-corejs3" "^7.22.5"
-    adm-zip "^0.5.10"
-    gl-matrix "^3.1.0"
-    lodash.clonedeep "^4.5.0"
-    loglevel "^1.8.1"
-    ndarray "^1.0.19"
-    pako "^2.0.4"
+    "@babel/runtime-corejs3" "7.29.2"
+    adm-zip "0.5.17"
+    gl-matrix "3.4.4"
+    lodash.clonedeep "4.5.0"
+    loglevel "1.9.2"
+    ndarray "1.0.19"
+    pako "2.1.0"
 
 debounce@^1.2.1:
   version "1.2.1"
@@ -10635,7 +10737,7 @@ extsprintf@^1.2.0:
   resolved "https://registry.npmjs.org/extsprintf/-/extsprintf-1.4.1.tgz"
   integrity sha512-Wrk35e8ydCKDj/ArClo1VrPVmN8zph5V4AtHwIuHhvMXsKf73UT3BOD+azBIW+3wOJ4FhEH7zyaJCFvChjYvMA==
 
-fast-deep-equal@^3.1.1, fast-deep-equal@^3.1.3:
+fast-deep-equal@3.1.3, fast-deep-equal@^3.1.1, fast-deep-equal@^3.1.3:
   version "3.1.3"
   resolved "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz"
   integrity sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==
@@ -11421,10 +11523,15 @@ gitignore@^0.7.0:
   resolved "https://registry.npmjs.org/gitignore/-/gitignore-0.7.0.tgz"
   integrity sha512-6iE891OyeYQYVvdoWI/hcxDWJ0sOngSpIRadxLoYbsnZdqWIUsEfx+IrOpW3d/zWBA/eKYvs6ZZx6ogz2wEGoQ==
 
-gl-matrix@3.4.3, gl-matrix@^3.1.0, gl-matrix@^3.4.3:
+gl-matrix@3.4.3, gl-matrix@^3.4.3:
   version "3.4.3"
   resolved "https://registry.npmjs.org/gl-matrix/-/gl-matrix-3.4.3.tgz"
   integrity sha512-wcCp8vu8FT22BnvKVPjXa/ICBWRq/zjFfdofZy1WSpQZpphblv12/bOQLBC1rMM7SGOFS9ltVmKOHil5+Ml7gA==
+
+gl-matrix@3.4.4:
+  version "3.4.4"
+  resolved "https://registry.yarnpkg.com/gl-matrix/-/gl-matrix-3.4.4.tgz#7789ee4982f62c7a7af447ee488f3bd6b0c77003"
+  integrity sha512-latSnyDNt/8zYUB6VIJ6PCh2jBjJX6gnDsoCZ7LyW7GkqrD51EWwa9qCoGixj8YqBtETQK/xY7OmpTF8xz1DdQ==
 
 glob-parent@5.1.2, glob-parent@^5.1.2, glob-parent@^6.0.1, glob-parent@^6.0.2, glob-parent@~5.1.2:
   version "6.0.2"
@@ -13648,6 +13755,13 @@ js-yaml@4.1.0, js-yaml@^4.1.0:
   dependencies:
     argparse "^2.0.1"
 
+js-yaml@^4.1.1:
+  version "4.3.0"
+  resolved "https://registry.yarnpkg.com/js-yaml/-/js-yaml-4.3.0.tgz#d1900572a7f7cf0b5f540c83673e60bad3436592"
+  integrity sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==
+  dependencies:
+    argparse "^2.0.1"
+
 jsbn@1.1.0:
   version "1.1.0"
   resolved "https://registry.npmjs.org/jsbn/-/jsbn-1.1.0.tgz"
@@ -14266,7 +14380,7 @@ lodash-es@^4.17.15:
   resolved "https://registry.npmjs.org/lodash-es/-/lodash-es-4.17.21.tgz"
   integrity sha512-mKnC+QJ9pWVzv+C4/U3rRsHapFfHvQFoFB92e52xeyGMcX6/OlIl78je1u8vePzYZSkkogMPJ2yjxxsb89cxyw==
 
-lodash.clonedeep@^4.5.0:
+lodash.clonedeep@4.5.0, lodash.clonedeep@^4.5.0:
   version "4.5.0"
   resolved "https://registry.npmjs.org/lodash.clonedeep/-/lodash.clonedeep-4.5.0.tgz"
   integrity sha512-H5ZhCF25riFd9uB5UCkVKo61m3S/xZk1x4wA6yp/L3RFP6Z/eHH1ymQcGLo7J3GMPfm0V/7m1tryHuGVxpqEBQ==
@@ -14291,7 +14405,7 @@ lodash.flattendeep@^4.4.0:
   resolved "https://registry.npmjs.org/lodash.flattendeep/-/lodash.flattendeep-4.4.0.tgz"
   integrity sha512-uHaJFihxmJcEX3kT4I23ABqKKalJ/zDrDg0lsFtc1h+3uw49SIJ5beyhx5ExVRti3AvKoOJngIj7xz3oylPdWQ==
 
-lodash.get@^4.4.2:
+lodash.get@4.4.2, lodash.get@^4.4.2:
   version "4.4.2"
   resolved "https://registry.npmjs.org/lodash.get/-/lodash.get-4.4.2.tgz"
   integrity sha512-z+Uw/vLuy6gQe8cfaFWD7p0wVv8fJl3mbzXh33RS+0oW2wvUqiRXiQ69gLWSLpgB5/6sU+r6BlQR0MBILadqTQ==
@@ -14387,15 +14501,10 @@ log-update@^4.0.0:
     slice-ansi "^4.0.0"
     wrap-ansi "^6.2.0"
 
-loglevel@^1.8.1, loglevel@^1.9.2:
+loglevel@1.9.2, loglevel@^1.9.2:
   version "1.9.2"
   resolved "https://registry.npmjs.org/loglevel/-/loglevel-1.9.2.tgz"
   integrity sha512-HgMmCqIJSAKqo68l0rS2AanEWfkxaZ5wNiEFb5ggm08lDs9Xl2KxBlX3PTcaD2chBM1gXAYf491/M2Rv8Jwayg==
-
-loglevelnext@^3.0.1:
-  version "3.0.1"
-  resolved "https://registry.npmjs.org/loglevelnext/-/loglevelnext-3.0.1.tgz"
-  integrity sha512-JpjaJhIN1reaSb26SIxDGtE0uc67gPl19OMVHrr+Ggt6b/Vy60jmCtKgQBrygAH0bhRA2nkxgDvM+8QvR8r0YA==
 
 long@^5.0.0, long@^5.2.3:
   version "5.3.2"
@@ -15516,7 +15625,7 @@ ncp@^2.0.0:
   resolved "https://registry.npmjs.org/ncp/-/ncp-2.0.0.tgz"
   integrity sha512-zIdGUrPRFTUELUvr3Gmc7KZ2Sw/h1PiVM0Af/oHB6zgnV1ikqSfRk+TOufi79aHYCW3NiOXmr1BP5nWbzojLaA==
 
-ndarray@^1.0.19:
+ndarray@1.0.19, ndarray@^1.0.19:
   version "1.0.19"
   resolved "https://registry.npmjs.org/ndarray/-/ndarray-1.0.19.tgz"
   integrity sha512-B4JHA4vdyZU30ELBw3g7/p9bZupyew5a7tX1Y/gGeF2hafrPaQZhgrGQfsvgfYbgdFZjYwuEcnaobeM/WMW+HQ==
@@ -16508,15 +16617,15 @@ pacote@^15.2.0:
     ssri "^10.0.0"
     tar "^6.1.11"
 
+pako@2.1.0, pako@^2.0.4:
+  version "2.1.0"
+  resolved "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz"
+  integrity sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==
+
 pako@^1.0.5, pako@~1.0.5:
   version "1.0.11"
   resolved "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz"
   integrity sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==
-
-pako@^2.0.4:
-  version "2.1.0"
-  resolved "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz"
-  integrity sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==
 
 pako@~0.2.0:
   version "0.2.9"
@@ -18504,7 +18613,7 @@ regenerate@^1.4.2:
 
 regenerator-runtime@^0.14.0:
   version "0.14.1"
-  resolved "https://registry.npmjs.org/regenerator-runtime/-/regenerator-runtime-0.14.1.tgz"
+  resolved "https://registry.yarnpkg.com/regenerator-runtime/-/regenerator-runtime-0.14.1.tgz#356ade10263f685dda125100cd862c1db895327f"
   integrity sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw==
 
 regexp.prototype.flags@^1.5.1, regexp.prototype.flags@^1.5.3, regexp.prototype.flags@^1.5.4:
@@ -22141,6 +22250,16 @@ xmlbuilder2@3.0.2:
     "@oozcitak/util" "8.3.8"
     "@types/node" "*"
     js-yaml "3.14.0"
+
+xmlbuilder2@4.0.3:
+  version "4.0.3"
+  resolved "https://registry.yarnpkg.com/xmlbuilder2/-/xmlbuilder2-4.0.3.tgz#91660fa6d30f19d716f8b1194c567686d4402c63"
+  integrity sha512-bx8Q1STctnNaaDymWnkfQLKofs0mGNN7rLLapJlGuV3VlvegD7Ls4ggMjE3aUSWItCCzU0PEv45lI87iSigiCA==
+  dependencies:
+    "@oozcitak/dom" "^2.0.2"
+    "@oozcitak/infra" "^2.0.2"
+    "@oozcitak/util" "^10.0.0"
+    js-yaml "^4.1.1"
 
 xmlchars@^2.2.0:
   version "2.2.0"

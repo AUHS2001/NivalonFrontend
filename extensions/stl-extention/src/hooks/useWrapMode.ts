@@ -31,7 +31,7 @@ interface UseWrapModeReturn {
 }
 
 // Allowed layouts for wrap mode
-const WRAP_LAYOUTS = ['3d-four-up', '3d-main', '3d-primary'];
+const WRAP_LAYOUTS = ['fourUp', 'main3D', 'primary3D'];
 
 export function useWrapMode(config: UseWrapModeConfig): UseWrapModeReturn {
   const {

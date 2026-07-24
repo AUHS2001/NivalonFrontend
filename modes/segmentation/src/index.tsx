@@ -100,6 +100,16 @@ function modeFactory({ modeConfiguration }) {
       const { measurementService, toolbarService, toolGroupService, customizationService, hangingProtocolService } =
         servicesManager.services;
 
+      // Register custom attribute so fourUp protocol can match reconstructable studies
+      hangingProtocolService.addCustomAttribute(
+        'hasReconstructableDisplaySet',
+        'Has Reconstructable Display Set',
+        (studyMetadata, options) => {
+          const displaySets = options?.displaySets || [];
+          return displaySets.some(ds => ds.isReconstructable);
+        }
+      );
+
       // hangingProtocolService.addProtocol("stl-layout",stlHangingProtocol);
       measurementService.clearMeasurements();
 
@@ -326,7 +336,7 @@ function modeFactory({ modeConfiguration }) {
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
     // Use 3D four up layout as default
-    hangingProtocol: ['fourUp'],
+    hangingProtocol: ['fourUp', 'default'],
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [
       dicomvideo.sopClassHandler,

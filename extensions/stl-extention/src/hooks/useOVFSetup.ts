@@ -84,7 +84,7 @@ export function useOVFSetup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const { setVertebraLegend, colorsDisabled, hiddenVertebrae, selectedPreset } = useOvfLegendContext();
+  const { setVertebraLegend, colorsDisabled, hiddenVertebrae, selectedPreset, tissueOpacity } = useOvfLegendContext();
   const originalColorsRef = useRef<Map<THREE.Mesh, number>>(new Map());
 
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -237,21 +237,7 @@ export function useOVFSetup({
     }
 
     try {
-      let renderingEngine = getRenderingEngine(OVF_ENGINE_ID) as RenderingEngine;
-      if (!renderingEngine || renderingEngine.hasBeenDestroyed) {
-        renderingEngine = new RenderingEngine(OVF_ENGINE_ID);
-      }
-      csRenderingEngineRef.current = renderingEngine;
-
-      renderingEngine.enableElement({
-        viewportId: OVF_VIEWPORT_ID,
-        type: Enums.ViewportType.VOLUME_3D,
-        element: csContainer,
-        defaultOptions: {
-          background: [10 / 255, 15 / 255, 23 / 255] as [number, number, number],
-        },
-      });
-
+      // ── Step 1: Get image IDs ──
       let imageIds = ctDisplaySet.imageIds;
       if (!imageIds || imageIds.length === 0) {
         const ds = getDataSource();
@@ -271,23 +257,17 @@ export function useOVFSetup({
           csCache.removeVolumeLoadObject(ovfVolumeId);
         }
       } catch (e) {
-        // If removeVolumeLoadObject fails, force-remove from internal cache
         try { (csCache as any)._volumeCache?.delete(ovfVolumeId); } catch (_) {}
       }
 
+      // ── Step 2: Create volume and load ALL frames BEFORE creating viewport ──
+      // We must NOT create the viewport (enableElement) until volume data is
+      // fully loaded. If a viewport exists during loading, Cornerstone/VTK
+      // internal rendering can trigger shader compilation on empty data,
+      // crashing with: "Cannot read properties of null ('isAttributeUsed')"
       const volume = await volumeLoader.createAndCacheVolume(ovfVolumeId, { imageIds });
-
-      // Disable auto-rendering during loading — prevents Cornerstone from
-      // triggering progressive renders before all frames are loaded,
-      // which would cause VTK shader compilation with incomplete data
       (volume as any).autoRenderOnLoad = false;
 
-      // ── Wait for ALL image frames to finish loading ──
-      // volume.load() is NOT a Promise — it starts async frame loading and returns void.
-      // We MUST wait for loadStatus.loaded === true before calling setVolumes(),
-      // because setVolumes() → createVolumeActor() builds VTK mapper + shader
-      // which requires scalar data to be populated. Without this wait, shader
-      // compilation crashes: "Cannot read properties of null ('isAttributeUsed')"
       await new Promise<void>((resolve) => {
         let resolved = false;
         const done = (source: string) => {
@@ -298,7 +278,6 @@ export function useOVFSetup({
           resolve();
         };
 
-        // 1) Event listener — fires when ALL frames finish loading
         const onVolumeLoaded = (evt: any) => {
           const evtVolumeId = evt?.detail?.volumeId;
           if (!evtVolumeId || evtVolumeId === ovfVolumeId) {
@@ -309,13 +288,12 @@ export function useOVFSetup({
           || 'CORNERSTONE_IMAGE_VOLUME_LOADING_COMPLETED';
         try {
           eventTarget.addEventListener(loadingCompletedEvent, onVolumeLoaded);
-        } catch (_) { /* eventTarget may not support this event */ }
+        } catch (_) {}
 
         const cleanupListener = () => {
           try { eventTarget.removeEventListener(loadingCompletedEvent, onVolumeLoaded); } catch (_) {}
         };
 
-        // 2) Polling fallback — check loadStatus.loaded every 200ms
         const poll = () => {
           if (resolved) return;
           if (cancelledRef.current) { done('cancelled'); return; }
@@ -323,36 +301,45 @@ export function useOVFSetup({
           setTimeout(poll, 200);
         };
 
-        // 3) Safety timeout — 60 seconds max
         setTimeout(() => { if (!resolved) done('timeout'); }, 60000);
 
-        // Check if already loaded (e.g. from cache)
         if ((volume as any).loadStatus?.loaded) {
           done('already-loaded');
           return;
         }
 
-        // Start loading — pass callback on FIRST call
-        // IMPORTANT: load() ignores callback if loadStatus.loading is already true,
-        // so we must pass the callback on the first invocation
         try {
-          (volume as any).load((status: any) => {
-            // Callback fires when ALL frames are processed (framesProcessed === totalNumFrames)
-            done('callback');
-          });
+          (volume as any).load((status: any) => { done('callback'); });
         } catch (_) {
           try { (volume as any).load(); } catch (__) {}
         }
 
-        // Start polling as secondary check (delayed to give callback/event priority)
         setTimeout(poll, 500);
       });
       if (cancelledRef.current) return;
 
+      console.log('[OVF] Volume loaded, creating viewport...');
+
+      // ── Step 3: NOW create the viewport — volume data is ready ──
+      let renderingEngine = getRenderingEngine(OVF_ENGINE_ID) as RenderingEngine;
+      if (!renderingEngine || renderingEngine.hasBeenDestroyed) {
+        renderingEngine = new RenderingEngine(OVF_ENGINE_ID);
+      }
+      csRenderingEngineRef.current = renderingEngine;
+
+      renderingEngine.enableElement({
+        viewportId: OVF_VIEWPORT_ID,
+        type: Enums.ViewportType.VOLUME_3D,
+        element: csContainer,
+        defaultOptions: {
+          background: [10 / 255, 15 / 255, 23 / 255] as [number, number, number],
+        },
+      });
+
       const viewport = renderingEngine.getViewport(OVF_VIEWPORT_ID);
       if (!viewport) return;
 
-      // setVolumes() creates VTK mapper — wrap in try-catch
+      // ── Step 4: Add loaded volume to viewport ──
       try {
         await (viewport as any).setVolumes([{ volumeId: ovfVolumeId }]);
       } catch (setVolErr) {
@@ -642,6 +629,50 @@ export function useOVFSetup({
       } catch (e) { console.warn('[OVF] Preset render error:', e); }
     }
   }, [selectedPreset]);
+
+  // ─── Tissue visibility slider — shift scalar opacity transfer function ───
+  useEffect(() => {
+    const re = csRenderingEngineRef.current;
+    if (!re || re.hasBeenDestroyed || !volumeReadyRef.current) return;
+    const vp = re.getViewport(OVF_VIEWPORT_ID) as any;
+    if (!vp) return;
+
+    try {
+      const actorEntry = vp.getDefaultActor?.();
+      if (!actorEntry?.actor) return;
+      const property = actorEntry.actor.getProperty();
+      const ofun = property.getScalarOpacity(0);
+
+      // t = 0 → bone-only (default), t = 1 → full tissue/muscle visible
+      const t = tissueOpacity / 100;
+
+      // Base opacity points (bone-only) → Full tissue opacity points
+      // Format: [HU value, bone-only opacity, full-tissue opacity]
+      const opacityPoints: [number, number, number][] = [
+        [-1000, 0,    0],
+        [-50,   0,    0],
+        [20,    0.02, 0.45],   // muscle
+        [60,    0.04, 0.55],   // muscle
+        [100,   0.06, 0.60],   // dense tissue
+        [150,   0.20, 0.65],   // transition
+        [200,   0.70, 0.75],   // bone
+        [300,   0.85, 0.88],
+        [500,   0.95, 0.95],
+        [800,   1.0,  1.0],
+        [3000,  1.0,  1.0],
+      ];
+
+      ofun.removeAllPoints();
+      for (const [hu, boneOpacity, tissueMax] of opacityPoints) {
+        const opacity = boneOpacity + t * (tissueMax - boneOpacity);
+        ofun.addPoint(hu, opacity);
+      }
+
+      vp.render();
+    } catch (e) {
+      console.warn('[OVF] Tissue opacity update error:', e);
+    }
+  }, [tissueOpacity]);
 
   // ─── Resize handler ───
   useEffect(() => {
