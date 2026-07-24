@@ -88,7 +88,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleCompareLeftVisibility,
     toggleAllCompareLeftVisibility,
   } = useStlVisibilityContext();
-  const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset } = useOvfLegendContext();
+  const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset, tissueOpacity, setTissueOpacity } = useOvfLegendContext();
   const [showPresetPopup, setShowPresetPopup] = useState(false);
 
   const type = localStorage.getItem('myLayout');
@@ -306,6 +306,47 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 >
                   Volume Presets
                 </button>
+
+                {/* Tissue Visibility Slider */}
+                <div style={{ marginTop: '14px' }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '6px',
+                  }}>
+                    <span style={{ fontSize: '12px', color: '#aaa', fontWeight: 600 }}>
+                      Tissue Visibility
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#888' }}>
+                      {tissueOpacity}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={tissueOpacity}
+                    onChange={(e) => setTissueOpacity(Number(e.target.value))}
+                    style={{
+                      width: '100%',
+                      height: '6px',
+                      cursor: 'pointer',
+                      accentColor: '#0E326E',
+                    }}
+                  />
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '10px',
+                    color: '#666',
+                    marginTop: '2px',
+                  }}>
+                    <span>Bone Only</span>
+                    <span>Full Tissue</span>
+                  </div>
+                </div>
               </div>
             )}
 

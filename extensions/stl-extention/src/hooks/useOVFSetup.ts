@@ -84,7 +84,7 @@ export function useOVFSetup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const { setVertebraLegend, colorsDisabled, hiddenVertebrae, selectedPreset } = useOvfLegendContext();
+  const { setVertebraLegend, colorsDisabled, hiddenVertebrae, selectedPreset, tissueOpacity } = useOvfLegendContext();
   const originalColorsRef = useRef<Map<THREE.Mesh, number>>(new Map());
 
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -629,6 +629,50 @@ export function useOVFSetup({
       } catch (e) { console.warn('[OVF] Preset render error:', e); }
     }
   }, [selectedPreset]);
+
+  // ─── Tissue visibility slider — shift scalar opacity transfer function ───
+  useEffect(() => {
+    const re = csRenderingEngineRef.current;
+    if (!re || re.hasBeenDestroyed || !volumeReadyRef.current) return;
+    const vp = re.getViewport(OVF_VIEWPORT_ID) as any;
+    if (!vp) return;
+
+    try {
+      const actorEntry = vp.getDefaultActor?.();
+      if (!actorEntry?.actor) return;
+      const property = actorEntry.actor.getProperty();
+      const ofun = property.getScalarOpacity(0);
+
+      // t = 0 → bone-only (default), t = 1 → full tissue/muscle visible
+      const t = tissueOpacity / 100;
+
+      // Base opacity points (bone-only) → Full tissue opacity points
+      // Format: [HU value, bone-only opacity, full-tissue opacity]
+      const opacityPoints: [number, number, number][] = [
+        [-1000, 0,    0],
+        [-50,   0,    0],
+        [20,    0.02, 0.45],   // muscle
+        [60,    0.04, 0.55],   // muscle
+        [100,   0.06, 0.60],   // dense tissue
+        [150,   0.20, 0.65],   // transition
+        [200,   0.70, 0.75],   // bone
+        [300,   0.85, 0.88],
+        [500,   0.95, 0.95],
+        [800,   1.0,  1.0],
+        [3000,  1.0,  1.0],
+      ];
+
+      ofun.removeAllPoints();
+      for (const [hu, boneOpacity, tissueMax] of opacityPoints) {
+        const opacity = boneOpacity + t * (tissueMax - boneOpacity);
+        ofun.addPoint(hu, opacity);
+      }
+
+      vp.render();
+    } catch (e) {
+      console.warn('[OVF] Tissue opacity update error:', e);
+    }
+  }, [tissueOpacity]);
 
   // ─── Resize handler ───
   useEffect(() => {

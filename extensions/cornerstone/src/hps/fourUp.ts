@@ -34,7 +34,7 @@ export const fourUp = {
               value: true,
             },
           },
-          required: true,
+          required: false,
         },
       ],
     },
