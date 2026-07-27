@@ -536,21 +536,41 @@ function ViewerViewportGrid(props: withAppTypes) {
       }
 
       if (viewportOptions?.customLayout === 'ovf') {
+        const onInteractionHandler = event => {
+          if (isActive) {
+            return;
+          }
+
+          if (event && (appConfig?.activateViewportBeforeInteraction ?? true)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+
+          viewportGridService.setActiveViewportId(viewportId);
+        };
+
         viewportPanes[i] = (
-          <div
+          <ViewportPane
             key={viewportId}
-            data-cy="viewport-pane"
-            style={{
+            acceptDropsFor="displayset"
+            onDrop={() => {}}
+            onInteraction={onInteractionHandler}
+            customStyle={{
               position: 'absolute',
               top: viewportY * 100 + '%',
               left: viewportX * 100 + '%',
               width: viewportWidth * 100 + '%',
               height: viewportHeight * 100 + '%',
             }}
-            className="flex h-full w-full min-w-[5px] flex-col"
+            isActive={isActive}
           >
-            <OVFLayout servicesManager={servicesManager} commandsManager={commandsManager} dataSource={dataSource} />
-          </div>
+            <div
+              data-cy="viewport-pane"
+              className="flex h-full w-full min-w-[5px] flex-col"
+            >
+              <OVFLayout servicesManager={servicesManager} commandsManager={commandsManager} dataSource={dataSource} />
+            </div>
+          </ViewportPane>
         );
         continue;
       }
