@@ -56,13 +56,15 @@ export default {
       {
         name: 'stl',
         iconName: "layout-advanced-3d-primary",
-        iconLabel: '3D',
+        iconLabel: '3D Panel',
+        label: '3D Panel',
         component: WrappedSpinalCordViewer,
       },
       {
         name: 'signonStl',
         iconName: "layout-advanced-3d-primary",
-        iconLabel: '3D',
+        iconLabel: '3D Panel',
+        label: '3D Panel',
         component: WrappedSignonStlPanel,
       },
     ];

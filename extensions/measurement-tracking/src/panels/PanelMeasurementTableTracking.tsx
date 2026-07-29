@@ -28,23 +28,12 @@ function PanelMeasurementTableTracking(props) {
     : filterPlanarMeasurement;
 
   const onUntrackConfirm = () => {
+    measurementService.clearMeasurements();
     sendTrackedMeasurementsEvent('UNTRACK_ALL', {});
   };
 
   const onDelete = () => {
-    const hasDirtyMeasurements = measurementService
-      .getMeasurements()
-      .some(measurement => measurement.isDirty);
-    hasDirtyMeasurements
-      ? uiModalService.show({
-          title: 'Untrack Study',
-          content: UntrackSeriesModal,
-          contentProps: {
-            onConfirm: onUntrackConfirm,
-            message: 'Are you sure you want to untrack study and delete all measurements?',
-          },
-        })
-      : onUntrackConfirm();
+    onUntrackConfirm();
   };
 
   const EmptyComponent = () => (
