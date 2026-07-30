@@ -60,22 +60,31 @@ export default function StudyList() {
     const [loadingSeriesUid, setLoadingSeriesUid] = useState<string | null>(null);
     const [seriesLoadProgress, setSeriesLoadProgress] = useState(0);
 
+    // Filter state
+    const [filterPatientName, setFilterPatientName] = useState('');
+    const [filterMRN, setFilterMRN] = useState('');
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
+    const [filterDescription, setFilterDescription] = useState('');
+    const [filterModality, setFilterModality] = useState('');
+    const [filterAccession, setFilterAccession] = useState('');
+    const [filterInstances, setFilterInstances] = useState('');
+    const [filterStatus, setFilterStatus] = useState('');
+
     const toggleRow = (studyInstanceUid: string) => {
       setExpandedStudyId(expandedStudyId === studyInstanceUid ? null : studyInstanceUid);
     };
 
-    const handleNavigate = (study: { series: { series_instance_uid: string }[] },index: string) => {
+    const handleNavigate = (study: any, index: number) => {
         // Extract all series_instance_uids from the study's series
-        setLoadingStudyIndex(Number(index));
+        setLoadingStudyIndex(index);
         console.log("study data ",study?.study_instance_uid)
-        updateStlInstanceId(data[index]?.series[0].series_instance_uid)
-        updateSeriesName(data[index]?.series[0].description)
-        updateSeriesList(data[index]?.series)
-        console.log("series description ==> ",data[index]?.series[0].description)
+        updateStlInstanceId(study?.series[0].series_instance_uid)
+        updateSeriesName(study?.series[0].description)
+        updateSeriesList(study?.series)
+        console.log("series description ==> ",study?.series[0].description)
         updateParentStudyId(study?.study_instance_uid)
         getSeriesInstances(study);
-        // getSeriesInstances();
-        // Pass the entire array now
     };
 
 
@@ -556,6 +565,52 @@ export default function StudyList() {
         return position === 1 ? (selectedStudy1?.series || []) : (selectedStudy2?.series || []);
     };
 
+    // ─── Filter studies based on filter inputs ───
+    const filteredData = React.useMemo(() => {
+        if (!Array.isArray(data)) return [];
+        return data.filter((study: Study) => {
+            // Patient Name
+            if (filterPatientName && !(study.patient_name || '').toLowerCase().includes(filterPatientName.toLowerCase())) {
+                return false;
+            }
+            // Study Instance ID
+            if (filterMRN && !(study.study_instance_uid || '').toLowerCase().includes(filterMRN.toLowerCase())) {
+                return false;
+            }
+            // Study Date range
+            if (filterStartDate || filterEndDate) {
+                const studyDate = (study.date || '').replace(/\./g, '-');
+                if (filterStartDate && studyDate < filterStartDate) return false;
+                if (filterEndDate && studyDate > filterEndDate) return false;
+            }
+            // Description
+            if (filterDescription && !(study.description || '').toLowerCase().includes(filterDescription.toLowerCase())) {
+                return false;
+            }
+            // Modality
+            if (filterModality) {
+                const studyModalities = study.series.map(s => s.modality?.toUpperCase());
+                if (!studyModalities.includes(filterModality.toUpperCase())) return false;
+            }
+            // Accession (check study-level or fall back to description match)
+            if (filterAccession) {
+                const accession = (study as any).accession_number || (study as any).accession || '';
+                if (!accession.toLowerCase().includes(filterAccession.toLowerCase())) return false;
+            }
+            // Instances count
+            if (filterInstances) {
+                const hasMatchingSeries = study.series.some(s => (s.series_instance_uid || '').toLowerCase().includes(filterInstances.toLowerCase()));
+                if (!hasMatchingSeries) return false;
+            }
+            // Status
+            if (filterStatus) {
+                const status = (study as any).status || '';
+                if (status.toLowerCase() !== filterStatus.toLowerCase()) return false;
+            }
+            return true;
+        });
+    }, [data, filterPatientName, filterMRN, filterStartDate, filterEndDate, filterDescription, filterModality, filterAccession, filterInstances, filterStatus]);
+
     return (
         <div className="p-3" style={{
                 backgroundColor: "#0a0e17",
@@ -575,7 +630,8 @@ export default function StudyList() {
                 borderRadius: '50%',
                 background: 'radial-gradient(circle, rgba(56, 182, 255, 0.2) 0%, transparent 70%)',
                 filter: 'blur(40px)',
-                zIndex: 0
+                zIndex: 0,
+                pointerEvents: 'none'
             }}></div>
 
             <div style={{
@@ -587,7 +643,8 @@ export default function StudyList() {
                 borderRadius: '50%',
                 background: 'radial-gradient(circle, rgba(124, 58, 237, 0.15) 0%, transparent 70%)',
                 filter: 'blur(50px)',
-                zIndex: 0
+                zIndex: 0,
+                pointerEvents: 'none'
             }}></div>
 
             {/* Header */}
@@ -614,26 +671,32 @@ export default function StudyList() {
                         Compare 3D
                     </button>
                     <div className="text-end">
-                        <span className="text-primary me-2">{data?.length ?? 0}</span>
+                        <span className="text-primary me-2">{filteredData?.length ?? 0}</span>
                         <span className="text">Studies</span>
                     </div>
                 </div>
             </div>
 
             {/* Filter Section */}
-            <div className="mb-3 p-3 rounded">
+            <div className="mb-3 p-3 rounded" style={{ position: 'relative', zIndex: 1 }}>
                 <div className="row mb-2" style={{ backgroundColor: "#0a0e17" }}>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Patient Name</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter name' />
+                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter name' value={filterPatientName} onChange={e => setFilterPatientName(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
-                            <span>MRN</span>
+                            <span>Study Instance ID</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter MRN'/>
+                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter Study Instance ID' value={filterMRN} onChange={e => setFilterMRN(e.target.value)} />
+                    </div>
+                    <div className="col">
+                        <div className="d-flex align-items-center mb-1">
+                            <span>Series Instance ID</span>
+                        </div>
+                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter Series Instance ID" value={filterInstances} onChange={e => setFilterInstances(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
@@ -641,10 +704,10 @@ export default function StudyList() {
                         </div>
                         <div className="d-flex gap-3">
                             <div className="input-group me-1">
-                                <input type="date" className="form-control bg-white text-black border-white" placeholder="Start date" />
+                                <input type="date" className="form-control bg-white text-black border-white" placeholder="Start date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                             </div>
                             <div className="input-group">
-                                <input type="date" className="form-control bg-white text-black border-white" placeholder="End date" />
+                                <input type="date" className="form-control bg-white text-black border-white" placeholder="End date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -652,42 +715,44 @@ export default function StudyList() {
                         <div className="d-flex align-items-center mb-1">
                             <span>Description</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter description"/>
+                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter description" value={filterDescription} onChange={e => setFilterDescription(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Modality</span>
                         </div>
-                        <select className="form-select bg-white text-black border-white">
-                            <option>AR</option>
-                            <option>ASMT</option>
-                            <option>AU</option>
-                            <option>BDUS</option>
-                            <option>BI</option>
-                            <option>BMD</option>
-                            <option>CR</option>
-                            <option>CT</option>
+                        <select className="form-select bg-white text-black border-white" value={filterModality} onChange={e => setFilterModality(e.target.value)}>
+                            <option value="">All</option>
+                            <option value="CR">CR</option>
+                            <option value="CT">CT</option>
+                            <option value="DX">DX</option>
+                            <option value="MG">MG</option>
+                            <option value="MR">MR</option>
+                            <option value="NM">NM</option>
+                            <option value="OT">OT</option>
+                            <option value="PT">PT</option>
+                            <option value="RF">RF</option>
+                            <option value="SC">SC</option>
+                            <option value="SR">SR</option>
+                            <option value="US">US</option>
+                            <option value="XA">XA</option>
                         </select>
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Accession #</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter accession"/>
-                    </div>
-                    <div className="col">
-                        <div className="mb-1">
-                            <span>Instances</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter instances"/>
+                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter accession" value={filterAccession} onChange={e => setFilterAccession(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="mb-1">
                             <span>Status</span>
                         </div>
-                        <select className="form-select bg-white text-black border-white">
-                            <option>Approved</option>
-                            <option>Rejected</option>
+                        <select className="form-select bg-white text-black border-white" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                            <option value="">All</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="pending">Pending</option>
                         </select>
                      </div>
                 </div>
@@ -698,7 +763,7 @@ export default function StudyList() {
                 {loading ?
                 <div className='text-center'>loading ...</div>
                 :
-              (Array.isArray(data) ? data : []).map((study: any, index) => (
+              filteredData.map((study: any, index) => (
                 <div key={study.study_instance_uid} className="mb-1">
                     {/* Study Row */}
                     <div
@@ -708,37 +773,19 @@ export default function StudyList() {
                     >
                         <div style={{ width: '24px' }}>
                         </div>
-                        <div style={{ width: '18%' }}>{study.patient_name || 'N/A'}</div>
-                        <div style={{ width: '15%' }}>{study.patient_id
-                            ? study.patient_id.length > 8
-                            ? `${study.patient_id.substring(0, 7)}...`
-                            : study.patient_id
-                            : 'N/A'}</div>
+                        <div style={{ width: '25%', paddingRight: '100px' }} className="text-truncate" title={study.study_instance_uid}>{study.study_instance_uid || 'No Study ID'}</div>
+                        <div style={{ width: '15%' }} className="text-truncate">{study.patient_name || 'No Patient Name'}</div>
                         <div style={{ width: '18%' }}>
                         {study.date && study.time
                             ? formatDicomDateTime(study.date, study.time)
-                            : 'N/A'}
+                            : 'No Date'}
                         </div>
 
-                        <div style={{ width: '10%' }} className="text-truncate">{study.description || 'N/A'}</div>
-                        <div style={{ width: '10%' }}>{study.series.reduce((sum, item) => sum + parseFloat(item.series_number), 0) || 'N/A'}</div>
-                        <div style={{ width: '10%' }}>{[...new Set(study.series.map(item => item.modality))].join(' | ') || 'N/A'}</div>
-                        <div style={{ width: '10%' }} className="d-flex align-items-center justify-content-end">
-                            <span>{study.series.reduce((sum, item) => sum + parseFloat(item.num_series_instances), 0)  || 'N/A'}</span>
-                        </div>
-                        <div style={{ width: '10%' }} className="d-flex align-items-center justify-content-end">
-                            <input
-                                className="form-check-input"
-                                type="checkbox"
-                                id="check-blue"
-                                style={{
-                                accentColor: '#0d6efd', // Bootstrap blue
-                                transform: 'scale(1)', // Increase size by 1.5x (adjust as needed)
-                                width: '20px', // Optional: Set explicit width
-                                height: '20px', // Optional: Set explicit height
-                                cursor: 'pointer'
-                                }}
-                            />
+                        <div style={{ width: '15%' }} className="text-truncate">{study.description || 'No Description'}</div>
+                        <div style={{ width: '5%' }} className="text-center">{study.series.reduce((sum, item) => sum + parseFloat(item.series_number), 0) || 'No Series'}</div>
+                        <div style={{ width: '5%' }} className="text-center">{[...new Set(study.series.map(item => item.modality))].join(' | ') || 'No Modality'}</div>
+                        <div style={{ width: '7%' }} className="text-center">
+                            <span>{study.series.reduce((sum, item) => sum + parseFloat(item.num_series_instances), 0) || 'No Instances'}</span>
                         </div>
                     </div>
 
@@ -749,7 +796,7 @@ export default function StudyList() {
                             <div className="mb-3">
                                 <button
                                     className={`btn me-2 ${loadingStudyIndex === index ? '' : 'btn-primary'}`}
-                                    onClick={() => handleNavigate(study,index)}
+                                    onClick={() => handleNavigate(study, index)}
                                     disabled={loadingStudyIndex !== null}
                                     style={{
                                         minWidth: 140,
@@ -815,19 +862,21 @@ export default function StudyList() {
                             {/* Sub Table */}
                             <div className="rounded" style={{ backgroundColor: "#0a0e17", border: '1px solid white' }}>
                                 <div className="d-flex p-2 border-bottom border-dark">
-                                    <div style={{ width: '30%' }} className="fw-bold">Description</div>
-                                    <div style={{ width: '15%' }} className="fw-bold">Series</div>
-                                    <div style={{ width: '15%' }} className="fw-bold">Modality</div>
-                                    <div style={{ width: '15%' }} className="fw-bold">Instances</div>
+                                    <div style={{ width: '25%' }} className="fw-bold">Series Instance ID</div>
+                                    <div style={{ width: '20%' }} className="fw-bold">Description</div>
+                                    <div style={{ width: '10%' }} className="fw-bold">Series</div>
+                                    <div style={{ width: '10%' }} className="fw-bold">Modality</div>
+                                    <div style={{ width: '10%' }} className="fw-bold">Instances</div>
                                     <div style={{ width: '25%' }} className="fw-bold">Action</div>
                                 </div>
                                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                                     {study.series.map((item, index) => (
                                         <div key={index} className="d-flex p-2 border-bottom border-dark align-items-center">
-                                            <div style={{ width: '30%' }}>{item.description || 'N/A'}</div>
-                                            <div style={{ width: '15%' }}>{item.series_number || 'N/A'}</div>
-                                            <div style={{ width: '15%' }}>{item.modality || 'N/A'}</div>
-                                            <div style={{ width: '15%' }}>{item.num_series_instances || 'N/A'}</div>
+                                            <div style={{ width: '25%', paddingRight: '100px' }} className="text-truncate" title={item.series_instance_uid}>{item.series_instance_uid || 'No Series ID'}</div>
+                                            <div style={{ width: '20%' }} className="text-truncate">{item.description || 'No Description'}</div>
+                                            <div style={{ width: '10%' }}>{item.series_number || 'No Series'}</div>
+                                            <div style={{ width: '10%' }}>{item.modality || 'No Modality'}</div>
+                                            <div style={{ width: '10%' }}>{item.num_series_instances || 'No Instances'}</div>
                                             <div style={{ width: '25%' }}>
                                                 <button
                                                     className={`btn btn-sm me-1 ${loadingSeriesUid === item.series_instance_uid ? '' : 'btn-primary'}`}
