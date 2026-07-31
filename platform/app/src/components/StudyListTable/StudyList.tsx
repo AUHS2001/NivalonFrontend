@@ -577,9 +577,11 @@ export default function StudyList() {
             if (filterMRN && !(study.study_instance_uid || '').toLowerCase().includes(filterMRN.toLowerCase())) {
                 return false;
             }
-            // Study Date range
+            // Study Date range (DICOM date is YYYYMMDD, input date is YYYY-MM-DD)
             if (filterStartDate || filterEndDate) {
-                const studyDate = (study.date || '').replace(/\./g, '-');
+                const raw = (study.date || '').replace(/[-./]/g, '');
+                if (raw.length < 8) { if (filterStartDate || filterEndDate) return false; }
+                const studyDate = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
                 if (filterStartDate && studyDate < filterStartDate) return false;
                 if (filterEndDate && studyDate > filterEndDate) return false;
             }
@@ -652,22 +654,10 @@ export default function StudyList() {
                 <h4>Study List</h4>
                 <div className="d-flex align-items-center gap-3">
                     <button
+                        className="btn btn-sm btn-primary"
                         onClick={openComparisonPopup}
-                        style={{
-                            padding: '4px 12px',
-                            backgroundColor: 'rgba(77, 255, 77, 0.2)',
-                            border: '1px solid rgba(77, 255, 77, 0.5)',
-                            borderRadius: '4px',
-                            color: '#4dff4d',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                        }}
                     >
-                        <span style={{ fontSize: '14px' }}>&#x2194;</span>
+                        <span className="me-1">&#x2194;</span>
                         Compare 3D
                     </button>
                     <div className="text-end">
@@ -678,25 +668,25 @@ export default function StudyList() {
             </div>
 
             {/* Filter Section */}
-            <div className="mb-3 p-3 rounded" style={{ position: 'relative', zIndex: 1 }}>
-                <div className="row mb-2" style={{ backgroundColor: "#0a0e17" }}>
+            <div className="mb-1 p-3" style={{ position: 'relative', zIndex: 1, backgroundColor: '#111827', borderRadius: '6px', border: 'none', outline: 'none', boxShadow: 'none' }}>
+                <div className="d-flex gap-3">
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Patient Name</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter name' value={filterPatientName} onChange={e => setFilterPatientName(e.target.value)} />
+                        <input type="text" className="form-control bg-white text-black border-0" placeholder='Enter name' value={filterPatientName} onChange={e => setFilterPatientName(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Study Instance ID</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder='Enter Study Instance ID' value={filterMRN} onChange={e => setFilterMRN(e.target.value)} />
+                        <input type="text" className="form-control bg-white text-black border-0" placeholder='Enter Study Instance ID' value={filterMRN} onChange={e => setFilterMRN(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Series Instance ID</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter Series Instance ID" value={filterInstances} onChange={e => setFilterInstances(e.target.value)} />
+                        <input type="text" className="form-control bg-white text-black border-0" placeholder="Enter Series Instance ID" value={filterInstances} onChange={e => setFilterInstances(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
@@ -704,10 +694,10 @@ export default function StudyList() {
                         </div>
                         <div className="d-flex gap-3">
                             <div className="input-group me-1">
-                                <input type="date" className="form-control bg-white text-black border-white" placeholder="Start date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                                <input type="date" className="form-control bg-white text-black border-0" placeholder="Start date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                             </div>
                             <div className="input-group">
-                                <input type="date" className="form-control bg-white text-black border-white" placeholder="End date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+                                <input type="date" className="form-control bg-white text-black border-0" placeholder="End date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -715,13 +705,13 @@ export default function StudyList() {
                         <div className="d-flex align-items-center mb-1">
                             <span>Description</span>
                         </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter description" value={filterDescription} onChange={e => setFilterDescription(e.target.value)} />
+                        <input type="text" className="form-control bg-white text-black border-0" placeholder="Enter description" value={filterDescription} onChange={e => setFilterDescription(e.target.value)} />
                     </div>
                     <div className="col">
                         <div className="d-flex align-items-center mb-1">
                             <span>Modality</span>
                         </div>
-                        <select className="form-select bg-white text-black border-white" value={filterModality} onChange={e => setFilterModality(e.target.value)}>
+                        <select className="form-select bg-white text-black border-0" value={filterModality} onChange={e => setFilterModality(e.target.value)}>
                             <option value="">All</option>
                             <option value="CR">CR</option>
                             <option value="CT">CT</option>
@@ -739,16 +729,10 @@ export default function StudyList() {
                         </select>
                     </div>
                     <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Accession #</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-white" placeholder="Enter accession" value={filterAccession} onChange={e => setFilterAccession(e.target.value)} />
-                    </div>
-                    <div className="col">
                         <div className="mb-1">
                             <span>Status</span>
                         </div>
-                        <select className="form-select bg-white text-black border-white" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                        <select className="form-select bg-white text-black border-0" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                             <option value="">All</option>
                             <option value="approved">Approved</option>
                             <option value="rejected">Rejected</option>
@@ -756,6 +740,18 @@ export default function StudyList() {
                         </select>
                      </div>
                 </div>
+            </div>
+
+            {/* Table Header */}
+            <div className="d-flex align-items-center p-3 rounded mb-1" style={{ backgroundColor: '#111827' }}>
+                <div style={{ width: '24px' }}></div>
+                <div style={{ width: '25%', paddingRight: '100px' }} className="fw-bold">Study Instance ID</div>
+                <div style={{ width: '15%' }} className="fw-bold">Patient Name</div>
+                <div style={{ width: '18%' }} className="fw-bold">Study Date</div>
+                <div style={{ width: '15%' }} className="fw-bold">Description</div>
+                <div style={{ width: '5%' }} className="fw-bold text-center">Series</div>
+                <div style={{ width: '5%' }} className="fw-bold text-center">Modality</div>
+                <div style={{ width: '7%' }} className="fw-bold text-center">Instances</div>
             </div>
 
             {/* Study List */}
@@ -768,7 +764,7 @@ export default function StudyList() {
                     {/* Study Row */}
                     <div
                         className="d-flex align-items-center p-3 rounded cursor-pointer"
-                        style={{ backgroundColor: "#0a0e17", border: '1px solid white'  }}
+                        style={{ backgroundColor: "#111827" }}
                         onClick={() => toggleRow(study.study_instance_uid)}
                     >
                         <div style={{ width: '24px' }}>
@@ -791,23 +787,14 @@ export default function StudyList() {
 
                     {/* Expanded Study Content */}
                     {study.study_instance_uid === expandedStudyId && (
-                        <div className="p-3 rounded-bottom" style={{ backgroundColor: "#0a0e17", border: '1px solid white', marginTop: '-1px' }}>
+                        <div className="p-3 rounded-bottom" style={{ backgroundColor: "#111827", marginTop: '-1px' }}>
                             {/* Buttons */}
                             <div className="mb-3">
                                 <button
-                                    className={`btn me-2 ${loadingStudyIndex === index ? '' : 'btn-primary'}`}
+                                    className="btn btn-sm btn-primary me-2"
                                     onClick={() => handleNavigate(study, index)}
                                     disabled={loadingStudyIndex !== null}
-                                    style={{
-                                        minWidth: 140,
-                                        position: 'relative',
-                                        overflow: 'hidden',
-                                        ...(loadingStudyIndex === index ? {
-                                            backgroundColor: '#1a1f2e',
-                                            border: '2px solid #0d6efd',
-                                            color: '#fff',
-                                        } : {}),
-                                    }}
+                                    style={{ position: 'relative', overflow: 'hidden' }}
                                 >
                                     {loadingStudyIndex === index && (
                                         <div
@@ -824,7 +811,7 @@ export default function StudyList() {
                                             }}
                                         />
                                     )}
-                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: loadingStudyIndex === index ? 700 : 400 }}>
+                                    <span style={{ position: 'relative', zIndex: 1 }}>
                                         {loadingStudyIndex === index ? (
                                             <>
                                                 <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 14, height: 14 }}></span>
@@ -840,27 +827,23 @@ export default function StudyList() {
                                 </button>
                                 {
                                     (userRole === 'analyst' || userRole === 'admin') ?
-                                    <><button className="btn btn-primary me-2" onClick={() => navigate("/localStls")}>
+                                    <><button className="btn btn-sm btn-primary me-2" onClick={() => navigate("/localStls")}>
                                         <span className="me-1">→</span>
                                         Upload 3D
                                     </button>
-                                    <button className="btn btn-primary me-2">
+                                    <button className="btn btn-sm btn-primary me-2">
                                         <span className="me-1">→</span>
                                         Download
                                     </button>
-                                    <button className="btn btn-primary me-2">
+                                    <button className="btn btn-sm btn-primary me-2">
                                         <span className="me-1">→</span>
                                         Approve
-                                    </button>
-                                    <button className="btn btn-primary me-2">
-                                        <span className="me-1">→</span>
-                                        Last Updated
                                     </button></> : <div></div>
                                 }
                             </div>
 
                             {/* Sub Table */}
-                            <div className="rounded" style={{ backgroundColor: "#0a0e17", border: '1px solid white' }}>
+                            <div className="rounded" style={{ backgroundColor: "#0a0e17" }}>
                                 <div className="d-flex p-2 border-bottom border-dark">
                                     <div style={{ width: '25%' }} className="fw-bold">Series Instance ID</div>
                                     <div style={{ width: '20%' }} className="fw-bold">Description</div>
@@ -879,19 +862,10 @@ export default function StudyList() {
                                             <div style={{ width: '10%' }}>{item.num_series_instances || 'No Instances'}</div>
                                             <div style={{ width: '25%' }}>
                                                 <button
-                                                    className={`btn btn-sm me-1 ${loadingSeriesUid === item.series_instance_uid ? '' : 'btn-primary'}`}
+                                                    className="btn btn-sm btn-primary me-1"
                                                     onClick={() => handleLoadSeries(item, study)}
                                                     disabled={loadingSeriesUid !== null || loadingStudyIndex !== null}
-                                                    style={{
-                                                        minWidth: 100,
-                                                        position: 'relative',
-                                                        overflow: 'hidden',
-                                                        ...(loadingSeriesUid === item.series_instance_uid ? {
-                                                            backgroundColor: '#1a1f2e',
-                                                            border: '2px solid #0d6efd',
-                                                            color: '#fff',
-                                                        } : {}),
-                                                    }}
+                                                    style={{ position: 'relative', overflow: 'hidden' }}
                                                 >
                                                     {loadingSeriesUid === item.series_instance_uid && (
                                                         <div style={{
@@ -906,7 +880,7 @@ export default function StudyList() {
                                                             borderRadius: 'inherit',
                                                         }} />
                                                     )}
-                                                    <span style={{ position: 'relative', zIndex: 1, fontWeight: loadingSeriesUid === item.series_instance_uid ? 700 : 400 }}>
+                                                    <span style={{ position: 'relative', zIndex: 1 }}>
                                                         {loadingSeriesUid === item.series_instance_uid ? (
                                                             <>
                                                                 <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 14, height: 14 }}></span>
