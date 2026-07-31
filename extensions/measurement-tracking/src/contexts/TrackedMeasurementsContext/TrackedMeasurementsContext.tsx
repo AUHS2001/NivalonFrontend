@@ -142,7 +142,7 @@ function TrackedMeasurementsContextProvider(
       const filteredMeasurements = measurements.filter(ms =>
         ctx.prevTrackedSeries.includes(ms.referenceSeriesUID)
       );
-      const measurementIds = filteredMeasurements.map(fm => fm.id);
+      const measurementIds = filteredMeasurements.map(fm => fm.uid);
 
       for (let i = 0; i < measurementIds.length; i++) {
         measurementService.remove(measurementIds[i]);

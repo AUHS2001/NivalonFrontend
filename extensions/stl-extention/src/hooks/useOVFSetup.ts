@@ -101,6 +101,8 @@ export function useOVFSetup({
   const contextMenuHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
   const volumeReadyRef = useRef(false);
   const isResizingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+  const loadSTLMeshesRef = useRef<() => Promise<void>>(async () => {});
 
   const getDataSource = useCallback(() => {
     if (dataSource) return dataSource;
@@ -373,18 +375,18 @@ export function useOVFSetup({
           ctfun.addRGBPoint(700, 1.0, 1.0, 1.0);      // dense bone: white
           ctfun.addRGBPoint(3000, 1.0, 1.0, 1.0);
 
-          // Opacity: hint of muscles, strong bones
+          // Opacity: solid bones, visible tissue
           const ofun = property.getScalarOpacity(0);
           ofun.removeAllPoints();
           ofun.addPoint(-1000, 0);
           ofun.addPoint(-50, 0);
-          ofun.addPoint(20, 0.02);         // muscle: very faint
-          ofun.addPoint(60, 0.04);         // muscle: subtle hint
-          ofun.addPoint(100, 0.06);        // dense tissue: slight
-          ofun.addPoint(150, 0.2);         // transition to bone
-          ofun.addPoint(200, 0.7);         // bone: strong
-          ofun.addPoint(300, 0.85);
-          ofun.addPoint(500, 0.95);
+          ofun.addPoint(20, 0.05);         // muscle: faint
+          ofun.addPoint(60, 0.1);          // muscle: visible
+          ofun.addPoint(100, 0.15);        // dense tissue
+          ofun.addPoint(150, 0.5);         // transition to bone
+          ofun.addPoint(200, 0.85);        // bone: strong
+          ofun.addPoint(300, 0.95);
+          ofun.addPoint(500, 1.0);
           ofun.addPoint(800, 1.0);
           ofun.addPoint(3000, 1.0);
 
@@ -392,19 +394,19 @@ export function useOVFSetup({
           try {
             const gofun = property.getGradientOpacity(0);
             gofun.removeAllPoints();
-            gofun.addPoint(0, 0.2);
-            gofun.addPoint(30, 0.5);
-            gofun.addPoint(80, 1.0);
+            gofun.addPoint(0, 0.4);
+            gofun.addPoint(20, 0.7);
+            gofun.addPoint(60, 1.0);
             gofun.addPoint(300, 1.0);
             property.setUseGradientOpacity(0, true);
           } catch (_) { /* gradient opacity not supported */ }
 
           // Shading for realistic 3D appearance
           property.setShade(true);
-          property.setAmbient(0.15);
-          property.setDiffuse(0.75);
-          property.setSpecular(0.4);
-          property.setSpecularPower(24);
+          property.setAmbient(0.25);
+          property.setDiffuse(0.8);
+          property.setSpecular(0.5);
+          property.setSpecularPower(20);
 
           const mapper = actorEntry.actor.getMapper?.();
           if (mapper) {
@@ -436,6 +438,20 @@ export function useOVFSetup({
     if (!stlInstanceId) { setError('No STL instance available'); setLoading(false); return; }
     const scene = sceneRef.current;
     if (!scene) { setError('Three.js scene not ready'); setLoading(false); return; }
+
+    // ── Clear old STL meshes (keep lights & helpers) ──
+    const meshesToRemove: THREE.Object3D[] = [];
+    scene.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) meshesToRemove.push(obj);
+    });
+    meshesToRemove.forEach((mesh) => {
+      (mesh as THREE.Mesh).geometry?.dispose();
+      const mat = (mesh as THREE.Mesh).material;
+      if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+      else (mat as THREE.Material)?.dispose();
+      scene.remove(mesh);
+    });
+    originalColorsRef.current.clear();
 
     try {
       setLoading(true);
@@ -577,6 +593,21 @@ export function useOVFSetup({
     }
   }, [stlInstanceId, userToken, renderBoth]);
 
+  // Keep ref in sync so main effect can call latest version without re-triggering
+  useEffect(() => { loadSTLMeshesRef.current = loadSTLMeshes; }, [loadSTLMeshes]);
+
+  // ─── Reload STLs when stlInstanceId changes (after initial mount) ───
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      // Skip first run — the main effect handles the initial load
+      hasInitializedRef.current = true;
+      return;
+    }
+    if (!stlInstanceId || !sceneRef.current) return;
+    cancelledRef.current = false;
+    loadSTLMeshesRef.current();
+  }, [stlInstanceId]);
+
   // ─── Toggle STL mesh colors (white bone vs colored) ───
   useEffect(() => {
     const scene = sceneRef.current;
@@ -648,16 +679,19 @@ export function useOVFSetup({
 
       // Base opacity points (bone-only) → Full tissue opacity points
       // Format: [HU value, bone-only opacity, full-tissue opacity]
+      // At t=0: only bones visible, soft tissue nearly invisible
+      // At t=1: full body scan — skin, fat, muscle, organs all opaque
       const opacityPoints: [number, number, number][] = [
         [-1000, 0,    0],
-        [-50,   0,    0],
-        [20,    0.02, 0.45],   // muscle
-        [60,    0.04, 0.55],   // muscle
-        [100,   0.06, 0.60],   // dense tissue
-        [150,   0.20, 0.65],   // transition
-        [200,   0.70, 0.75],   // bone
-        [300,   0.85, 0.88],
-        [500,   0.95, 0.95],
+        [-200,  0,    0.1],      // air/lung
+        [-50,   0,    0.4],      // fat
+        [20,    0,    0.7],      // muscle
+        [60,    0,    0.8],      // muscle/organ
+        [100,   0.02, 0.85],     // dense tissue
+        [150,   0.3,  0.9],      // transition to bone
+        [200,   0.85, 0.92],     // bone
+        [300,   0.95, 0.95],
+        [500,   1.0,  1.0],
         [800,   1.0,  1.0],
         [3000,  1.0,  1.0],
       ];
@@ -702,14 +736,14 @@ export function useOVFSetup({
     return () => observer.disconnect();
   }, [containerRef, renderBoth]);
 
-  // ─── Main setup effect ───
+  // ─── Main setup effect (Three.js + Cornerstone — runs once) ───
   useEffect(() => {
     cancelledRef.current = false;
     setupThreeJS();
 
     const timeout = setTimeout(async () => {
       await setupCornerstoneViewport();
-      await loadSTLMeshes();
+      await loadSTLMeshesRef.current();
     }, 300);
 
     return () => {
@@ -751,7 +785,8 @@ export function useOVFSetup({
         } catch (e) { console.warn('[OVF] Cleanup error:', e); }
       }
     };
-  }, [setupThreeJS, setupCornerstoneViewport, loadSTLMeshes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupThreeJS, setupCornerstoneViewport]);
 
   return { loading, error, loadProgress };
 }

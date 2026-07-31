@@ -34,25 +34,6 @@ export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementF
           className="pl-0.5"
           onClick={e => {
             e.stopPropagation();
-            if (actions?.createSR) {
-              actions.createSR({ StudyInstanceUID, measurementFilter });
-              return;
-            }
-            commandsManager.run('promptSaveReport', {
-              StudyInstanceUID,
-              measurementFilter,
-            });
-          }}
-        >
-          <Icons.Add />
-          Create SR
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="pl-0.5"
-          onClick={e => {
-            e.stopPropagation();
             if (actions?.onDelete) {
               actions.onDelete();
               return;
