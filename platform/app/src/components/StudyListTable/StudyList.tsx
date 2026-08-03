@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { formatDicomDateTime } from '../../utils/Functions';
@@ -11,6 +11,9 @@ import { ParentStudyIdContext } from '../../../../app/src/context/parentStudyIdC
 import { SERVER_URL, fetchFile } from '../../../../../config/server';
 import { isCached, getAllCachedBlobs, cacheBlob, initCacheForStudy } from '../../utils/dicomCache';
 import { startSeriesLoad, fetchInitialBatch, cleanupPreviousStudy } from '../../services/lazyLoadService';
+import * as THREE from 'three';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 interface Series {
   series_instance_uid: string;
@@ -59,6 +62,18 @@ export default function StudyList() {
 
     const [loadingSeriesUid, setLoadingSeriesUid] = useState<string | null>(null);
     const [seriesLoadProgress, setSeriesLoadProgress] = useState(0);
+
+    // Download 3D popup state
+    const [downloadPopupStudy, setDownloadPopupStudy] = useState<Study | null>(null);
+    const [downloadingSeriesUid, setDownloadingSeriesUid] = useState<string | null>(null);
+    const [downloadProgress, setDownloadProgress] = useState(0);
+    const [noStlMessage, setNoStlMessage] = useState<string | null>(null);
+
+    // View 3D popup state
+    const [viewStlSeriesUid, setViewStlSeriesUid] = useState<string | null>(null);
+    const [viewStlFiles, setViewStlFiles] = useState<{name: string, url: string}[]>([]);
+    const [viewStlLoading, setViewStlLoading] = useState(false);
+    const [selectedStlIndex, setSelectedStlIndex] = useState(0);
 
     // Filter state
     const [filterPatientName, setFilterPatientName] = useState('');
@@ -494,6 +509,307 @@ export default function StudyList() {
         setComparisonError('');
     };
 
+    const handleDownload3D = async (seriesUid: string) => {
+        let simInterval: ReturnType<typeof setInterval> | null = null;
+        try {
+            setDownloadingSeriesUid(seriesUid);
+            setDownloadProgress(0);
+            setNoStlMessage(null);
+
+            // Simulated progress: ramps from 0→90% while waiting
+            let simulated = 0;
+            simInterval = setInterval(() => {
+                simulated += (90 - simulated) * 0.04;
+                setDownloadProgress(Math.round(simulated));
+            }, 200);
+
+            const response = await fetch(
+                `${SERVER_URL}/analyst/meshes/processed/download?series_instance_uid=${seriesUid}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        Authorization: `Bearer ${userToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    credentials: 'include',
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+            }
+
+            const contentLength = response.headers.get('Content-Length');
+            const total = contentLength ? parseInt(contentLength, 10) : 0;
+            const contentType = response.headers.get('Content-Type') || 'application/zip';
+
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let fileName = 'downloaded_3d_file.zip';
+            if (contentDisposition) {
+                const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                if (fileNameMatch && fileNameMatch[1]) {
+                    fileName = fileNameMatch[1];
+                }
+            }
+
+            const reader = response.body!.getReader();
+            const chunks: Uint8Array[] = [];
+            let received = 0;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                if (total > 0) {
+                    const realPct = Math.round((received / total) * 100);
+                    simulated = Math.max(simulated, realPct);
+                    setDownloadProgress(simulated);
+                }
+            }
+
+            clearInterval(simInterval);
+            simInterval = null;
+            setDownloadProgress(100);
+            await new Promise(r => setTimeout(r, 600));
+
+            const blob = new Blob(chunks, { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+        } catch (error: any) {
+            console.error('Download error:', error);
+            setNoStlMessage(seriesUid);
+        } finally {
+            if (simInterval) clearInterval(simInterval);
+            setDownloadingSeriesUid(null);
+            setDownloadProgress(0);
+        }
+    };
+
+    const handleView3D = async (seriesUid: string) => {
+        try {
+            setViewStlSeriesUid(seriesUid);
+            setViewStlLoading(true);
+            setViewStlFiles([]);
+            setSelectedStlIndex(0);
+
+            const response = await fetch(
+                `${SERVER_URL}/analyst/meshes?series_instance_uid=${seriesUid}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${userToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    credentials: 'include',
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Check failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const versions = data?.data?.versions || [];
+            const stlUrls: string[] = versions.length > 0
+                ? (versions.reduce((a: any, b: any) => (a.version > b.version ? a : b)).urls || [])
+                : (data?.data?.processed?.urls || []);
+
+            if (stlUrls.length === 0) {
+                setNoStlMessage(seriesUid);
+                setViewStlSeriesUid(null);
+                setViewStlLoading(false);
+                return;
+            }
+
+            const files = stlUrls.map(url => ({
+                name: url.substring(url.lastIndexOf('/') + 1),
+                url,
+            }));
+
+            setViewStlFiles(files);
+        } catch (error: any) {
+            console.error('View error:', error);
+            setNoStlMessage(seriesUid);
+            setViewStlSeriesUid(null);
+        } finally {
+            setViewStlLoading(false);
+        }
+    };
+
+    const FILE_COLORS = [
+        '#3498db', '#2ecc71', '#e74c3c', '#f1c40f', '#9b59b6',
+        '#e67e22', '#1abc9c', '#e91e63', '#00bcd4', '#ff5722',
+        '#8bc34a', '#673ab7', '#ff9800', '#03a9f4', '#cddc39',
+        '#f44336', '#4caf50', '#2196f3', '#ffeb3b', '#795548',
+    ];
+    const getLegendColor = (index: number): string => {
+        return FILE_COLORS[index % FILE_COLORS.length];
+    };
+
+    const StlMainViewer = ({ files }: { files: {name: string, url: string}[] }) => {
+        const containerRef = useRef<HTMLDivElement>(null);
+        const [loadedCount, setLoadedCount] = useState(0);
+        const totalFiles = files.length;
+
+        useEffect(() => {
+            const container = containerRef.current;
+            if (!container || files.length === 0) return;
+            setLoadedCount(0);
+
+            const width = container.clientWidth || 600;
+            const height = container.clientHeight || 500;
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+            camera.up.set(0, 0, 1);
+            camera.position.set(0, -250, 50);
+            camera.lookAt(0, 0, 0);
+
+            // Lighting — same as SpinalCordViewer
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            keyLight.position.set(1, 1, 1).normalize();
+            scene.add(keyLight);
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-1, 0.5, -0.5).normalize();
+            scene.add(fillLight);
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
+            backLight.position.set(0, 0, -1).normalize();
+            scene.add(backLight);
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.3));
+
+            const group = new THREE.Group();
+            scene.add(group);
+
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            controls.maxDistance = 5000;
+
+            let animationId: number;
+            let disposed = false;
+
+            const animate = () => {
+                if (disposed) return;
+                animationId = requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            };
+            animate();
+
+            // Load all STLs in parallel into the group
+            const loader = new STLLoader();
+            const loadPromises = files.map(async (file) => {
+                try {
+                    const res = await fetchFile(file.url);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const arrayBuffer = await res.arrayBuffer();
+                    if (disposed) return;
+
+                    const geometry = loader.parse(arrayBuffer);
+                    geometry.computeVertexNormals();
+
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0xffffff,
+                        specular: 0x111111,
+                        shininess: 10,
+                        side: THREE.DoubleSide,
+                    });
+
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.userData = { fileName: file.name };
+                    group.add(mesh);
+                    setLoadedCount(prev => prev + 1);
+                } catch (err) {
+                    console.error(`Failed to load STL: ${file.name}`, err);
+                    setLoadedCount(prev => prev + 1);
+                }
+            });
+
+            Promise.all(loadPromises).then(() => {
+                if (disposed) return;
+
+                // Fit camera to entire group
+                const bbox = new THREE.Box3().setFromObject(group);
+                if (bbox.isEmpty()) return;
+
+                const center = bbox.getCenter(new THREE.Vector3());
+                const size = bbox.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                const camDist = maxDim / (2 * Math.tan(fov / 2)) * 1.0;
+
+                controls.target.copy(center);
+                camera.position.set(center.x, center.y - camDist, center.z);
+                camera.up.set(0, 0, 1);
+                camera.lookAt(center);
+                camera.updateProjectionMatrix();
+                controls.update();
+            });
+
+            const handleResize = () => {
+                if (disposed || !container) return;
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                renderer.setSize(w, h);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            };
+            window.addEventListener('resize', handleResize);
+
+            return () => {
+                disposed = true;
+                window.removeEventListener('resize', handleResize);
+                cancelAnimationFrame(animationId);
+                controls.dispose();
+                renderer.dispose();
+                if (container.contains(renderer.domElement)) {
+                    container.removeChild(renderer.domElement);
+                }
+                scene.traverse((obj) => {
+                    if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+                    if ((obj as THREE.Mesh).material) {
+                        const mat = (obj as THREE.Mesh).material;
+                        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+                        else (mat as THREE.Material).dispose();
+                    }
+                });
+            };
+        }, [files]);
+
+        const isLoading = loadedCount < totalFiles;
+
+        return (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <div ref={containerRef} style={{ width: '100%', height: '100%', borderRadius: '10px', overflow: 'hidden' }} />
+                {isLoading && (
+                    <div style={{
+                        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: '10px',
+                    }}>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" style={{ width: 20, height: 20 }}></span>
+                        <span style={{ color: '#aaa' }}>Loading models... {loadedCount}/{totalFiles}</span>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const handleComparisonModeChange = (mode: 'same' | 'different') => {
         setComparisonMode(mode);
         setSelectedStudy1(null);
@@ -669,49 +985,34 @@ export default function StudyList() {
 
             {/* Filter Section */}
             <div className="mb-1 p-3" style={{ position: 'relative', zIndex: 1, backgroundColor: '#111827', borderRadius: '6px', border: 'none', outline: 'none', boxShadow: 'none' }}>
-                <div className="d-flex gap-3">
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Patient Name</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-0" placeholder='Enter name' value={filterPatientName} onChange={e => setFilterPatientName(e.target.value)} />
+                <div className="d-flex align-items-end">
+                    <div style={{ width: '24px', flexShrink: 0 }}></div>
+                    <div style={{ width: '15%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Patient Name</div>
+                        <input type="text" className="form-control form-control-sm bg-white text-black border-0" placeholder='Enter name' value={filterPatientName} onChange={e => setFilterPatientName(e.target.value)} />
                     </div>
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Study Instance ID</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-0" placeholder='Enter Study Instance ID' value={filterMRN} onChange={e => setFilterMRN(e.target.value)} />
+                    <div style={{ width: '15%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Study Instance ID</div>
+                        <input type="text" className="form-control form-control-sm bg-white text-black border-0" placeholder='Enter Study ID' value={filterMRN} onChange={e => setFilterMRN(e.target.value)} />
                     </div>
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Series Instance ID</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-0" placeholder="Enter Series Instance ID" value={filterInstances} onChange={e => setFilterInstances(e.target.value)} />
+                    <div style={{ width: '15%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Series Instance ID</div>
+                        <input type="text" className="form-control form-control-sm bg-white text-black border-0" placeholder="Series ID" value={filterInstances} onChange={e => setFilterInstances(e.target.value)} />
                     </div>
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Study Date</span>
-                        </div>
-                        <div className="d-flex gap-3">
-                            <div className="input-group me-1">
-                                <input type="date" className="form-control bg-white text-black border-0" placeholder="Start date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
-                            </div>
-                            <div className="input-group">
-                                <input type="date" className="form-control bg-white text-black border-0" placeholder="End date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
-                            </div>
+                    <div style={{ width: '18%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Study Date</div>
+                        <div className="d-flex gap-1">
+                            <input type="date" className="form-control form-control-sm bg-white text-black border-0" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                            <input type="date" className="form-control form-control-sm bg-white text-black border-0" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
                         </div>
                     </div>
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Description</span>
-                        </div>
-                        <input type="text" className="form-control bg-white text-black border-0" placeholder="Enter description" value={filterDescription} onChange={e => setFilterDescription(e.target.value)} />
+                    <div style={{ width: '16.5%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Description</div>
+                        <input type="text" className="form-control form-control-sm bg-white text-black border-0" placeholder="Enter description" value={filterDescription} onChange={e => setFilterDescription(e.target.value)} />
                     </div>
-                    <div className="col">
-                        <div className="d-flex align-items-center mb-1">
-                            <span>Modality</span>
-                        </div>
-                        <select className="form-select bg-white text-black border-0" value={filterModality} onChange={e => setFilterModality(e.target.value)}>
+                    <div style={{ width: '8%', paddingRight: '8px' }}>
+                        <div className="fw-bold mb-1">Modality</div>
+                        <select className="form-select form-select-sm bg-white text-black border-0" value={filterModality} onChange={e => setFilterModality(e.target.value)}>
                             <option value="">All</option>
                             <option value="CR">CR</option>
                             <option value="CT">CT</option>
@@ -728,37 +1029,97 @@ export default function StudyList() {
                             <option value="XA">XA</option>
                         </select>
                     </div>
-                    <div className="col">
-                        <div className="mb-1">
-                            <span>Status</span>
-                        </div>
-                        <select className="form-select bg-white text-black border-0" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                    <div style={{ width: '8%' }}>
+                        <div className="fw-bold mb-1">Status</div>
+                        <select className="form-select form-select-sm bg-white text-black border-0" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                             <option value="">All</option>
                             <option value="approved">Approved</option>
                             <option value="rejected">Rejected</option>
                             <option value="pending">Pending</option>
                         </select>
-                     </div>
+                    </div>
                 </div>
             </div>
 
             {/* Table Header */}
             <div className="d-flex align-items-center p-3 rounded mb-1" style={{ backgroundColor: '#111827' }}>
-                <div style={{ width: '24px' }}></div>
-                <div style={{ width: '25%', paddingRight: '100px' }} className="fw-bold">Study Instance ID</div>
+                <div style={{ width: '24px', flexShrink: 0 }}></div>
+                <div style={{ width: '21%', paddingRight: '32px' }} className="fw-bold">Study Instance ID</div>
                 <div style={{ width: '15%' }} className="fw-bold">Patient Name</div>
                 <div style={{ width: '18%' }} className="fw-bold">Study Date</div>
-                <div style={{ width: '15%' }} className="fw-bold">Description</div>
-                <div style={{ width: '5%' }} className="fw-bold text-center">Series</div>
-                <div style={{ width: '5%' }} className="fw-bold text-center">Modality</div>
-                <div style={{ width: '7%' }} className="fw-bold text-center">Instances</div>
+                <div style={{ width: '14%' }} className="fw-bold">Description</div>
+                <div style={{ width: '10%' }} className="fw-bold text-center">Series</div>
+                <div style={{ width: '10%' }} className="fw-bold text-center">Modality</div>
+                <div style={{ width: '10%' }} className="fw-bold text-center">Instances</div>
             </div>
 
             {/* Study List */}
             <div className="study-list">
                 {loading ?
                 <div className='text-center'>loading ...</div>
-                :
+                : filteredData.length === 0 ? (
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '80px 20px',
+                    backgroundColor: '#111827',
+                    borderRadius: '12px',
+                    border: '1px dashed #333',
+                    marginTop: '4px',
+                }}>
+                    <div style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, rgba(56, 182, 255, 0.1), rgba(124, 58, 237, 0.1))',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: '20px',
+                    }}>
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            <line x1="8" y1="11" x2="14" y2="11" />
+                        </svg>
+                    </div>
+                    <div style={{ color: '#aaa', fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>
+                        No studies found
+                    </div>
+                    <div style={{ color: '#666', fontSize: '13px', textAlign: 'center', maxWidth: '360px', lineHeight: '1.5' }}>
+                        No studies match your current filters. Try adjusting or clearing your search criteria.
+                    </div>
+                    <button
+                        onClick={() => {
+                            setFilterPatientName('');
+                            setFilterMRN('');
+                            setFilterInstances('');
+                            setFilterStartDate('');
+                            setFilterEndDate('');
+                            setFilterDescription('');
+                            setFilterModality('');
+                            setFilterStatus('');
+                        }}
+                        style={{
+                            marginTop: '20px',
+                            padding: '8px 24px',
+                            backgroundColor: 'transparent',
+                            border: '1px solid #444',
+                            borderRadius: '8px',
+                            color: '#888',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#0d6efd'; e.currentTarget.style.color = '#fff'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.color = '#888'; }}
+                    >
+                        Clear all filters
+                    </button>
+                </div>
+                ) :
               filteredData.map((study: any, index) => (
                 <div key={study.study_instance_uid} className="mb-1">
                     {/* Study Row */}
@@ -767,27 +1128,26 @@ export default function StudyList() {
                         style={{ backgroundColor: "#111827" }}
                         onClick={() => toggleRow(study.study_instance_uid)}
                     >
-                        <div style={{ width: '24px' }}>
+                        <div style={{ width: '24px', flexShrink: 0 }}>
                         </div>
-                        <div style={{ width: '25%', paddingRight: '100px' }} className="text-truncate" title={study.study_instance_uid}>{study.study_instance_uid || 'No Study ID'}</div>
+                        <div style={{ width: '21%', paddingRight: '32px' }} className="text-truncate" title={study.study_instance_uid}>{study.study_instance_uid || 'No Study ID'}</div>
                         <div style={{ width: '15%' }} className="text-truncate">{study.patient_name || 'No Patient Name'}</div>
                         <div style={{ width: '18%' }}>
                         {study.date && study.time
                             ? formatDicomDateTime(study.date, study.time)
                             : 'No Date'}
                         </div>
-
-                        <div style={{ width: '15%' }} className="text-truncate">{study.description || 'No Description'}</div>
-                        <div style={{ width: '5%' }} className="text-center">{study.series.reduce((sum, item) => sum + parseFloat(item.series_number), 0) || 'No Series'}</div>
-                        <div style={{ width: '5%' }} className="text-center">{[...new Set(study.series.map(item => item.modality))].join(' | ') || 'No Modality'}</div>
-                        <div style={{ width: '7%' }} className="text-center">
+                        <div style={{ width: '14%' }} className="text-truncate">{study.description || 'No Description'}</div>
+                        <div style={{ width: '10%' }} className="text-center">{study.series.reduce((sum, item) => sum + parseFloat(item.series_number), 0) || 'No Series'}</div>
+                        <div style={{ width: '10%' }} className="text-center">{[...new Set(study.series.map(item => item.modality))].join(' | ') || 'No Modality'}</div>
+                        <div style={{ width: '10%' }} className="text-center">
                             <span>{study.series.reduce((sum, item) => sum + parseFloat(item.num_series_instances), 0) || 'No Instances'}</span>
                         </div>
                     </div>
 
                     {/* Expanded Study Content */}
                     {study.study_instance_uid === expandedStudyId && (
-                        <div className="p-3 rounded-bottom" style={{ backgroundColor: "#111827", marginTop: '-1px' }}>
+                        <div className="rounded-bottom" style={{ backgroundColor: "#111827", marginTop: '-1px', paddingTop: '12px', paddingBottom: '12px', paddingRight: '16px', paddingLeft: '40px' }}>
                             {/* Buttons */}
                             <div className="mb-3">
                                 <button
@@ -831,7 +1191,7 @@ export default function StudyList() {
                                         <span className="me-1">→</span>
                                         Upload 3D
                                     </button>
-                                    <button className="btn btn-sm btn-primary me-2">
+                                    <button className="btn btn-sm btn-primary me-2" onClick={() => setDownloadPopupStudy(study)}>
                                         <span className="me-1">→</span>
                                         Download
                                     </button>
@@ -845,22 +1205,22 @@ export default function StudyList() {
                             {/* Sub Table */}
                             <div className="rounded" style={{ backgroundColor: "#0a0e17" }}>
                                 <div className="d-flex p-2 border-bottom border-dark">
-                                    <div style={{ width: '25%' }} className="fw-bold">Series Instance ID</div>
-                                    <div style={{ width: '20%' }} className="fw-bold">Description</div>
+                                    <div style={{ width: '25%', paddingRight: '24px' }} className="fw-bold">Series Instance ID</div>
+                                    <div style={{ width: '25%' }} className="fw-bold">Description</div>
                                     <div style={{ width: '10%' }} className="fw-bold">Series</div>
                                     <div style={{ width: '10%' }} className="fw-bold">Modality</div>
                                     <div style={{ width: '10%' }} className="fw-bold">Instances</div>
-                                    <div style={{ width: '25%' }} className="fw-bold">Action</div>
+                                    <div style={{ width: '20%' }} className="fw-bold">Action</div>
                                 </div>
                                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                                     {study.series.map((item, index) => (
                                         <div key={index} className="d-flex p-2 border-bottom border-dark align-items-center">
-                                            <div style={{ width: '25%', paddingRight: '100px' }} className="text-truncate" title={item.series_instance_uid}>{item.series_instance_uid || 'No Series ID'}</div>
-                                            <div style={{ width: '20%' }} className="text-truncate">{item.description || 'No Description'}</div>
+                                            <div style={{ width: '25%', paddingRight: '24px' }} className="text-truncate" title={item.series_instance_uid}>{item.series_instance_uid || 'No Series ID'}</div>
+                                            <div style={{ width: '25%' }} className="text-truncate">{item.description || 'No Description'}</div>
                                             <div style={{ width: '10%' }}>{item.series_number || 'No Series'}</div>
                                             <div style={{ width: '10%' }}>{item.modality || 'No Modality'}</div>
                                             <div style={{ width: '10%' }}>{item.num_series_instances || 'No Instances'}</div>
-                                            <div style={{ width: '25%' }}>
+                                            <div style={{ width: '20%' }}>
                                                 <button
                                                     className="btn btn-sm btn-primary me-1"
                                                     onClick={() => handleLoadSeries(item, study)}
@@ -905,6 +1265,300 @@ export default function StudyList() {
             ))
             }
             </div>
+
+            {/* Download 3D Popup */}
+            {downloadPopupStudy && (
+                <div
+                    onClick={() => { setDownloadPopupStudy(null); setNoStlMessage(null); }}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: '#111827',
+                            padding: '24px',
+                            borderRadius: '12px',
+                            width: '800px',
+                            maxWidth: '95%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                        }}>
+                            <h3 style={{ margin: 0, color: '#fff' }}>
+                                Download — {downloadPopupStudy.patient_name || 'Unknown Patient'}
+                            </h3>
+                            <button
+                                onClick={() => { setDownloadPopupStudy(null); setNoStlMessage(null); }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    fontSize: '28px',
+                                    cursor: 'pointer',
+                                    padding: '0',
+                                    width: '30px',
+                                    height: '30px',
+                                    lineHeight: '30px'
+                                }}
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        {/* Series Table Header */}
+                        <div style={{
+                            display: 'flex',
+                            padding: '10px 12px',
+                            color: '#aaa',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                        }}>
+                            <div style={{ width: '30%' }}>Series Instance ID</div>
+                            <div style={{ width: '25%' }}>Description</div>
+                            <div style={{ width: '10%' }}>Modality</div>
+                            <div style={{ width: '10%' }}>Instances</div>
+                            <div style={{ width: '25%' }}>Action</div>
+                        </div>
+
+                        {/* Series Rows */}
+                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            {downloadPopupStudy.series.map((series) => (
+                                <div
+                                    key={series.series_instance_uid}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: '12px',
+                                        color: '#fff',
+                                    }}
+                                >
+                                    <div
+                                        style={{ width: '30%', fontSize: '12px', paddingRight: '8px' }}
+                                        className="text-truncate"
+                                        title={series.series_instance_uid}
+                                    >
+                                        {series.series_instance_uid}
+                                    </div>
+                                    <div style={{ width: '25%', fontSize: '13px' }} className="text-truncate">
+                                        {series.description || 'No Description'}
+                                    </div>
+                                    <div style={{ width: '10%', fontSize: '13px' }}>
+                                        {series.modality || '—'}
+                                    </div>
+                                    <div style={{ width: '10%', fontSize: '13px' }}>
+                                        {series.num_series_instances || '—'}
+                                    </div>
+                                    <div style={{ width: '25%', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        {noStlMessage === series.series_instance_uid ? (
+                                            <span style={{ color: '#ff9800', fontSize: '12px' }}>
+                                                No STLs generated yet
+                                            </span>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    className="btn btn-sm btn-primary me-2"
+                                                    onClick={() => handleView3D(series.series_instance_uid)}
+                                                    disabled={downloadingSeriesUid !== null || viewStlLoading}
+                                                >
+                                                    <span className="me-1">&rarr;</span>
+                                                    View
+                                                </button>
+                                                <button
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={() => handleDownload3D(series.series_instance_uid)}
+                                                    disabled={downloadingSeriesUid !== null}
+                                                    style={{ position: 'relative', overflow: 'hidden' }}
+                                                >
+                                                    {downloadingSeriesUid === series.series_instance_uid && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: 0,
+                                                            left: 0,
+                                                            height: '100%',
+                                                            width: `${downloadProgress}%`,
+                                                            background: 'linear-gradient(90deg, #0d6efd, #3d8bfd)',
+                                                            transition: 'width 0.3s ease',
+                                                            zIndex: 0,
+                                                            borderRadius: 'inherit',
+                                                        }} />
+                                                    )}
+                                                    <span style={{ position: 'relative', zIndex: 1 }}>
+                                                        {downloadingSeriesUid === series.series_instance_uid ? (
+                                                            <>
+                                                                <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 12, height: 12 }}></span>
+                                                                {downloadProgress}%
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="me-1">&rarr;</span>
+                                                                Download
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* View 3D Popup */}
+            {viewStlSeriesUid && (
+                <div
+                    onClick={() => { setViewStlSeriesUid(null); setViewStlFiles([]); setSelectedStlIndex(0); }}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10001,
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: '#111827',
+                            borderRadius: '12px',
+                            width: '1100px',
+                            maxWidth: '95%',
+                            height: '80vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '16px 24px',
+                            flexShrink: 0,
+                        }}>
+                            <h4 style={{ margin: 0, color: '#fff', fontWeight: 600 }}>
+                                STL Preview
+                                {viewStlFiles.length > 0 && (
+                                    <span style={{ color: '#666', fontSize: '14px', fontWeight: 400, marginLeft: '12px' }}>
+                                        {viewStlFiles.length} file{viewStlFiles.length !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </h4>
+                            <button
+                                onClick={() => { setViewStlSeriesUid(null); setViewStlFiles([]); setSelectedStlIndex(0); }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    fontSize: '24px',
+                                    cursor: 'pointer',
+                                    padding: '0',
+                                    width: '30px',
+                                    height: '30px',
+                                    lineHeight: '30px',
+                                }}
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        {viewStlLoading ? (
+                            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" style={{ width: 20, height: 20 }}></span>
+                                <span style={{ color: '#aaa' }}>Loading STL files...</span>
+                            </div>
+                        ) : viewStlFiles.length === 0 ? (
+                            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#888' }}>
+                                No STL files found.
+                            </div>
+                        ) : (
+                            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                                {/* Sidebar — file list */}
+                                <div style={{
+                                    width: '120px',
+                                    flexShrink: 0,
+                                    overflowY: 'auto',
+                                    padding: '10px 0',
+                                    backgroundColor: '#111827',
+                                }}>
+                                    <div style={{ padding: '0 0 6px', fontSize: '10px', color: '#555', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px', textAlign: 'center' }}>
+                                        Files
+                                    </div>
+                                    {viewStlFiles.map((file, idx) => (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                padding: '6px 8px',
+                                                color: '#ccc',
+                                                fontSize: '11px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '6px',
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: '8px',
+                                                height: '8px',
+                                                borderRadius: '2px',
+                                                backgroundColor: getLegendColor(idx),
+                                                flexShrink: 0,
+                                            }} />
+                                            <span style={{
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }} title={file.name}>
+                                                {file.name}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Main viewer */}
+                                <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                    <div style={{
+                                        flex: 1,
+                                        borderRadius: '10px',
+                                        overflow: 'hidden',
+                                        backgroundColor: '#000',
+                                    }}>
+                                        <StlMainViewer files={viewStlFiles} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Comparison Popup */}
             {showComparisonPopup && (
