@@ -1,16 +1,16 @@
 import React from 'react';
 import { useThreeDTools } from '../context/ThreeDToolsBridgeContext';
 import {
-  ToolButtonList,
-  ToolButtonListDivider,
-  ToolButtonListDropDown,
-} from '@ohif/ui-next';
-import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@ohif/ui-next';
+
+const ITEM_CLASS = 'px-3 py-[10px] gap-3';
 
 const ThreeDToolsDropdown: React.FC = () => {
   const allTools = useThreeDTools();
@@ -18,16 +18,39 @@ const ThreeDToolsDropdown: React.FC = () => {
   const disabled = tools.length === 0;
 
   return (
-    <ToolButtonList>
-      <div className="flex items-center justify-center h-10 w-10">
-        <i
-          className={`fas fa-cube ${disabled ? 'text-foreground/40' : 'text-foreground/80'}`}
-          style={{ fontSize: '20px' }}
-        />
-      </div>
-      <ToolButtonListDivider className={disabled ? 'opacity-50' : 'opacity-100'} />
-      <ToolButtonListDropDown>
-        {tools.map((tool) => {
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <div className={`flex items-center ${disabled ? 'pointer-events-none' : ''}`}>
+          {/* Cube icon — same size/style as ToolButton primary */}
+          <div
+            className={`inline-flex items-center justify-center h-10 w-10 rounded-lg transition-all duration-200 ${
+              disabled
+                ? 'cursor-not-allowed text-foreground/40'
+                : 'cursor-pointer text-foreground/80 hover:bg-[rgba(52,140,253,0.12)] hover:text-highlight hover:shadow-[0_0_10px_rgba(52,140,253,0.18)]'
+            }`}
+          >
+            <i className="fas fa-cube" style={{ fontSize: '20px' }} />
+          </div>
+          {/* Divider — same as ToolButtonListDivider */}
+          <div className={`h-5 w-px self-center bg-[rgba(52,140,253,0.35)] ${disabled ? 'opacity-40' : ''}`} />
+          {/* Chevron — same as ToolButtonListDropDown trigger */}
+          <div
+            className={`inline-flex h-10 w-5 items-center justify-center rounded-tr-lg rounded-br-lg transition-all duration-200 ${
+              disabled
+                ? 'text-foreground/40'
+                : 'cursor-pointer text-foreground/80 hover:bg-[rgba(52,140,253,0.12)] hover:text-highlight hover:shadow-[0_0_10px_rgba(52,140,253,0.18)]'
+            }`}
+          >
+            <i className="fas fa-chevron-down" style={{ fontSize: '10px' }} />
+          </div>
+        </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="bottom"
+        align="start"
+        className="min-w-[200px] bg-gradient-to-b from-[rgba(52,140,253,0.07)] to-[rgba(8,12,24,0.82)]"
+      >
+        {tools.map(tool => {
           const isActive = tool.active;
           const isDanger = tool.danger && isActive;
 
@@ -35,40 +58,36 @@ const ThreeDToolsDropdown: React.FC = () => {
             return (
               <DropdownMenuSub key={tool.id}>
                 <DropdownMenuSubTrigger
-                  className={`flex items-center space-x-2 ${
-                    isActive ? 'bg-primary/25 text-highlight' : ''
-                  }`}
+                  className={`${ITEM_CLASS} ${isActive ? 'bg-[rgba(52,140,253,0.18)] !text-highlight' : ''}`}
                 >
                   <i
-                    className={`fas ${tool.icon}`}
-                    style={{ fontSize: '14px', minWidth: '20px', textAlign: 'center' }}
+                    className={`fas ${tool.icon} flex-shrink-0`}
+                    style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
                   />
-                  <span className="pl-1">{tool.label}</span>
+                  <span>{tool.label}</span>
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {tool.children.map((child) => {
+                <DropdownMenuSubContent className="min-w-[180px] bg-gradient-to-b from-[rgba(52,140,253,0.07)] to-[rgba(8,12,24,0.82)]">
+                  {tool.children.map(child => {
                     const childActive = child.active;
                     const childDanger = child.danger && childActive;
                     return (
                       <DropdownMenuItem
                         key={child.id}
                         disabled={child.disabled}
-                        className={`flex items-center space-x-2 ${
+                        className={`${ITEM_CLASS} ${
                           childDanger
-                            ? 'bg-red-500/20 text-red-300'
+                            ? 'bg-red-500/20 !text-red-300'
                             : childActive
-                              ? 'bg-primary/25 text-highlight'
+                              ? 'bg-[rgba(52,140,253,0.18)] !text-highlight'
                               : ''
                         }`}
-                        onSelect={() => {
-                          child.onClick();
-                        }}
+                        onSelect={() => child.onClick()}
                       >
                         <i
-                          className={`fas ${child.icon}`}
-                          style={{ fontSize: '14px', minWidth: '20px', textAlign: 'center' }}
+                          className={`fas ${child.icon} flex-shrink-0`}
+                          style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
                         />
-                        <span className="pl-1">{child.label}</span>
+                        <span>{child.label}</span>
                       </DropdownMenuItem>
                     );
                   })}
@@ -81,27 +100,25 @@ const ThreeDToolsDropdown: React.FC = () => {
             <DropdownMenuItem
               key={tool.id}
               disabled={tool.disabled}
-              className={`flex items-center space-x-2 ${
+              className={`${ITEM_CLASS} ${
                 isDanger
-                  ? 'bg-red-500/20 text-red-300'
+                  ? 'bg-red-500/20 !text-red-300'
                   : isActive
-                    ? 'bg-primary/25 text-highlight'
+                    ? 'bg-[rgba(52,140,253,0.18)] !text-highlight'
                     : ''
               }`}
-              onSelect={() => {
-                tool.onClick();
-              }}
+              onSelect={() => tool.onClick()}
             >
               <i
-                className={`fas ${tool.icon}`}
-                style={{ fontSize: '14px', minWidth: '20px', textAlign: 'center' }}
+                className={`fas ${tool.icon} flex-shrink-0`}
+                style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
               />
-              <span className="pl-1">{tool.label}</span>
+              <span>{tool.label}</span>
             </DropdownMenuItem>
           );
         })}
-      </ToolButtonListDropDown>
-    </ToolButtonList>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

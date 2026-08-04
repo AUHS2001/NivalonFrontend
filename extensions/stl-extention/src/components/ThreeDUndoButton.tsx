@@ -8,8 +8,10 @@ const ThreeDUndoButton: React.FC = () => {
 
   return (
     <div
-      className={`flex items-center justify-center h-10 w-10 cursor-pointer rounded ${
-        disabled ? 'opacity-30 cursor-not-allowed' : 'hover:bg-primary/25'
+      className={`flex items-center justify-center h-10 w-10 rounded-lg transition-all duration-200 ${
+        disabled
+          ? 'cursor-not-allowed text-foreground/40'
+          : 'cursor-pointer text-foreground/80 hover:bg-[rgba(52,140,253,0.12)] hover:text-highlight hover:shadow-[0_0_10px_rgba(52,140,253,0.18)]'
       }`}
       onClick={() => {
         if (!disabled && undoTool) undoTool.onClick();
@@ -17,8 +19,8 @@ const ThreeDUndoButton: React.FC = () => {
       title="Undo last 3D change"
     >
       <i
-        className={`fas fa-undo-alt ${disabled ? 'text-foreground/40' : 'text-foreground/80'}`}
-        style={{ fontSize: '18px' }}
+        className="fas fa-undo-alt"
+        style={{ fontSize: '20px' }}
       />
     </div>
   );

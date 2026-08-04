@@ -17,7 +17,10 @@ const NavBar = ({
   return (
     <div
       className={classnames(
-        'z-20 border-black px-1 bg-[#0a0e17]',
+        'z-20 px-1',
+        'bg-[rgba(8,12,24,0.95)] backdrop-blur-xl',
+        'border-b border-[rgba(52,140,253,0.2)]',
+        'shadow-[0_4px_30px_rgba(0,0,0,0.7),0_0_1px_rgba(52,140,253,0.12)]',
         isSticky && stickyClasses,
         !isSticky && notStickyClasses,
         className

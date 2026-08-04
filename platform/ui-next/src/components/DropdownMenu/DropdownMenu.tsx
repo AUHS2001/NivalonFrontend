@@ -26,7 +26,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'focus:bg-accent data-[state=open]:bg-accent flex cursor-default select-none items-center rounded px-2 py-1 text-base outline-none',
+      'flex cursor-pointer select-none items-center rounded-md px-2 py-2 text-sm text-white/80 outline-none transition-all duration-150',
+      'focus:bg-[rgba(52,140,253,0.12)] focus:text-white data-[state=open]:bg-[rgba(52,140,253,0.12)] data-[state=open]:text-white',
       inset && 'pl-8',
       disabled && 'pointer-events-none opacity-50',
       className
@@ -43,14 +44,17 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.SubContent
-    ref={ref}
-    className={cn(
-      'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 border-input/50 z-50 min-w-[8rem] overflow-hidden rounded border p-1 shadow-lg',
-      className
-    )}
-    {...props}
-  />
+  <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.SubContent
+      ref={ref}
+      className={cn(
+        'bg-[rgba(12,18,35,0.95)] backdrop-blur-2xl text-white z-[9999] min-w-[8rem] overflow-hidden rounded-xl p-1 shadow-[0_8px_40px_rgba(0,0,0,0.7)]',
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        className
+      )}
+      {...props}
+    />
+  </DropdownMenuPrimitive.Portal>
 ));
 DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
 
@@ -68,7 +72,8 @@ const DropdownMenuContent = React.forwardRef<
         props.onKeyDown?.(e);
       }}
       className={cn(
-        'bg-popover text-popover-foreground border-input/50 z-50 min-w-[8rem] overflow-hidden rounded border p-1 shadow-md',
+        'bg-[rgba(12,18,35,0.82)] backdrop-blur-2xl text-white z-50 min-w-[8rem] overflow-hidden rounded-xl p-1',
+        'shadow-[0_8px_40px_rgba(0,0,0,0.6)]',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
         className
       )}
@@ -87,7 +92,9 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-accent focus:text-accent-foreground relative flex cursor-default select-none items-center rounded px-1 py-1 text-base outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer select-none items-center rounded-md px-2 py-2 text-sm text-white/80 outline-none transition-all duration-150',
+      'focus:bg-[rgba(52,140,253,0.12)] focus:text-white focus:shadow-[inset_0_0_0_1px_rgba(52,140,253,0.15)]',
+      'data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
       inset && 'pl-8',
       className
     )}
