@@ -75,6 +75,16 @@ export default function StudyList() {
     const [viewStlLoading, setViewStlLoading] = useState(false);
     const [selectedStlIndex, setSelectedStlIndex] = useState(0);
 
+    // Upload 3D popup state
+    const [uploadPopupStudy, setUploadPopupStudy] = useState<Study | null>(null);
+    const [uploadingSeriesUid, setUploadingSeriesUid] = useState<string | null>(null);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const uploadInputRef = useRef<HTMLInputElement>(null);
+    const uploadSeriesUidRef = useRef<string>('');
+    const [noStlUploadMessage, setNoStlUploadMessage] = useState<string | null>(null);
+
     // Filter state
     const [filterPatientName, setFilterPatientName] = useState('');
     const [filterMRN, setFilterMRN] = useState('');
@@ -623,6 +633,7 @@ export default function StudyList() {
 
             if (stlUrls.length === 0) {
                 setNoStlMessage(seriesUid);
+                setNoStlUploadMessage(seriesUid);
                 setViewStlSeriesUid(null);
                 setViewStlLoading(false);
                 return;
@@ -637,10 +648,98 @@ export default function StudyList() {
         } catch (error: any) {
             console.error('View error:', error);
             setNoStlMessage(seriesUid);
+            setNoStlUploadMessage(seriesUid);
             setViewStlSeriesUid(null);
         } finally {
             setViewStlLoading(false);
         }
+    };
+
+    const handleUploadClick = (seriesUid: string) => {
+        uploadSeriesUidRef.current = seriesUid;
+        setUploadSuccess(null);
+        setUploadError(null);
+        if (uploadInputRef.current) {
+            uploadInputRef.current.value = '';
+            uploadInputRef.current.click();
+        }
+    };
+
+    const handleUploadFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selected = e.target.files;
+        if (!selected || selected.length === 0) return;
+        const stlFiles = Array.from(selected).filter(f => f.name.toLowerCase().endsWith('.stl'));
+        if (stlFiles.length === 0) return;
+
+        const seriesUid = uploadSeriesUidRef.current;
+        if (!seriesUid) return;
+
+        setUploadingSeriesUid(seriesUid);
+        setUploadProgress(0);
+        setUploadSuccess(null);
+        setUploadError(null);
+
+        const formData = new FormData();
+        formData.append('series_instance_uid', seriesUid);
+        for (const file of stlFiles) {
+            formData.append('files', file, file.name);
+        }
+
+        // Simulated progress
+        let simulated = 0;
+        const simInterval = setInterval(() => {
+            simulated += (85 - simulated) * 0.015;
+            setUploadProgress(Math.round(simulated));
+        }, 200);
+
+        const xhr = new XMLHttpRequest();
+        xhr.timeout = 5 * 60 * 1000;
+        xhr.open('POST', `${SERVER_URL}/analyst/meshes/approved`);
+        xhr.setRequestHeader('Authorization', `Bearer ${userToken}`);
+        xhr.withCredentials = true;
+
+        xhr.upload.addEventListener('progress', (ev) => {
+            if (ev.lengthComputable) {
+                const uploadPct = Math.round((ev.loaded / ev.total) * 90);
+                if (uploadPct > simulated) {
+                    simulated = uploadPct;
+                    setUploadProgress(uploadPct);
+                }
+            }
+        });
+
+        xhr.onload = () => {
+            clearInterval(simInterval);
+            if (xhr.status >= 200 && xhr.status < 300) {
+                setUploadProgress(100);
+                setTimeout(() => {
+                    setUploadSuccess(seriesUid);
+                    setUploadingSeriesUid(null);
+                    setUploadProgress(0);
+                }, 600);
+            } else {
+                setUploadError(seriesUid);
+                setUploadingSeriesUid(null);
+                setUploadProgress(0);
+            }
+        };
+
+        xhr.onerror = () => {
+            clearInterval(simInterval);
+            setUploadError(seriesUid);
+            setUploadingSeriesUid(null);
+            setUploadProgress(0);
+        };
+
+        xhr.ontimeout = () => {
+            clearInterval(simInterval);
+            setUploadError(seriesUid);
+            setUploadingSeriesUid(null);
+            setUploadProgress(0);
+        };
+
+        xhr.send(formData);
+        e.target.value = '';
     };
 
     const FILE_COLORS = [
@@ -1187,7 +1286,7 @@ export default function StudyList() {
                                 </button>
                                 {
                                     (userRole === 'analyst' || userRole === 'admin') ?
-                                    <><button className="btn btn-sm btn-primary me-2" onClick={() => navigate("/localStls")}>
+                                    <><button className="btn btn-sm btn-primary me-2" onClick={() => { setUploadPopupStudy(study); setUploadSuccess(null); setUploadError(null); setNoStlUploadMessage(null); }}>
                                         <span className="me-1">→</span>
                                         Upload 3D
                                     </button>
@@ -1556,6 +1655,179 @@ export default function StudyList() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Hidden file input for upload */}
+            <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".stl"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleUploadFileSelect}
+            />
+
+            {/* Upload 3D Popup */}
+            {uploadPopupStudy && (
+                <div
+                    onClick={() => { setUploadPopupStudy(null); setUploadSuccess(null); setUploadError(null); setNoStlUploadMessage(null); }}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: '#111827',
+                            padding: '24px',
+                            borderRadius: '12px',
+                            width: '800px',
+                            maxWidth: '95%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                        }}>
+                            <h3 style={{ margin: 0, color: '#fff' }}>
+                                Upload — {uploadPopupStudy.patient_name || 'Unknown Patient'}
+                            </h3>
+                            <button
+                                onClick={() => { setUploadPopupStudy(null); setUploadSuccess(null); setUploadError(null); setNoStlUploadMessage(null); }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    fontSize: '28px',
+                                    cursor: 'pointer',
+                                    padding: '0',
+                                    width: '30px',
+                                    height: '30px',
+                                    lineHeight: '30px'
+                                }}
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        {/* Series Table Header */}
+                        <div style={{
+                            display: 'flex',
+                            padding: '10px 12px',
+                            color: '#aaa',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                        }}>
+                            <div style={{ width: '30%' }}>Series Instance ID</div>
+                            <div style={{ width: '25%' }}>Description</div>
+                            <div style={{ width: '10%' }}>Modality</div>
+                            <div style={{ width: '10%' }}>Instances</div>
+                            <div style={{ width: '25%' }}>Action</div>
+                        </div>
+
+                        {/* Series Rows */}
+                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            {uploadPopupStudy.series.map((series) => (
+                                <div
+                                    key={series.series_instance_uid}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: '12px',
+                                        color: '#fff',
+                                    }}
+                                >
+                                    <div
+                                        style={{ width: '30%', fontSize: '12px', paddingRight: '8px' }}
+                                        className="text-truncate"
+                                        title={series.series_instance_uid}
+                                    >
+                                        {series.series_instance_uid}
+                                    </div>
+                                    <div style={{ width: '25%', fontSize: '13px' }} className="text-truncate">
+                                        {series.description || 'No Description'}
+                                    </div>
+                                    <div style={{ width: '10%', fontSize: '13px' }}>
+                                        {series.modality || '—'}
+                                    </div>
+                                    <div style={{ width: '10%', fontSize: '13px' }}>
+                                        {series.num_series_instances || '—'}
+                                    </div>
+                                    <div style={{ width: '25%', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        {noStlUploadMessage === series.series_instance_uid ? (
+                                            <span style={{ color: '#ff9800', fontSize: '12px' }}>
+                                                No STLs generated yet
+                                            </span>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    className="btn btn-sm btn-primary me-2"
+                                                    onClick={() => handleView3D(series.series_instance_uid)}
+                                                    disabled={uploadingSeriesUid !== null || viewStlLoading}
+                                                >
+                                                    <span className="me-1">&rarr;</span>
+                                                    View
+                                                </button>
+                                                <button
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={() => handleUploadClick(series.series_instance_uid)}
+                                                    disabled={uploadingSeriesUid !== null}
+                                                    style={{ position: 'relative', overflow: 'hidden' }}
+                                                >
+                                                    {uploadingSeriesUid === series.series_instance_uid && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: 0,
+                                                            left: 0,
+                                                            height: '100%',
+                                                            width: `${uploadProgress}%`,
+                                                            background: 'linear-gradient(90deg, #0d6efd, #3d8bfd)',
+                                                            transition: 'width 0.3s ease',
+                                                            zIndex: 0,
+                                                            borderRadius: 'inherit',
+                                                        }} />
+                                                    )}
+                                                    <span style={{ position: 'relative', zIndex: 1 }}>
+                                                        {uploadingSeriesUid === series.series_instance_uid ? (
+                                                            <>
+                                                                <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: 12, height: 12 }}></span>
+                                                                {uploadProgress}%
+                                                            </>
+                                                        ) : uploadSuccess === series.series_instance_uid ? (
+                                                            <span style={{ color: '#4dff4d' }}>Uploaded</span>
+                                                        ) : uploadError === series.series_instance_uid ? (
+                                                            <span style={{ color: '#ff4d4d' }}>Failed</span>
+                                                        ) : (
+                                                            <>
+                                                                <span className="me-1">&rarr;</span>
+                                                                Upload
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
