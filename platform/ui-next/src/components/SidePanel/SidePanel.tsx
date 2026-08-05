@@ -58,7 +58,7 @@ const closeIconWidth = 30;
 const gridHorizontalPadding = 10;
 const tabSpacerWidth = 2;
 
-const baseClasses = 'bg-[#0a0e17] border-[#0a0e17] justify-start box-content flex flex-col';
+const baseClasses = 'bg-[rgba(8,12,24,0.97)] backdrop-blur-xl justify-start box-content flex flex-col';
 
 const openStateIconName = {
   left: 'SidePanelCloseLeft',
@@ -111,8 +111,8 @@ const getTabClassNames = (
   isActiveTab: boolean,
   isTabDisabled: boolean
 ) =>
-  classnames('h-[28px] mb-[2px] cursor-pointer text-white bg-[#0a0e17]', {
-    'hover:text-primary': !isActiveTab && !isTabDisabled,
+  classnames('h-[28px] mb-[2px] cursor-pointer text-white bg-transparent', {
+    'hover:bg-[rgba(52,140,253,0.1)] hover:text-primary': !isActiveTab && !isTabDisabled,
     'rounded-l': tabIndex % numColumns === 0,
     'rounded-r': (tabIndex + 1) % numColumns === 0 || tabIndex === numTabs - 1,
   });
@@ -125,7 +125,7 @@ const getTabStyle = (numTabs: number) => {
 
 const getTabIconClassNames = (numTabs: number, isActiveTab: boolean) => {
   return classnames('h-full w-full flex items-center justify-center', {
-    'bg-customblue-40': isActiveTab,
+    'bg-[rgba(52,140,253,0.2)]': isActiveTab,
     rounded: isActiveTab,
   });
 };
@@ -285,7 +285,7 @@ const SidePanel = ({
       <>
         <div
           className={classnames(
-            'bg-[#0a0e17] flex h-[28px] w-full cursor-pointer items-center rounded-md',
+            'bg-[rgba(10,14,28,0.7)] flex h-[36px] w-full cursor-pointer items-center hover:bg-[rgba(52,140,253,0.07)] transition-colors',
             side === 'left' ? 'justify-end pr-2' : 'justify-start pl-2'
           )}
           onClick={() => {
@@ -367,20 +367,13 @@ const SidePanel = ({
       <>
         {getCloseIcon()}
         <div className={classnames('flex grow justify-center', side === 'left' && 'invisible')}>
-          <div className={classnames('bg-[#0a0e17] text-primary flex flex-wrap')}>
+          <div className={classnames('bg-transparent text-primary flex flex-wrap')}>
             {tabs.map((tab, tabIndex) => {
               const { disabled } = tab;
               return (
                 <React.Fragment key={tabIndex}>
                   {tabIndex % numCols !== 0 && (
-                    <div
-                      className={classnames(
-                        'flex h-[28px] w-[2px] items-center bg-[#0a0e17]',
-                        tabSpacerWidth
-                      )}
-                    >
-                      <div className="bg-[#0a0e17] h-[20px] w-full"></div>
-                    </div>
+                    <div></div>
                   )}
                   <Tooltip key={tabIndex}>
                     <TooltipTrigger>
@@ -447,28 +440,35 @@ const SidePanel = ({
       // Left panel: show only the close button, no tab icons
       return (
         <>
-          <div className="bg-[#0a0e17] flex h-[0px] flex-shrink-0 select-none rounded-t overflow-hidden" />
-          <Separator orientation="horizontal" className="bg-[#0a0e17]" thickness="0px" />
+          <div className="bg-[rgba(10,14,28,0.7)] flex h-[36px] flex-shrink-0 select-none items-center justify-end pr-2 border-b border-[rgba(52,140,253,0.12)]">
+            <div
+              className="cursor-pointer p-1 rounded hover:bg-[rgba(52,140,253,0.12)] transition-colors"
+              onClick={() => updatePanelOpen(false)}
+            >
+              <Icons.SidePanelCloseLeft className="text-primary w-4 h-4" />
+            </div>
+          </div>
         </>
       );
     }
     return (
       <>
-        <div className={tabs.length === 1 && side === "right" ? "bg-[#0a0e17] flex h-[0px] flex-shrink-0 select-none rounded-t": "bg-[#0a0e17] flex h-[40px] flex-shrink-0 select-none rounded-t"}>
+        <div className={tabs.length === 1 && side === "right" ? "flex h-[0px] flex-shrink-0 select-none": "relative bg-[rgba(10,14,28,0.7)] flex h-[40px] flex-shrink-0 select-none"}>
           {tabs.length === 1 ? getOneTabComponent() : getTabGridComponent()}
         </div>
-        <Separator
-          orientation="horizontal"
-          className="bg-[#0a0e17]"
-          thickness="0px"
-        />
       </>
     );
   };
 
   return (
     <div
-      className={classnames(className, baseClasses)}
+      className={classnames(
+        className,
+        baseClasses,
+        side === 'left'
+          ? 'border-r border-[rgba(52,140,253,0.12)] shadow-[2px_0_24px_rgba(52,140,253,0.06)]'
+          : 'border-l border-[rgba(52,140,253,0.12)] shadow-[-2px_0_24px_rgba(52,140,253,0.06)]'
+      )}
       style={style}
     >
       {panelOpen ? (
@@ -478,20 +478,6 @@ const SidePanel = ({
             if (tabIndex === activeTabIndex) {
               return <div key={tabIndex} className="relative flex-1 min-h-0 overflow-hidden">
               <tab.content />
-              {/* Overlay close icon */}
-              {tabs.length === 1 && side === 'right' && (
-                <div className="absolute top-6 right-4 z-10" onClick={() => updatePanelOpen(!panelOpen)}>
-                  <Icons.ArrowRight className="text-blue-500 w-5 h-5 hover:text-blue-300 transition-colors"/>
-                </div>
-              )}
-              {side === 'left' && (
-                <div
-                  className="absolute top-[8px] left-2 z-10 cursor-pointer"
-                  onClick={() => updatePanelOpen(false)}
-                >
-                  <Icons.SidePanelCloseLeft className="text-primary w-5 h-5 hover:text-blue-300 transition-colors" />
-                </div>
-              )}
             </div>;
             }
             return null;
