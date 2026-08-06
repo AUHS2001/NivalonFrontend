@@ -58,7 +58,7 @@ const closeIconWidth = 30;
 const gridHorizontalPadding = 10;
 const tabSpacerWidth = 2;
 
-const baseClasses = 'bg-[rgba(8,12,24,0.97)] backdrop-blur-xl justify-start box-content flex flex-col';
+const baseClasses = 'bg-[rgba(6,9,20,0.96)] backdrop-blur-2xl justify-start box-content flex flex-col';
 
 const openStateIconName = {
   left: 'SidePanelCloseLeft',
@@ -111,8 +111,8 @@ const getTabClassNames = (
   isActiveTab: boolean,
   isTabDisabled: boolean
 ) =>
-  classnames('h-[28px] mb-[2px] cursor-pointer text-white bg-transparent', {
-    'hover:bg-[rgba(52,140,253,0.1)] hover:text-primary': !isActiveTab && !isTabDisabled,
+  classnames('h-[32px] mb-[2px] cursor-pointer text-white bg-transparent transition-all duration-200', {
+    'hover:bg-[rgba(52,140,253,0.13)] hover:shadow-[0_0_10px_rgba(52,140,253,0.18)] hover:text-primary': !isActiveTab && !isTabDisabled,
     'rounded-l': tabIndex % numColumns === 0,
     'rounded-r': (tabIndex + 1) % numColumns === 0 || tabIndex === numTabs - 1,
   });
@@ -124,9 +124,8 @@ const getTabStyle = (numTabs: number) => {
 };
 
 const getTabIconClassNames = (numTabs: number, isActiveTab: boolean) => {
-  return classnames('h-full w-full flex items-center justify-center', {
-    'bg-[rgba(52,140,253,0.2)]': isActiveTab,
-    rounded: isActiveTab,
+  return classnames('h-full w-full flex items-center justify-center transition-all duration-200', {
+    'bg-[rgba(52,140,253,0.28)] rounded shadow-[0_0_12px_rgba(52,140,253,0.45),inset_0_1px_0_rgba(255,255,255,0.08)]': isActiveTab,
   });
 };
 const createStyleMap = (
@@ -285,50 +284,57 @@ const SidePanel = ({
       <>
         <div
           className={classnames(
-            'bg-[rgba(10,14,28,0.7)] flex h-[36px] w-full cursor-pointer items-center hover:bg-[rgba(52,140,253,0.07)] transition-colors',
-            side === 'left' ? 'justify-end pr-2' : 'justify-start pl-2'
+            'flex h-[48px] w-full cursor-pointer items-center border-b border-[rgba(52,140,253,0.1)]',
+            side === 'left' ? 'justify-end pr-[1px]' : 'justify-start pl-[1px]'
           )}
           onClick={() => {
             updatePanelOpen(!panelOpen);
           }}
           data-cy={`side-panel-header-${side}`}
         >
-          <Icons.NavigationPanelReveal
-            className={classnames('text-primary', side === 'left' && 'rotate-180 transform')}
-          />
+          <div
+            className="flex items-center justify-center w-7 h-7 rounded-lg shadow-[0_0_14px_rgba(52,140,253,0.25)] transition-all duration-200"
+            style={{ backgroundColor: '#182E59' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}
+          >
+            <Icons.NavigationPanelReveal
+              className={classnames(side === 'left' && 'rotate-180 transform')}
+              style={{ width: '15px', height: '15px', color: '#ffffff' }}
+            />
+          </div>
         </div>
         {side !== 'left' && (
-        <div className={classnames('mt-3 flex flex-col space-y-3')}>
+        <div className="mt-2 flex flex-col space-y-2 pl-[1px]">
           {_childComponents.map((childComponent, index) => (
             <Tooltip key={index}>
               <TooltipTrigger>
                 <div
                   id={`${childComponent.name}-btn`}
                   data-cy={`${childComponent.name}-btn`}
-                  className="text-primary hover:cursor-pointer"
+                  className={classnames(
+                    'flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-all duration-200',
+                    { 'ohif-disabled': childComponent.disabled }
+                  )}
+                  style={{ backgroundColor: '#182E59' }}
+                  onMouseEnter={e => { if (!childComponent.disabled) (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}
                   onClick={() => {
                     return childComponent.disabled ? null : updateActiveTabIndex(index, true);
                   }}
                 >
                   {React.createElement(Icons[childComponent.iconName] || Icons.MissingIcon, {
-                    className: classnames({
-                      'text-primary': true,
-                      'ohif-disabled': childComponent.disabled,
-                    }),
                     style: {
-                      width: '22px',
-                      height: '22px',
+                      width: '15px',
+                      height: '15px',
+                      color: '#ffffff',
+                      opacity: childComponent.disabled ? 0.35 : 1,
                     },
                   })}
                 </div>
               </TooltipTrigger>
-              <TooltipContent side={side === 'left' ? 'right' : 'left'}>
-                <div
-                  className={classnames(
-                    'flex items-center',
-                    side === 'left' ? 'justify-end' : 'justify-start'
-                  )}
-                >
+              <TooltipContent side="left">
+                <div className="flex items-center justify-start">
                   {getToolTipContent(childComponent.label, childComponent.disabled)}
                 </div>
               </TooltipContent>
@@ -344,18 +350,25 @@ const SidePanel = ({
     return (
       <div
         className={classnames(
-          'absolute flex cursor-pointer items-center justify-center',
-          side === 'left' ? 'right-0' : 'left-0'
+          'absolute inset-y-0 flex cursor-pointer items-center justify-center',
+          side === 'left' ? 'right-0 pr-1' : 'left-0 pl-1'
         )}
-        style={{ width: `${closeIconWidth}px` }}
+        style={{ width: `${closeIconWidth + 8}px` }}
         onClick={() => {
           updatePanelOpen(!panelOpen);
         }}
         data-cy={`side-panel-header-${side}`}
       >
-        {React.createElement(Icons[openStateIconName[side]] || Icons.MissingIcon, {
-          className: 'text-primary',
-        })}
+        <div
+          className="flex items-center justify-center w-9 h-9 rounded-xl shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
+          style={{ backgroundColor: '#182E59' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}
+        >
+          {React.createElement(Icons[openStateIconName[side]] || Icons.MissingIcon, {
+            style: { width: '18px', height: '18px', color: '#ffffff' },
+          })}
+        </div>
       </div>
     );
   };
@@ -366,8 +379,8 @@ const SidePanel = ({
     return (
       <>
         {getCloseIcon()}
-        <div className={classnames('flex grow justify-center', side === 'left' && 'invisible')}>
-          <div className={classnames('bg-transparent text-primary flex flex-wrap')}>
+        <div className={classnames('flex grow justify-center items-center', side === 'left' && 'invisible')}>
+          <div className={classnames('bg-transparent text-primary flex flex-wrap items-center')}>
             {tabs.map((tab, tabIndex) => {
               const { disabled } = tab;
               return (
@@ -437,23 +450,28 @@ const SidePanel = ({
 
   const getOpenStateComponent = () => {
     if (side === 'left') {
-      // Left panel: show only the close button, no tab icons
+      // No header bar — glass card close button floating at top-right, vertically centered
+      // with the first PanelSection.Header (h-8 + my-[2px] ≈ top 2px, height 32px → center ~18px)
       return (
-        <>
-          <div className="bg-[rgba(10,14,28,0.7)] flex h-[36px] flex-shrink-0 select-none items-center justify-end pr-2 border-b border-[rgba(52,140,253,0.12)]">
-            <div
-              className="cursor-pointer p-1 rounded hover:bg-[rgba(52,140,253,0.12)] transition-colors"
-              onClick={() => updatePanelOpen(false)}
-            >
-              <Icons.SidePanelCloseLeft className="text-primary w-4 h-4" />
-            </div>
+        <div className="absolute top-[2px] left-[4px] z-20 flex items-center justify-center h-8">
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-xl cursor-pointer shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
+            style={{ backgroundColor: '#182E59' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}
+            onClick={() => updatePanelOpen(false)}
+            data-cy="side-panel-header-left"
+          >
+            <Icons.SidePanelCloseLeft
+              style={{ width: '18px', height: '18px', color: '#ffffff' }}
+            />
           </div>
-        </>
+        </div>
       );
     }
     return (
       <>
-        <div className={tabs.length === 1 && side === "right" ? "flex h-[0px] flex-shrink-0 select-none": "relative bg-[rgba(10,14,28,0.7)] flex h-[40px] flex-shrink-0 select-none"}>
+        <div className={tabs.length === 1 && side === "right" ? "flex h-[0px] flex-shrink-0 select-none": "relative bg-gradient-to-r from-[rgba(12,16,34,0.96)] to-[rgba(8,11,24,0.92)] flex h-[44px] flex-shrink-0 select-none border-b border-[rgba(52,140,253,0.18)] shadow-[0_1px_12px_rgba(0,0,0,0.3)]"}>
           {tabs.length === 1 ? getOneTabComponent() : getTabGridComponent()}
         </div>
       </>
@@ -466,8 +484,8 @@ const SidePanel = ({
         className,
         baseClasses,
         side === 'left'
-          ? 'border-r border-[rgba(52,140,253,0.12)] shadow-[2px_0_24px_rgba(52,140,253,0.06)]'
-          : 'border-l border-[rgba(52,140,253,0.12)] shadow-[-2px_0_24px_rgba(52,140,253,0.06)]'
+          ? 'border-r border-[rgba(52,140,253,0.22)] shadow-[2px_0_32px_rgba(0,0,0,0.5),2px_0_16px_rgba(52,140,253,0.08)]'
+          : 'border-l border-[rgba(52,140,253,0.22)] shadow-[-2px_0_32px_rgba(0,0,0,0.5),-2px_0_16px_rgba(52,140,253,0.08)]'
       )}
       style={style}
     >

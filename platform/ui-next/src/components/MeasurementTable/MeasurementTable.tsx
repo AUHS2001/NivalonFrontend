@@ -39,7 +39,6 @@ const MeasurementTable = ({
       <PanelSection defaultOpen={true}>
         <PanelSection.Header
           key="measurementTableHeader"
-          className="bg-[#0a0e17]"
         >
           <span>{`${t(title)} (${amount})`}</span>
         </PanelSection.Header>
@@ -65,7 +64,7 @@ const Body = () => {
   }
 
   return (
-    <div className="measurement-table-body space-y-px">
+    <div className="measurement-table-body space-y-[1px] divide-y divide-[rgba(52,140,253,0.06)]">
       {data.map((item, index) => (
         <Row
           key={item.uid}
