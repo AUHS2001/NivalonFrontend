@@ -98,6 +98,31 @@ interface RowProps {
   index: number;
 }
 
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  Length: 'Length',
+  Bidirectional: 'Bidirectional',
+  EllipticalROI: 'Ellipse ROI',
+  CircleROI: 'Circle ROI',
+  RectangleROI: 'Rectangle ROI',
+  PlanarFreehandROI: 'Freehand ROI',
+  SplineROI: 'Spline ROI',
+  LivewireContour: 'Livewire',
+  CobbAngle: 'Cobb Angle',
+  Angle: 'Angle',
+  ArrowAnnotate: 'Arrow',
+  CalibrationLine: 'Calibration',
+};
+
+const getRowTitle = (item: MeasurementItem) => {
+  const toolDisplay = TOOL_DISPLAY_NAMES[item.toolName] ?? item.toolName ?? '';
+  const rawLabel = item.label ?? '';
+  const label = rawLabel === '(empty)' || rawLabel.trim() === '' ? '' : rawLabel;
+  if (toolDisplay && label && label !== toolDisplay) {
+    return `${toolDisplay} - ${label}`;
+  }
+  return toolDisplay || label;
+};
+
 const Row = ({ item, index }: RowProps) => {
   const { onAction, isExpanded, disableEditing } =
     useMeasurementTableContext('MeasurementTable.Row');
@@ -108,7 +133,7 @@ const Row = ({ item, index }: RowProps) => {
       key={item.uid}
       description={item.label}
       number={index + 1}
-      title={item.label}
+      title={getRowTitle(item)}
       colorHex={item.colorHex}
       isSelected={item.isSelected}
       details={item.displayText}
