@@ -133,6 +133,7 @@ function modeFactory({ modeConfiguration }) {
         'WindowLevel',
         'Pan',
         'Cine',
+        'MovementTools',
         'Zoom',
         'Capture',
         'Reset',
@@ -184,14 +185,17 @@ function modeFactory({ modeConfiguration }) {
         'CalibrationLine',
       ]);
 
-      toolbarService.updateSection('MoreTools', [
+      toolbarService.updateSection('MovementTools', [
         'rotate-right',
         'flipHorizontal',
+        'invert',
+      ]);
+
+      toolbarService.updateSection('MoreTools', [
         'ImageSliceSync',
         'ReferenceLines',
         'ImageOverlayViewer',
         'StackScroll',
-        'invert',
         'Probe',
         'Angle',
         'CobbAngle',

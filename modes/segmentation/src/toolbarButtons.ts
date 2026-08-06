@@ -39,6 +39,11 @@ const toolbarButtons: Button[] = [
     props: {},
   },
   {
+    id: 'MovementTools',
+    uiType: 'stl.movementToolsDropdown',
+    props: {},
+  },
+  {
     id: 'AdvancedRenderingControls',
     uiType: 'ohif.advancedRenderingControls',
     props: {

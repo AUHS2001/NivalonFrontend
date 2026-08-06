@@ -7,6 +7,7 @@ import { toggleSpineLabelOverlay } from './utils/spineLabelOverlayManager';
 import ThreeDToolsDropdown from './components/ThreeDToolsDropdown';
 import ThreeDUndoButton from './components/ThreeDUndoButton';
 import MoreToolsIconDropdown from './components/MoreToolsIconDropdown';
+import MovementToolsDropdown from './components/MovementToolsDropdown';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -128,6 +129,10 @@ export default {
       {
         name: 'stl.moreToolsIconDropdown',
         defaultComponent: MoreToolsIconDropdown,
+      },
+      {
+        name: 'stl.movementToolsDropdown',
+        defaultComponent: MovementToolsDropdown,
       },
     ];
   },
