@@ -81,6 +81,25 @@ const OHIFCornerstoneViewport = React.memo(
 
     const [scrollbarHeight, setScrollbarHeight] = useState('100px');
     const [enabledVPElement, setEnabledVPElement] = useState(null);
+
+    // Fix invisible cursor: Cornerstone sets SVG cursors via url() without a fallback.
+    // When the browser can't render the SVG the cursor disappears entirely.
+    // Watch the canvas style and inject ', crosshair' as a fallback whenever needed.
+    useEffect(() => {
+      if (!enabledVPElement) return;
+      const canvas = enabledVPElement.querySelector('canvas');
+      if (!canvas) return;
+
+      const observer = new MutationObserver(() => {
+        const cur = (canvas as HTMLElement).style.cursor;
+        if (cur && cur.startsWith('url(') && !cur.includes(', ')) {
+          (canvas as HTMLElement).style.cursor = cur + ', crosshair';
+        }
+      });
+
+      observer.observe(canvas, { attributes: true, attributeFilter: ['style'] });
+      return () => observer.disconnect();
+    }, [enabledVPElement]);
     const elementRef = useRef() as React.MutableRefObject<HTMLDivElement>;
     const viewportRef = useViewportRef(viewportId);
 
