@@ -101,6 +101,10 @@ function getMappedAnnotations(annotation, displaySetService) {
     return [];
   }
 
+  const { getCalibrationScale } = require('../../tools/CalibrationLineTool');
+  const _scale = getCalibrationScale();
+  const _scaleSq = _scale * _scale;
+
   const annotations = [];
   Object.keys(cachedStats).forEach(targetId => {
     const targetStats = cachedStats[targetId];
@@ -126,7 +130,7 @@ function getMappedAnnotations(annotation, displaySetService) {
       mean,
       stdDev,
       max,
-      area,
+      area: area != null ? area / _scaleSq : area,
       areaUnit,
     });
   });

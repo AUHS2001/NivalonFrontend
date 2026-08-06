@@ -52,7 +52,7 @@ const LivewireContour = {
         SeriesInstanceUID
       );
     } else {
-      displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID);
+      displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID)[0];
     }
 
     return {
@@ -133,11 +133,19 @@ function getDisplayText(annotation, displaySet, displaySetService) {
     secondary: [],
   };
 
-  if (!data.cachedStats || !data.cachedStats[`imageId:${metadata.referencedImageId}`]) {
-    return displayText;
-  }
+  if (!data.cachedStats) return displayText;
 
-  const { area, areaUnit } = data.cachedStats[`imageId:${metadata.referencedImageId}`];
+  // The cachedStats key is 'volumeId:xxx' for volume viewports and
+  // 'imageId:xxx' for stack viewports. Use the first available entry
+  // instead of hard-coding 'imageId:' so both viewport types work.
+  const statsKey = Object.keys(data.cachedStats)[0];
+  if (!statsKey || !data.cachedStats[statsKey]) return displayText;
+
+  const { area: rawArea, areaUnit } = data.cachedStats[statsKey];
+
+  const { getCalibrationScale } = require('../../tools/CalibrationLineTool');
+  const _scale = getCalibrationScale();
+  const area = rawArea != null ? rawArea / (_scale * _scale) : rawArea;
 
   const { SOPInstanceUID, frameNumber } = getSOPInstanceAttributes(
     metadata.referencedImageId,

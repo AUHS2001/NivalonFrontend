@@ -649,13 +649,10 @@ function commandsModule({
       viewportGridService.setActiveViewportId(viewportId);
     },
     arrowTextCallback: async ({ callback }) => {
-      const labelConfig = customizationService.getCustomization('measurementLabels');
-      const renderContent = customizationService.getCustomization('ui.labellingComponent');
-
-      const value = await callInputDialogAutoComplete({
+      const value = await callInputDialog({
         uiDialogService,
-        labelConfig,
-        renderContent,
+        title: 'Annotation',
+        placeholder: 'Enter annotation text...',
       });
       callback?.(value);
     },

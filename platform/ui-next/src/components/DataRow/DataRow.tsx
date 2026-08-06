@@ -66,7 +66,7 @@ interface DataRowProps {
   onSelect?: (e) => void;
   //
   isVisible: boolean;
-  onToggleVisibility: (e) => void;
+  onToggleVisibility?: (e) => void;
   //
   isLocked: boolean;
   onToggleLocked: (e) => void;
@@ -263,20 +263,23 @@ export const DataRow: React.FC<DataRowProps> = ({
         {/* Actions and Visibility Toggle */}
         <div className="relative ml-2 flex items-center space-x-1">
           {/* Visibility Toggle Icon */}
-          <Button
-            size="icon"
-            variant="ghost"
-            className={`h-6 w-6 transition-opacity ${
-              isSelected || !isVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-            aria-label={isVisible ? 'Hide' : 'Show'}
-            onClick={e => {
-              e.stopPropagation();
-              onToggleVisibility(e);
-            }}
-          >
-            {isVisible ? <Icons.Hide className="h-6 w-6" /> : <Icons.Show className="h-6 w-6" />}
-          </Button>
+          {onToggleVisibility && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className={cn(
+                'h-6 w-6 translate-x-1 transition-all duration-200 group-hover:translate-x-0',
+                isSelected || !isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 group-hover:opacity-100'
+              )}
+              aria-label={isVisible ? 'Hide' : 'Show'}
+              onClick={e => {
+                e.stopPropagation();
+                onToggleVisibility(e);
+              }}
+            >
+              {isVisible ? <Icons.Hide className="h-6 w-6" /> : <Icons.Show className="h-6 w-6" />}
+            </Button>
+          )}
 
           {/* Lock Icon (if needed) */}
           {isLocked && !disableEditing && <Icons.Lock className="text-muted-foreground h-6 w-6" />}

@@ -1,5 +1,6 @@
 import { MeasurementService } from '@ohif/core';
 import Length from './Length';
+import CalibrationLine from './CalibrationLine';
 import Bidirectional from './Bidirectional';
 import EllipticalROI from './EllipticalROI';
 import CircleROI from './CircleROI';
@@ -47,6 +48,7 @@ const measurementServiceMappingsFactory = (
       CobbAngle: ANGLE,
       Angle: ANGLE,
       SplineROI: POLYLINE,
+      CalibrationLine: POLYLINE,
       LivewireContour: POLYLINE,
       Probe: POINT,
       UltrasoundDirectional: POLYLINE,
@@ -61,6 +63,23 @@ const measurementServiceMappingsFactory = (
       toAnnotation: Length.toAnnotation,
       toMeasurement: csToolsAnnotation =>
         Length.toMeasurement(
+          csToolsAnnotation,
+          displaySetService,
+          cornerstoneViewportService,
+          _getValueTypeFromToolType,
+          customizationService
+        ),
+      matchingCriteria: [
+        {
+          valueType: MeasurementService.VALUE_TYPES.POLYLINE,
+          points: 2,
+        },
+      ],
+    },
+    CalibrationLine: {
+      toAnnotation: CalibrationLine.toAnnotation,
+      toMeasurement: csToolsAnnotation =>
+        CalibrationLine.toMeasurement(
           csToolsAnnotation,
           displaySetService,
           cornerstoneViewportService,

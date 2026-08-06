@@ -104,6 +104,13 @@ function getMappedAnnotations(annotation, displaySetService) {
     return [];
   }
 
+  // The ANNOTATION_MODIFIED listener in CalibrationLineTool corrects cachedStats.area
+  // for the viewport label. The panel (toMeasurement) runs in the same event callback
+  // but BEFORE our listener, so it still reads the raw area and needs its own correction.
+  const { getCalibrationScale } = require('../../tools/CalibrationLineTool');
+  const _scale = getCalibrationScale();
+  const _scaleSq = _scale * _scale;
+
   const annotations = [];
   Object.keys(cachedStats).forEach(targetId => {
     const targetStats = cachedStats[targetId];
@@ -117,7 +124,7 @@ function getMappedAnnotations(annotation, displaySetService) {
     const displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID)[0];
 
     const { SeriesNumber } = displaySet;
-    const { mean, stdDev, max, area, Modality, areaUnit, modalityUnit } = targetStats;
+    const { area, Modality, areaUnit } = targetStats;
 
     annotations.push({
       SeriesInstanceUID,
@@ -125,11 +132,7 @@ function getMappedAnnotations(annotation, displaySetService) {
       SeriesNumber,
       frameNumber,
       Modality,
-      unit: modalityUnit,
-      mean,
-      stdDev,
-      max,
-      area,
+      area: area != null ? area / _scaleSq : area,
       areaUnit,
     });
   });
