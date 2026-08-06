@@ -84,7 +84,8 @@ export function Toolbox({ buttonSectionId, title }: { buttonSectionId: string; t
         {CustomConfigComponent && (
           <div className="ml-auto mr-2">
             <Icons.Settings
-              className="text-white h-4 w-4"
+              className="h-4 w-4"
+              style={{ color: '#0A6FFD' }}
               onClick={e => {
                 e.stopPropagation();
                 setShowConfig(!showConfig);
