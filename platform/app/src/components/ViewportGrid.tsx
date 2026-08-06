@@ -707,7 +707,7 @@ function ViewerViewportGrid(props: withAppTypes) {
   }
 
   return (
-    <div className="border-input h-[calc(100%-0.25rem)] w-full border">
+    <div className="h-[calc(100%-0.25rem)] w-full" style={{ border: '1px solid rgba(52,140,253,0.18)', borderRadius: '8px', boxShadow: '0 0 32px rgba(10,111,253,0.08), inset 0 0 0 1px rgba(52,140,253,0.06)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
       <ViewportGrid
         numRows={numRows}
         numCols={numCols}

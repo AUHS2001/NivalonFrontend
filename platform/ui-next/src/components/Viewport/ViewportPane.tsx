@@ -67,10 +67,13 @@ function ViewportPane({
 
       {/* Border overlay */}
       <div
-        className={classNames('pointer-events-none absolute inset-0', {
-          'border-highlight rounded-md border': isActive,
-          'group-hover:border-highlight/50 rounded-md border border-transparent': !isActive,
-        })}
+        className={classNames('pointer-events-none absolute inset-0 rounded-md transition-all duration-300')}
+        style={isActive ? {
+          border: '1.5px solid rgba(10,111,253,0.7)',
+          boxShadow: '0 0 18px rgba(10,111,253,0.25), inset 0 0 12px rgba(10,111,253,0.06)',
+        } : {
+          border: '1px solid rgba(52,140,253,0.1)',
+        }}
       />
     </div>
   );
