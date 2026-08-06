@@ -32,6 +32,7 @@ interface HeaderProps {
   PatientInfo?: ReactNode;
   Secondary?: ReactNode;
   UndoRedo?: ReactNode;
+  MoreToolsMenu?: ReactNode;
 }
 
 function Header({
@@ -44,6 +45,7 @@ function Header({
   PatientInfo,
   UndoRedo,
   Secondary,
+  MoreToolsMenu,
   ...props
 }: HeaderProps): ReactNode {
   const onClickReturn = () => {
@@ -91,6 +93,7 @@ function Header({
           </div>
           <div className="absolute right-0 top-1/2 flex -translate-y-1/2 select-none items-center pr-2">
             {UndoRedo}
+            {MoreToolsMenu}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <div className="mx-2 flex cursor-pointer items-center gap-1 rounded-lg bg-[rgba(52,140,253,0.05)] px-1 py-1 shadow-[0_2px_12px_rgba(0,0,0,0.3),inset_0_0_0_1px_rgba(52,140,253,0.1)] transition-all duration-200 hover:bg-[rgba(52,140,253,0.1)] hover:shadow-[0_0_14px_rgba(52,140,253,0.2)]">

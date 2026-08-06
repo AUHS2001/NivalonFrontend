@@ -6,6 +6,7 @@ import React from 'react';
 import { toggleSpineLabelOverlay } from './utils/spineLabelOverlayManager';
 import ThreeDToolsDropdown from './components/ThreeDToolsDropdown';
 import ThreeDUndoButton from './components/ThreeDUndoButton';
+import MoreToolsIconDropdown from './components/MoreToolsIconDropdown';
 /**
  * You can remove any of the following modules if you don't need them.
  */
@@ -123,6 +124,10 @@ export default {
       {
         name: 'stl.threeDUndoButton',
         defaultComponent: ThreeDUndoButton,
+      },
+      {
+        name: 'stl.moreToolsIconDropdown',
+        defaultComponent: MoreToolsIconDropdown,
       },
     ];
   },

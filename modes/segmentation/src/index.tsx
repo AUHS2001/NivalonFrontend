@@ -132,14 +132,16 @@ function modeFactory({ modeConfiguration }) {
         'MeasurementTools',
         'WindowLevel',
         'Pan',
+        'Cine',
         'Zoom',
         'Capture',
+        'Reset',
         'Layout',
         'Crosshairs',
-        'MoreTools',
         'SpineLabel',
         '3DTools',
         '3DUndo',
+        'MoreToolsIcon',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topLeft, [
@@ -183,7 +185,6 @@ function modeFactory({ modeConfiguration }) {
       ]);
 
       toolbarService.updateSection('MoreTools', [
-        'Reset',
         'rotate-right',
         'flipHorizontal',
         'ImageSliceSync',
@@ -192,7 +193,6 @@ function modeFactory({ modeConfiguration }) {
         'StackScroll',
         'invert',
         'Probe',
-        'Cine',
         'Angle',
         'CobbAngle',
         'Magnify',

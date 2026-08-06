@@ -8,6 +8,10 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
 } from '@ohif/ui-next';
 
 const ITEM_CLASS = 'px-3 py-[10px] gap-3';
@@ -18,8 +22,11 @@ const ThreeDToolsDropdown: React.FC = () => {
   const disabled = tools.length === 0;
 
   return (
+    <TooltipProvider>
+    <Tooltip>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        <TooltipTrigger asChild>
         <div className={`flex items-center ${disabled ? 'pointer-events-none' : ''}`}>
           {/* Cube icon — same size/style as ToolButton primary */}
           <div
@@ -44,7 +51,9 @@ const ThreeDToolsDropdown: React.FC = () => {
             <i className="fas fa-chevron-down" style={{ fontSize: '10px' }} />
           </div>
         </div>
+        </TooltipTrigger>
       </DropdownMenuTrigger>
+      <TooltipContent side="bottom">3D Tools</TooltipContent>
       <DropdownMenuContent
         side="bottom"
         align="start"
@@ -119,6 +128,8 @@ const ThreeDToolsDropdown: React.FC = () => {
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+    </Tooltip>
+    </TooltipProvider>
   );
 };
 
