@@ -300,6 +300,7 @@ function ViewerViewportGrid(props: withAppTypes) {
         // Find the viewport that can display the measurement
         const viewport = updatedViewports.find(viewport => {
           const gridViewport = viewportGridService.getViewportState(viewport.viewportId);
+          if (!gridViewport) return false;
           return gridViewport.isReferenceViewable?.({
             viewportId: viewport.viewportId,
             reference: {
