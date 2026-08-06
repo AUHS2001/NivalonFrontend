@@ -1,5 +1,4 @@
-import React from 'react';
-
+import React, { useState } from 'react';
 import { Icons } from '@ohif/ui-next';
 import DividerItem from './DividerItem';
 
@@ -9,11 +8,19 @@ type BackItemProps = {
 };
 
 const BackItem = ({ backLabel, onBackClick }: BackItemProps) => {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <>
       <div
-        className="hover:bg-accent flex h-8 w-full flex-shrink-0 cursor-pointer items-center pl-1 pr-2 text-base hover:rounded"
+        className="flex h-8 w-full flex-shrink-0 cursor-pointer items-center pl-1 pr-2 text-sm rounded-lg transition-all duration-100"
+        style={{
+          backgroundColor: hovered ? 'rgba(10,111,253,0.15)' : 'transparent',
+          color: hovered ? '#ffffff' : 'rgba(130,185,255,0.8)',
+        }}
         onClick={onBackClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
         <Icons.ByName
           name="content-prev"
@@ -21,7 +28,7 @@ const BackItem = ({ backLabel, onBackClick }: BackItemProps) => {
         />
         <span>{backLabel || 'Back to Display Options'}</span>
       </div>
-      <DividerItem></DividerItem>
+      <DividerItem />
     </>
   );
 };

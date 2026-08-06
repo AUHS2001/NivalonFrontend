@@ -65,7 +65,7 @@ export const SingleViewerContainer: React.FC<SingleViewerContainerProps> = ({
       </div>
 
       {/* Left Viewer */}
-      <div style={{ flex: 1, position: 'relative', height: '100%', borderRight: showComparePanel ? '2px solid #ffffff' : 'none' }}>
+      <div style={{ flex: 1, position: 'relative', height: '100%', borderRight: showComparePanel ? '1px solid rgba(52,140,253,0.25)' : 'none' }}>
         {/* 3D View Header with Instructions */}
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,

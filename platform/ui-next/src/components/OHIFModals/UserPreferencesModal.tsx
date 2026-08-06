@@ -10,46 +10,100 @@ interface UserPreferencesModalProps {
 
 export function UserPreferencesModal({ children, className }: UserPreferencesModalProps) {
   return (
-    <div className={cn('flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden', className)}>
+    <div className={cn('flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden gap-5', className)}>
       {children}
     </div>
   );
 }
 
-/** Body
- *  Automatically wraps content in a scrollable area.
- */
+/** Body - scrollable content area */
 interface BodyProps {
   children: React.ReactNode;
   className?: string;
 }
 function Body({ children, className }: BodyProps) {
   return (
-    <div className={cn('flex-1 overflow-y-auto', className)}>
-      <div className={cn('mt-1 mb-4 flex flex-col space-y-4', className)}>{children}</div>
+    <div
+      className={cn('flex-1 overflow-y-auto', className)}
+      style={{
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(52,140,253,0.35) transparent',
+        paddingRight: '4px',
+      }}
+    >
+      <div className="flex flex-col gap-5">{children}</div>
     </div>
   );
 }
 
-/** Subheading
- *  Section labels
- */
+/** Subheading - section label with accent bar */
 interface SubHeadingProps {
   children: React.ReactNode;
   className?: string;
 }
 function SubHeading({ children, className }: SubHeadingProps) {
-  return <span className={cn('text-muted-foreground text-lg', className)}>{children}</span>;
+  return (
+    <div className={cn('flex items-center gap-3', className)}>
+      <div
+        style={{
+          height: '1px',
+          flex: 1,
+          background: 'linear-gradient(to right, rgba(10,111,253,0.55), transparent)',
+        }}
+      />
+      <div className="flex items-center gap-2">
+        <div
+          style={{
+            width: '4px',
+            height: '4px',
+            borderRadius: '50%',
+            backgroundColor: '#0A6FFD',
+            boxShadow: '0 0 6px rgba(10,111,253,0.8)',
+          }}
+        />
+        <span
+          style={{
+            color: 'rgba(130,185,255,0.95)',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {children}
+        </span>
+        <div
+          style={{
+            width: '4px',
+            height: '4px',
+            borderRadius: '50%',
+            backgroundColor: '#0A6FFD',
+            boxShadow: '0 0 6px rgba(10,111,253,0.8)',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          height: '1px',
+          flex: 1,
+          background: 'linear-gradient(to left, rgba(10,111,253,0.55), transparent)',
+        }}
+      />
+    </div>
+  );
 }
 
-/** Responsive 3-column grid for hotkeys, etc. */
+/** Responsive 3-column grid for hotkeys */
 interface HotkeysGridProps {
   children: React.ReactNode;
   className?: string;
 }
 function HotkeysGrid({ children, className }: HotkeysGridProps) {
   return (
-    <div className={cn('grid grid-cols-1 gap-3 gap-x-16 md:grid-cols-2 lg:grid-cols-3', className)}>
+    <div
+      className={cn('grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3', className)}
+      style={{ gap: '6px' }}
+    >
       {children}
     </div>
   );
@@ -95,13 +149,33 @@ function Hotkey({ label, placeholder, className, value, onChange, hotkeys }: Hot
   };
 
   return (
-    <div className={cn('flex items-center justify-between space-x-2', className)}>
-      <Label className="whitespace-nowrap">{label}</Label>
+    <div
+      className={cn('flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition-all duration-150', className)}
+      style={{
+        backgroundColor: isRecording ? 'rgba(10,111,253,0.08)' : 'rgba(10,15,35,0.55)',
+        border: isRecording
+          ? '1px solid rgba(10,111,253,0.55)'
+          : '1px solid rgba(52,140,253,0.1)',
+        boxShadow: isRecording ? '0 0 14px rgba(10,111,253,0.12)' : 'none',
+      }}
+    >
+      <Label
+        className="whitespace-nowrap truncate text-xs"
+        style={{ color: 'rgba(180,205,245,0.8)', maxWidth: '65%' }}
+      >
+        {label}
+      </Label>
       <Input
-        className={cn(
-          'w-16 text-center transition-colors',
-          isRecording && 'bg-accent text-accent-foreground caret-accent-foreground'
-        )}
+        className="w-20 shrink-0 text-center text-xs border-0 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        style={{
+          backgroundColor: isRecording ? 'rgba(10,111,253,0.18)' : 'rgba(14,20,42,0.8)',
+          color: isRecording ? '#ffffff' : 'rgba(200,220,255,0.9)',
+          border: `1px solid ${isRecording ? 'rgba(10,111,253,0.7)' : 'rgba(52,140,253,0.2)'}`,
+          borderRadius: '6px',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.04em',
+        }}
         placeholder={isRecording ? 'Press keys...' : placeholder}
         value={value}
         onKeyDown={onInputKeyDown}
@@ -113,7 +187,7 @@ function Hotkey({ label, placeholder, className, value, onChange, hotkeys }: Hot
   );
 }
 
-/** Attach subcomponents as static properties for a nicer API */
+/** Attach subcomponents */
 UserPreferencesModal.Body = Body;
 UserPreferencesModal.HotkeysGrid = HotkeysGrid;
 UserPreferencesModal.Hotkey = Hotkey;

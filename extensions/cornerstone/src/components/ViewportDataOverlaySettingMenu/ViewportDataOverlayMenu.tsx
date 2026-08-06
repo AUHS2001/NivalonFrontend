@@ -184,12 +184,22 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
   };
 
   return (
-    <div className="bg-popover flex h-full w-[275px] flex-col rounded rounded-md p-1.5">
+    <div
+      className="flex h-full w-[275px] flex-col rounded-xl p-2"
+      style={{
+        backgroundColor: 'rgba(6,9,20,0.97)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(52,140,253,0.22)',
+        boxShadow: '0 0 40px rgba(10,111,253,0.12), 0 16px 60px rgba(0,0,0,0.85)',
+        color: '#ffffff',
+      }}
+    >
       {/* Top buttons row */}
       <div className={`flex`}>
         <Button
           variant="ghost"
-          className="text-primary flex items-center p-1"
+          className="flex items-center p-1 !text-white"
           onClick={() => {
             // Add a new pending foreground slot with a unique ID
             setPendingForegrounds([...pendingForegrounds, `pending-${Date.now()}`]);
@@ -201,7 +211,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
         </Button>
         <Button
           variant="ghost"
-          className="text-primary ml-2 flex items-center"
+          className="ml-2 flex items-center !text-white"
           disabled={potentialOverlayDisplaySets.length === 0}
           onClick={() => {
             setPendingSegmentations([...pendingSegmentations, `seg-${Date.now()}`]);
@@ -221,7 +231,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
               key={displaySet.displaySetInstanceUID}
               className="mb-1 flex items-center"
             >
-              <Icons.LayerSegmentation className="text-muted-foreground mr-1 h-6 w-6 flex-shrink-0" />
+              <Icons.LayerSegmentation className="mr-1 h-6 w-6 flex-shrink-0" style={{ color: 'rgba(130,185,255,0.6)' }} />
               <Select
                 value={displaySet.displaySetInstanceUID}
                 onValueChange={value => handleOverlaySelectionChange(displaySet, value)}
@@ -275,7 +285,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
               key={pendingId}
               className="mb-2 flex items-center"
             >
-              <Icons.LayerSegmentation className="text-muted-foreground mr-1 h-6 w-6 flex-shrink-0" />
+              <Icons.LayerSegmentation className="mr-1 h-6 w-6 flex-shrink-0" style={{ color: 'rgba(130,185,255,0.6)' }} />
               <Select
                 value=""
                 onValueChange={value => handlePendingSegmentationSelection(pendingId, value)}
@@ -329,7 +339,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
               key={displaySet.displaySetInstanceUID}
               className="mb-1 flex items-center"
             >
-              <Icons.LayerForeground className="text-muted-foreground mr-1 h-6 w-6 flex-shrink-0" />
+              <Icons.LayerForeground className="mr-1 h-6 w-6 flex-shrink-0" style={{ color: 'rgba(130,185,255,0.6)' }} />
               <Select
                 value={displaySet.displaySetInstanceUID}
                 onValueChange={value => handleForegroundSelectionChange(displaySet, value)}
@@ -383,7 +393,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
               key={pendingId}
               className="mb-2 flex items-center"
             >
-              <Icons.LayerForeground className="text-muted-foreground mr-1 h-6 w-6 flex-shrink-0" />
+              <Icons.LayerForeground className="mr-1 h-6 w-6 flex-shrink-0" style={{ color: 'rgba(130,185,255,0.6)' }} />
               <Select
                 value=""
                 onValueChange={value => handlePendingForegroundSelection(pendingId, value)}
@@ -429,7 +439,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
         </div>
         {/* Background section */}
         <div className="mt-1 mb-1 flex items-center px-1">
-          <Icons.LayerBackground className="text-muted-foreground mr-1 h-6 w-6 flex-shrink-0" />
+          <Icons.LayerBackground className="mr-1 h-6 w-6 flex-shrink-0" style={{ color: 'rgba(130,185,255,0.6)' }} />
           <Select
             value={backgroundDisplaySet?.displaySetInstanceUID}
             onValueChange={value => {
@@ -475,7 +485,7 @@ function ViewportDataOverlayMenu({ viewportId }: withAppTypes<{ viewportId: stri
             />
             <label
               htmlFor="threshold-opacity-switch"
-              className="text-muted-foreground cursor-pointer text-sm"
+              className="cursor-pointer text-sm" style={{ color: 'rgba(180,210,255,0.8)' }}
               onClick={() => setThresholdOpacityEnabled(!thresholdOpacityEnabled)}
             >
               Control threshold & opacity

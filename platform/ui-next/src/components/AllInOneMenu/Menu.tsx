@@ -184,10 +184,17 @@ const Menu = (props: MenuProps) => {
         {isMenuVisible && (
           <div
             className={classNames(
-              'bg-popover/90 text-foreground flex select-none flex-col rounded px-1 py-1.5',
+              'text-white flex select-none flex-col rounded-xl px-1 py-1.5',
               menuClassName
             )}
-            style={menuStyle}
+            style={{
+              backgroundColor: 'rgba(6, 9, 20, 0.97)',
+              backdropFilter: 'blur(24px)',
+              WebkitBackdropFilter: 'blur(24px)',
+              border: '1px solid rgba(52, 140, 253, 0.22)',
+              boxShadow: '0 0 40px rgba(10,111,253,0.12), 0 16px 60px rgba(0,0,0,0.85)',
+              ...(menuStyle as React.CSSProperties),
+            }}
           >
             {menuPath.length > 1 && (
               <BackItem
