@@ -95,7 +95,7 @@ export function Toolbox({ buttonSectionId, title }: { buttonSectionId: string; t
         )}
       </PanelSection.Header>
 
-      <PanelSection.Content className="bg-muted flex-shrink-0 border-none">
+      <PanelSection.Content className="flex-shrink-0 border-none" style={{ backgroundColor: '#050A14' }}>
         {showConfig && <CustomConfigComponent />}
         {toolboxSections.map(section => {
           const sectionId = section.componentProps.buttonSection;
@@ -104,7 +104,8 @@ export function Toolbox({ buttonSectionId, title }: { buttonSectionId: string; t
           return (
             <div
               key={sectionId}
-              className="bg-muted flex flex-wrap space-x-2 py-2 px-1"
+              className="flex flex-wrap space-x-2 py-2 px-1"
+              style={{ backgroundColor: '#050A14' }}
             >
               {buttons.map(tool => {
                 if (!tool) {
