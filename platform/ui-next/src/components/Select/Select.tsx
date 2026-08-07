@@ -17,14 +17,30 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'border-input text-foreground ring-offset-background placeholder:text-muted-foreground focus:ring-ring hover:bg-primary/10 flex h-7 w-full min-w-0 items-center justify-between rounded border bg-transparent px-2 py-2 text-base shadow-sm focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+      'flex h-9 w-full min-w-0 items-center justify-between rounded-lg px-3 py-2 text-sm shadow-sm',
+      'transition-all duration-150 focus:outline-none',
+      'disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
       className
     )}
+    style={{
+      backgroundColor: 'rgba(14,20,42,0.7)',
+      border: '1px solid rgba(52,140,253,0.3)',
+      color: '#ffffff',
+      backdropFilter: 'blur(8px)',
+    }}
+    onMouseEnter={e => {
+      (e.currentTarget as HTMLElement).style.borderColor = 'rgba(52,140,253,0.6)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(10,111,253,0.1)';
+    }}
+    onMouseLeave={e => {
+      (e.currentTarget as HTMLElement).style.borderColor = 'rgba(52,140,253,0.3)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(14,20,42,0.7)';
+    }}
     {...props}
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <CaretSortIcon className="h-4 w-4 opacity-50" />
+      <CaretSortIcon className="h-4 w-4" style={{ color: 'rgba(130,185,255,0.7)', flexShrink: 0 }} />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -37,6 +53,7 @@ const SelectScrollUpButton = React.forwardRef<
   <SelectPrimitive.ScrollUpButton
     ref={ref}
     className={cn('flex cursor-default items-center justify-center py-1', className)}
+    style={{ color: 'rgba(130,185,255,0.7)' }}
     {...props}
   >
     <ChevronUpIcon />
@@ -51,6 +68,7 @@ const SelectScrollDownButton = React.forwardRef<
   <SelectPrimitive.ScrollDownButton
     ref={ref}
     className={cn('flex cursor-default items-center justify-center py-1', className)}
+    style={{ color: 'rgba(130,185,255,0.7)' }}
     {...props}
   >
     <ChevronDownIcon />
@@ -66,11 +84,20 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 border-input relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded border shadow-md',
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
       )}
+      style={{
+        backgroundColor: 'rgba(6,9,20,0.97)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(52,140,253,0.25)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.8), 0 0 20px rgba(10,111,253,0.1)',
+        color: '#ffffff',
+      }}
       position={position}
       {...props}
     >
@@ -96,7 +123,8 @@ const SelectLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn('px-2 py-1 text-base font-semibold', className)}
+    className={cn('px-2 py-1 text-xs font-semibold uppercase tracking-wider', className)}
+    style={{ color: 'rgba(130,185,255,0.6)' }}
     {...props}
   />
 ));
@@ -109,14 +137,24 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default select-none items-center rounded py-1 pl-2 pr-8 text-base outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex w-full cursor-pointer select-none items-center rounded-lg py-2 pl-3 pr-8 text-sm outline-none transition-all duration-100',
+      'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
+    style={{ color: 'rgba(200,220,255,0.9)' }}
+    onMouseEnter={e => {
+      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(10,111,253,0.18)';
+      (e.currentTarget as HTMLElement).style.color = '#ffffff';
+    }}
+    onMouseLeave={e => {
+      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+      (e.currentTarget as HTMLElement).style.color = 'rgba(200,220,255,0.9)';
+    }}
     {...props}
   >
     <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <CheckIcon className="h-4 w-4" />
+        <CheckIcon className="h-4 w-4" style={{ color: '#0A6FFD' }} />
       </SelectPrimitive.ItemIndicator>
     </span>
     {typeof children === 'string' ? (
@@ -136,7 +174,8 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('bg-muted -mx-1 my-1 h-px', className)}
+    className={cn('-mx-1 my-1 h-px', className)}
+    style={{ backgroundColor: 'rgba(52,140,253,0.15)' }}
     {...props}
   />
 ));

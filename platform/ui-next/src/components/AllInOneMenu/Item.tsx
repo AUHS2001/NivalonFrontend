@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useContext } from 'react';
+import React, { ReactNode, useCallback, useContext, useState } from 'react';
 import { MenuContext } from './Menu';
 
 type ItemProps = {
@@ -23,6 +23,7 @@ const Item = ({
   useIconSpace = false,
 }: ItemProps) => {
   const { hideMenu } = useContext(MenuContext);
+  const [hovered, setHovered] = useState(false);
 
   const onClickHandler = useCallback(() => {
     hideMenu();
@@ -31,17 +32,23 @@ const Item = ({
 
   return (
     <div
-      className="hover:bg-accent flex h-8 w-full flex-shrink-0 cursor-pointer items-center px-2 text-base leading-[18px] hover:rounded"
+      className="flex h-8 w-full flex-shrink-0 cursor-pointer items-center px-2 text-sm leading-[18px] rounded-lg transition-all duration-100"
+      style={{
+        backgroundColor: hovered ? 'rgba(10,111,253,0.15)' : 'transparent',
+        color: hovered ? '#ffffff' : 'rgba(200,220,255,0.88)',
+      }}
       onClick={onClickHandler}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      onMouseEnter={() => { setHovered(true); onMouseEnter?.(); }}
+      onMouseLeave={() => { setHovered(false); onMouseLeave?.(); }}
     >
       {(icon || useIconSpace) && (
         <div className="flex w-7 flex-shrink-0 items-center justify-center">{icon}</div>
       )}
       <span className="flex-grow">{label}</span>
       {secondaryLabel && (
-        <span className="text-muted-foreground ml-2 flex-shrink-0">{secondaryLabel}</span>
+        <span className="ml-2 flex-shrink-0 text-xs" style={{ color: 'rgba(130,185,255,0.55)' }}>
+          {secondaryLabel}
+        </span>
       )}
       {rightIcon && <div className="ml-2 flex-shrink-0">{rightIcon}</div>}
     </div>

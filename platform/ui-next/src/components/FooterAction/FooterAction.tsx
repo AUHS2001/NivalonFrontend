@@ -1,5 +1,4 @@
-import React from 'react';
-import { Button } from '../Button/Button';
+import React, { useState } from 'react';
 import { cn } from '../../lib/utils';
 
 interface FooterActionProps {
@@ -41,7 +40,10 @@ export const FooterAction: FooterActionComponent = ({ children, className }: Foo
   }
   // If both or neither are present, keep justify-between (or adjust if you like)
   return (
-    <div className={cn('flex w-full flex-shrink-0 items-center', justifyClass, className)}>
+    <div
+      className={cn('flex w-full flex-shrink-0 items-center pt-4', justifyClass, className)}
+      style={{ borderTop: '1px solid rgba(52,140,253,0.18)' }}
+    >
       {children}
     </div>
   );
@@ -59,44 +61,69 @@ FooterAction.Right = ({ children }: FooterActionProps) => {
 };
 FooterAction.Right.displayName = 'FooterAction.Right';
 
-// Primary action: Solid button (default)
-FooterAction.Primary = ({ children, onClick, className = 'min-w-[80px]' }: ActionProps) => {
+// Primary action: blue glass button
+FooterAction.Primary = ({ children, onClick, className }: ActionProps) => {
+  const [hovered, setHovered] = useState(false);
   return (
-    <Button
-      variant="default"
+    <button
       onClick={onClick}
-      className={className}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={cn('min-w-[88px] rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-150 focus:outline-none', className)}
+      style={{
+        background: hovered
+          ? 'linear-gradient(135deg, #1a7aff, #0A6FFD)'
+          : 'linear-gradient(135deg, #0A6FFD, #0857d4)',
+        color: '#ffffff',
+        border: '1px solid rgba(10,111,253,0.6)',
+        boxShadow: hovered
+          ? '0 0 20px rgba(10,111,253,0.45), 0 4px 12px rgba(0,0,0,0.4)'
+          : '0 0 10px rgba(10,111,253,0.2), 0 2px 8px rgba(0,0,0,0.3)',
+      }}
     >
       {children}
-    </Button>
+    </button>
   );
 };
 FooterAction.Primary.displayName = 'FooterAction.Primary';
 
-// Secondary action: Ghost button
-FooterAction.Secondary = ({ children, onClick, className = 'min-w-[80px]' }: ActionProps) => {
+// Secondary action: ghost glass button
+FooterAction.Secondary = ({ children, onClick, className }: ActionProps) => {
+  const [hovered, setHovered] = useState(false);
   return (
-    <Button
-      variant="secondary"
+    <button
       onClick={onClick}
-      className={className}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={cn('min-w-[88px] rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 focus:outline-none', className)}
+      style={{
+        backgroundColor: hovered ? 'rgba(52,140,253,0.1)' : 'rgba(14,20,42,0.5)',
+        color: 'rgba(180,210,255,0.9)',
+        border: '1px solid rgba(52,140,253,0.2)',
+      }}
     >
       {children}
-    </Button>
+    </button>
   );
 };
 FooterAction.Secondary.displayName = 'FooterAction.Secondary';
 
-// Tertiary action: Ghost button with different styling
+// Auxiliary action: text-style button
 FooterAction.Auxiliary = ({ children, onClick, className }: ActionProps) => {
+  const [hovered, setHovered] = useState(false);
   return (
-    <Button
-      variant="ghost"
+    <button
       onClick={onClick}
-      className={className}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={cn('rounded-lg px-3 py-2 text-sm transition-all duration-150 focus:outline-none', className)}
+      style={{
+        color: hovered ? 'rgba(130,185,255,1)' : 'rgba(130,185,255,0.6)',
+        backgroundColor: hovered ? 'rgba(52,140,253,0.08)' : 'transparent',
+      }}
     >
       {children}
-    </Button>
+    </button>
   );
 };
 FooterAction.Auxiliary.displayName = 'FooterAction.Auxiliary';

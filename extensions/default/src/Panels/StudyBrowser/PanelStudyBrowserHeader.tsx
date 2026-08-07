@@ -27,15 +27,16 @@ function PanelStudyBrowserHeader({
                   const selectedViewPreset = viewPresets.find(preset => preset.id === value);
                   updateViewPresetValue(selectedViewPreset);
                 }}
+                className="gap-1"
               >
                 {viewPresets.map((viewPreset: viewPreset, index) => (
                   <ToggleGroupItem
                     key={index}
                     aria-label={viewPreset.id}
                     value={viewPreset.id}
-                    className="text-actions-primary"
+                    className="text-actions-primary h-9 w-9 rounded-xl"
                   >
-                    {React.createElement(Icons[viewPreset.iconName] || Icons.MissingIcon)}
+                    {React.createElement(Icons[viewPreset.iconName] || Icons.MissingIcon, { style: { width: '22px', height: '22px' } })}
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>

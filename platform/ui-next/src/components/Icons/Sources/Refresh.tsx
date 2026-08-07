@@ -3,8 +3,8 @@ import type { IconProps } from '../types';
 
 export const Refresh = (props: IconProps) => (
   <svg
-    width="24px"
-    height="24px"
+    width="28px"
+    height="28px"
     viewBox="0 0 24 24"
     {...props}
   >

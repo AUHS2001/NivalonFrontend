@@ -75,7 +75,7 @@ const ArrowAnnotate = {
       frameNumber: mappedAnnotations[0]?.frameNumber || 1,
       toolName: metadata.toolName,
       displaySetInstanceUID: displaySet.displaySetInstanceUID,
-      label: data.text,
+      label: data.text || data.label || annotation.label || '',
       displayText: displayText,
       data: data.cachedStats,
       type: getValueTypeFromToolType(toolName),
@@ -86,7 +86,9 @@ const ArrowAnnotate = {
 
 function getMappedAnnotations(annotation, displaySetService) {
   const { metadata, data } = annotation;
-  const { text } = data;
+  // Cornerstone stores the arrow text in data.text in some versions and
+  // data.label or annotation.label in others — check all locations.
+  const text = data.text || data.label || annotation.label || '';
   const { referencedImageId } = metadata;
 
   const annotations = [];

@@ -61,14 +61,22 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
     <UserPreferencesModal>
       <UserPreferencesModal.Body>
         {/* Language Section */}
-        <div className="mb-3 flex items-center space-x-14">
-          <UserPreferencesModal.SubHeading>{t('Language')}</UserPreferencesModal.SubHeading>
+        <div
+          className="rounded-xl p-4"
+          style={{ backgroundColor: 'rgba(10,15,35,0.7)', border: '1px solid rgba(52,140,253,0.15)', backdropFilter: 'blur(12px)' }}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: 'linear-gradient(180deg, #0A6FFD, rgba(10,111,253,0.3))' }} />
+            <span style={{ color: 'rgba(130,185,255,0.95)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              {t('Language')}
+            </span>
+          </div>
           <Select
             defaultValue={state.languageValue}
             onValueChange={onLanguageChangeHandler}
           >
             <SelectTrigger
-              className="w-60"
+              className="w-full"
               aria-label="Language"
             >
               <SelectValue placeholder={t('Select language')} />
@@ -87,6 +95,7 @@ function UserPreferencesModalDefault({ hide }: { hide: () => void }) {
         </div>
 
         <UserPreferencesModal.SubHeading>{t('Hotkeys')}</UserPreferencesModal.SubHeading>
+
         <UserPreferencesModal.HotkeysGrid>
           {Object.entries(state.hotkeyDefinitions).map(([id, definition]) => (
             <UserPreferencesModal.Hotkey

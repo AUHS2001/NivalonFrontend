@@ -49,8 +49,13 @@ export const PanelSection: React.FC<PanelSectionProps> & {
 PanelSection.Header = ({ children, className }) => (
   <AccordionTrigger
     className={cn(
-      'bg-[#0a0e17] hover:bg-accent text-aqua-pale',
-      'my-0.5 flex h-7 w-full items-center justify-between rounded py-2 pr-1 pl-2.5 text-[13px]',
+      'bg-gradient-to-r from-[rgba(14,20,42,0.95)] to-[rgba(8,12,24,0.9)]',
+      'hover:from-[rgba(18,26,54,0.98)] hover:to-[rgba(12,17,36,0.95)]',
+      'border-b border-[rgba(52,140,253,0.13)] hover:border-[rgba(52,140,253,0.28)]',
+      'hover:shadow-[0_2px_12px_rgba(52,140,253,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]',
+      'text-[rgba(130,185,255,0.9)] hover:text-[rgba(150,200,255,1)]',
+      'my-[2px] flex h-8 w-full items-center justify-between rounded-sm py-2 pr-2 pl-3 text-[13px]',
+      'transition-all duration-200',
       className
     )}
   >

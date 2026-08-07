@@ -139,39 +139,29 @@ function ViewportOrientationMenu({
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[100px] p-1"
+        className="w-[130px] p-1"
         align={align}
         side={side}
       >
-        <div className="flex flex-col">
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={() => handleOrientationChange('axial')}
-          >
-            Axial
-          </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={() => handleOrientationChange('sagittal')}
-          >
-            Sagittal
-          </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={() => handleOrientationChange('coronal')}
-          >
-            Coronal
-          </Button>
-          <Button
-            variant="ghost"
-            className="justify-start"
-            onClick={() => handleOrientationChange('acquisition')}
-          >
-            Acquisition
-          </Button>
+        <div className="flex flex-col gap-0.5">
+          {['axial', 'sagittal', 'coronal', 'acquisition'].map(orientation => (
+            <button
+              key={orientation}
+              className="flex w-full cursor-pointer items-center rounded-lg px-3 py-1.5 text-sm capitalize transition-all duration-100"
+              style={{ color: 'rgba(200,220,255,0.9)', backgroundColor: 'transparent' }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(10,111,253,0.18)';
+                (e.currentTarget as HTMLElement).style.color = '#ffffff';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                (e.currentTarget as HTMLElement).style.color = 'rgba(200,220,255,0.9)';
+              }}
+              onClick={() => handleOrientationChange(orientation)}
+            >
+              {orientation.charAt(0).toUpperCase() + orientation.slice(1)}
+            </button>
+          ))}
         </div>
       </PopoverContent>
     </Popover>

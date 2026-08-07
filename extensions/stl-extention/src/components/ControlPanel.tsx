@@ -105,12 +105,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       position: 'relative',
       display: 'flex',
       flexDirection: 'column',
-      borderRight: '1.5px solid #fff',
       overflow: 'hidden',
     }}>
       {
         shouldShowContent ?
-          <div style={{ backgroundColor: '#0a0e17', borderRight: '1.5px solid #fff', padding: '10px', overflowY: 'auto', flex: 1 }}>
+          <div style={{ backgroundColor: '#0a0e17', padding: '10px', overflowY: 'auto', flex: 1 }}>
 
             {/* Loading state */}
             {loading && (

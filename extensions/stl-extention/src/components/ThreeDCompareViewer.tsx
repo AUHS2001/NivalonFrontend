@@ -1579,7 +1579,7 @@ const ThreeDCompareViewer: React.FC<ThreeDCompareViewerProps> = ({
       backgroundColor: '#0a0e17', position: 'relative',
     }}>
       {/* ─── Left Panel ─── */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '2px solid #ffffff' }}>
+      <div style={{ flex: 1, position: 'relative', borderRight: '1px solid rgba(52,140,253,0.25)' }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 10,
           display: 'flex', alignItems: 'center', gap: '8px',

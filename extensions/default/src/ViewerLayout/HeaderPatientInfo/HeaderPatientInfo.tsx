@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import usePatientInfo from '../../hooks/usePatientInfo';
+import React from 'react';
 import { Icons } from '@ohif/ui-next';
 
 export enum PatientInfoVisibility {
@@ -9,64 +8,19 @@ export enum PatientInfoVisibility {
   VISIBLE_READONLY = 'visibleReadOnly',
 }
 
-const formatWithEllipsis = (str, maxLength) => {
-  if (str?.length > maxLength) {
-    return str.substring(0, maxLength) + '...';
-  }
-  return str;
-};
-
 function HeaderPatientInfo({ servicesManager, appConfig }: withAppTypes) {
-  const initialExpandedState =
-    appConfig.showPatientInfo === PatientInfoVisibility.VISIBLE ||
-    appConfig.showPatientInfo === PatientInfoVisibility.VISIBLE_READONLY;
-  const [expanded, setExpanded] = useState(initialExpandedState);
-  const { patientInfo, isMixedPatients } = usePatientInfo(servicesManager);
 
-  useEffect(() => {
-    if (isMixedPatients && expanded) {
-      setExpanded(false);
-    }
-  }, [isMixedPatients, expanded]);
-
-  const handleOnClick = () => {
-    if (!isMixedPatients && appConfig.showPatientInfo !== PatientInfoVisibility.VISIBLE_READONLY) {
-      setExpanded(!expanded);
-    }
-  };
-
-  const formattedPatientName = formatWithEllipsis(patientInfo.PatientName, 27);
-  const formattedPatientID = formatWithEllipsis(patientInfo.PatientID, 15);
+  const userRole = localStorage.getItem('userRole') || 'User';
 
   return (
-    <div
-      className="hover:bg-primary-dark flex cursor-pointer items-center justify-center gap-1 rounded-lg"
-      onClick={handleOnClick}
-    >
-      {isMixedPatients ? (
-        <Icons.MultiplePatients className="text-white" />
-      ) : (
-        <Icons.Patient className="text-white" />
-      )}
-      <div className="flex flex-col justify-center">
-        {expanded ? (
-          <>
-            <div className="self-start text-[13px] font-bold text-white">
-              {formattedPatientName}
-            </div>
-            <div className="text-aqua-pale flex gap-2 text-[11px]">
-              <div>{formattedPatientID}</div>
-              <div>{patientInfo.PatientSex}</div>
-              <div>{patientInfo.PatientDOB}</div>
-            </div>
-          </>
-        ) : (
-          <div className="text-white self-center text-[13px]">
-            {isMixedPatients ? 'Multiple Patients' : (localStorage.getItem('userRole') || 'Patient')}
-          </div>
-        )}
+    <div className="flex h-full items-center gap-2 px-2 py-[3px]">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(52,140,253,0.2)] shadow-[0_0_8px_rgba(52,140,253,0.3)]">
+        <Icons.Patient className="h-7 w-7 text-[rgba(52,140,253,0.9)]" />
       </div>
-      <Icons.ArrowLeft className={`text-white ${expanded ? 'rotate-180' : ''}`} />
+      <div className="text-[13px] font-semibold capitalize text-white leading-tight">
+        {userRole}
+      </div>
+      <Icons.ArrowLeft className="-rotate-90 h-5 w-5 text-white/40" />
     </div>
   );
 }

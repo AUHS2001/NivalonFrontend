@@ -23,17 +23,16 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
   const { previousViewLoading, isApproving, approveProgress, isDownloading, downloadProgress, isUploading, uploadProgress } = useVersionHistoryContext();
   return (
     <div style={{
-        flex: 1, // Change from flex: 6 to flex: 1
+        flex: 1,
         display: 'flex',
         width: '100%',
         backgroundColor: '#0a0e17',
-        borderTop: '1.5px solid #fff',
         position: 'relative',
-        height: '100%', // Add this
+        height: '100%',
         minHeight: '700px'
       }}>
       {/* Start View (Previous View) */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: show ? 'block' : 'none', height: '100%' }}>
+      <div style={{ flex: 1, position: 'relative', display: show ? 'block' : 'none', height: '100%' }}>
         {show && children && (
           <div style={{
             position: 'absolute',
@@ -85,7 +84,7 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
       </div>
 
       {/* Left Viewer */}
-      <div style={{ flex: 1, position: 'relative', borderRight: '1.5px solid #fff', display: 'none'  }}>
+      <div style={{ flex: 1, position: 'relative', display: 'none'  }}>
         <div style={{
           position: 'absolute', top: 0, left: 10, color: '#fff', zIndex: 100,
           backgroundColor: '#0a0e17', padding: '4px 8px', borderRadius: '4px',
@@ -105,7 +104,6 @@ export const ViewerContainer: React.FC<ViewerContainerProps> = ({
       <div style={{
         flex: 2,
         position: 'relative',
-        borderRight: '1.5px solid #fff',
         display: 'none'
       }}>
         <div style={{

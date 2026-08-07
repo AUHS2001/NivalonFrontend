@@ -109,17 +109,6 @@ export const SegmentationTableRoot = (props: SegmentationTableProps) => {
       <PanelSection defaultOpen={true}>
         <PanelSection.Header className="flex items-center justify-between">
           <span>{t(title)}</span>
-          {hasConfigComponent && (
-            <div className="ml-auto mr-2">
-              <Icons.Settings
-                className="text-primary h-4 w-4"
-                onClick={e => {
-                  e.stopPropagation();
-                  toggleShowConfig();
-                }}
-              />
-            </div>
-          )}
         </PanelSection.Header>
         <PanelSection.Content>{processedChildren}</PanelSection.Content>
       </PanelSection>

@@ -139,6 +139,7 @@ function modeFactory({ modeConfiguration }) {
         'PlanarFreehandROI',
         'SplineROI',
         'LivewireContour',
+        'CalibrationLine',
       ]);
 
       toolbarService.updateSection('MoreTools', [
@@ -155,7 +156,6 @@ function modeFactory({ modeConfiguration }) {
         'Angle',
         'CobbAngle',
         'Magnify',
-        'CalibrationLine',
         'TagBrowser',
         'AdvancedMagnify',
         'UltrasoundDirectionalTool',

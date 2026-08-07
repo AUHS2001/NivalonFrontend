@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 import { ThumbnailList } from '../ThumbnailList';
@@ -24,6 +24,8 @@ const StudyItem = ({
   StudyMenuItems,
   StudyInstanceUID,
 }: withAppTypes) => {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
     <Accordion
       type="single"
@@ -35,7 +37,22 @@ const StudyItem = ({
       defaultValue={isActive ? 'study-item' : undefined}
     >
       <AccordionItem value="study-item">
-        <AccordionTrigger className={classnames('hover:bg-accent bg-popover group w-full rounded')}>
+        <AccordionTrigger
+          className={classnames('group w-full rounded')}
+          style={{
+            backgroundColor: isActive
+              ? 'rgba(10,111,253,0.15)'
+              : isHovered
+                ? 'rgba(52,140,253,0.08)'
+                : 'rgba(14,20,42,0.65)',
+            border: isActive ? '1px solid rgba(52,140,253,0.4)' : '1px solid rgba(52,140,253,0.15)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
           <div className="flex h-[40px] w-full flex-row overflow-hidden">
             <div className="flex w-full flex-row items-center justify-between">
               <div className="flex min-w-0 flex-col items-start text-[13px]">

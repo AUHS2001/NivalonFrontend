@@ -1,5 +1,6 @@
 const supportedTools = [
   'Length',
+  'CalibrationLine',
   'EllipticalROI',
   'CircleROI',
   'Bidirectional',

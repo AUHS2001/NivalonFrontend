@@ -66,7 +66,7 @@ interface DataRowProps {
   onSelect?: (e) => void;
   //
   isVisible: boolean;
-  onToggleVisibility: (e) => void;
+  onToggleVisibility?: (e) => void;
   //
   isLocked: boolean;
   onToggleLocked: (e) => void;
@@ -198,20 +198,24 @@ export const DataRow: React.FC<DataRowProps> = ({
       className={cn('flex flex-col', !isVisible && 'opacity-60', className)}
     >
       <div
-        className={`flex items-center ${
-          isSelected ? 'bg-popover' : 'bg-muted'
+        className={`flex items-center transition-all duration-150 ${
+          isSelected
+            ? 'bg-[rgba(34,76,160,0.18)] border-l-2 border-l-[rgba(52,140,253,0.6)] shadow-[inset_0_0_24px_rgba(52,140,253,0.06)]'
+            : 'bg-[rgba(8,12,26,0.55)] border-l-2 border-l-transparent'
         } group relative cursor-pointer`}
         onClick={onSelect}
         data-cy="data-row"
       >
         {/* Hover Overlay */}
-        <div className="bg-primary/20 pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"></div>
+        <div className="bg-[rgba(52,140,253,0.07)] pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"></div>
 
         {/* Number Box */}
         {number !== null && (
           <div
-            className={`flex h-7 max-h-7 w-7 flex-shrink-0 items-center justify-center rounded-l border-r border-black text-base ${
-              isSelected ? 'bg-highlight text-black' : 'bg-muted text-muted-foreground'
+            className={`flex h-7 max-h-7 w-7 flex-shrink-0 items-center justify-center rounded-l border-r border-[rgba(0,0,0,0.35)] text-[13px] font-semibold transition-all duration-150 ${
+              isSelected
+                ? 'bg-[rgba(52,140,253,0.45)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_0_8px_rgba(52,140,253,0.4)]'
+                : 'bg-[rgba(14,20,44,0.7)] text-[rgba(110,160,230,0.75)]'
             } overflow-hidden`}
           >
             {number}
@@ -235,8 +239,8 @@ export const DataRow: React.FC<DataRowProps> = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
-                  className={`cursor-default text-base ${
-                    isSelected ? 'text-highlight' : 'text-muted-foreground'
+                  className={`cursor-default text-[13px] ${
+                    isSelected ? 'text-[rgba(140,200,255,0.97)]' : 'text-[rgba(155,190,240,0.78)]'
                   } [overflow:hidden] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]`}
                 >
                   {title}
@@ -251,8 +255,8 @@ export const DataRow: React.FC<DataRowProps> = ({
             </Tooltip>
           ) : (
             <span
-              className={`text-base ${
-                isSelected ? 'text-highlight' : 'text-muted-foreground'
+              className={`text-[13px] ${
+                isSelected ? 'text-[rgba(140,200,255,0.97)]' : 'text-[rgba(155,190,240,0.78)]'
               } [overflow:hidden] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]`}
             >
               {title}
@@ -263,20 +267,23 @@ export const DataRow: React.FC<DataRowProps> = ({
         {/* Actions and Visibility Toggle */}
         <div className="relative ml-2 flex items-center space-x-1">
           {/* Visibility Toggle Icon */}
-          <Button
-            size="icon"
-            variant="ghost"
-            className={`h-6 w-6 transition-opacity ${
-              isSelected || !isVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-            aria-label={isVisible ? 'Hide' : 'Show'}
-            onClick={e => {
-              e.stopPropagation();
-              onToggleVisibility(e);
-            }}
-          >
-            {isVisible ? <Icons.Hide className="h-6 w-6" /> : <Icons.Show className="h-6 w-6" />}
-          </Button>
+          {onToggleVisibility && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className={cn(
+                'h-6 w-6 translate-x-1 transition-all duration-200 group-hover:translate-x-0',
+                isSelected || !isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 group-hover:opacity-100'
+              )}
+              aria-label={isVisible ? 'Hide' : 'Show'}
+              onClick={e => {
+                e.stopPropagation();
+                onToggleVisibility(e);
+              }}
+            >
+              {isVisible ? <Icons.Hide className="h-6 w-6" /> : <Icons.Show className="h-6 w-6" />}
+            </Button>
+          )}
 
           {/* Lock Icon (if needed) */}
           {isLocked && !disableEditing && <Icons.Lock className="text-muted-foreground h-6 w-6" />}
@@ -333,8 +340,8 @@ export const DataRow: React.FC<DataRowProps> = ({
 
       {/* Details Section */}
       {details && (details.primary?.length > 0 || details.secondary?.length > 0) && (
-        <div className="ml-7 px-2 py-2">
-          <div className="text-secondary-foreground flex items-center gap-1 text-base leading-normal">
+        <div className="ml-7 px-2 py-1.5 bg-[rgba(6,9,20,0.35)] border-l border-[rgba(52,140,253,0.08)]">
+          <div className="text-[rgba(100,148,218,0.75)] flex items-center gap-1 text-[12px] leading-normal">
             {details.primary?.length > 0 && renderDetails(details.primary)}
             {details.secondary?.length > 0 && (
               <div className="text-muted-foreground ml-auto text-sm">

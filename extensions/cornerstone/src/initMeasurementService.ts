@@ -26,6 +26,7 @@ const initMeasurementService = (
   /* Initialization */
   const {
     Length,
+    CalibrationLine,
     Bidirectional,
     EllipticalROI,
     CircleROI,
@@ -58,6 +59,14 @@ const initMeasurementService = (
     Length.matchingCriteria,
     Length.toAnnotation,
     Length.toMeasurement
+  );
+
+  measurementService.addMapping(
+    csTools3DVer1MeasurementSource,
+    'CalibrationLine',
+    CalibrationLine.matchingCriteria,
+    CalibrationLine.toAnnotation,
+    CalibrationLine.toMeasurement
   );
 
   measurementService.addMapping(
@@ -221,7 +230,6 @@ const connectToolsToMeasurementService = ({
   connectMeasurementServiceToTools({ servicesManager, commandsManager, extensionManager });
   const { annotationToMeasurement, remove } = csTools3DVer1MeasurementSource;
 
-  //
   function addMeasurement(csToolsEvent) {
     try {
       const annotationAddedEventDetail = csToolsEvent.detail;
@@ -231,26 +239,18 @@ const connectToolsToMeasurementService = ({
       const { toolName } = metadata;
 
       if (csToolsEvent.type === completedEvt && toolName === toolNames.CalibrationLine) {
-        // show modal to input the measurement (mm)
         onCompletedCalibrationLine(servicesManager, csToolsEvent)
           .then(
-            () => {
-              console.log('Calibration applied.');
-            },
+            () => { console.log('Calibration applied.'); },
             () => true
           )
           .finally(() => {
-            // we don't need the calibration line lingering around, remove the
-            // annotation from the display
             removeAnnotation(annotationUID);
             removeMeasurement(csToolsEvent);
-            // this will ensure redrawing of annotations
             cornerstoneViewportService.resize();
           });
       } else {
         // To force the measurementUID be the same as the annotationUID
-        // Todo: this should be changed when a measurement can include multiple annotations
-        // in the future
         annotationAddedEventDetail.uid = annotationUID;
         annotationToMeasurement(toolName, annotationAddedEventDetail);
       }
@@ -355,26 +355,37 @@ const connectMeasurementServiceToTools = ({
     measurementService.EVENTS;
 
   measurementService.subscribe(MEASUREMENTS_CLEARED, ({ measurements }) => {
-    if (!Object.keys(measurements).length) {
+    if (!measurements || !Object.keys(measurements).length) {
       return;
     }
 
     for (const measurement of Object.values(measurements)) {
-      const { uid, source } = measurement;
-      if (source.name !== CORNERSTONE_3D_TOOLS_SOURCE_NAME) {
+      if (!measurement) continue;
+      const { uid, source } = measurement as any;
+      if (!uid) continue;
+      if (source?.name && source.name !== CORNERSTONE_3D_TOOLS_SOURCE_NAME) {
         continue;
       }
-      const removedAnnotation = annotation.state.getAnnotation(uid);
-      removeAnnotation(uid);
-      commandsManager.run('triggerCreateAnnotationMemo', {
-        annotation: removedAnnotation,
-        FrameOfReferenceUID: removedAnnotation.metadata.FrameOfReferenceUID,
-        options: { deleting: true },
-      });
+      try {
+        const removedAnnotation = annotation.state.getAnnotation(uid);
+        removeAnnotation(uid);
+        if (removedAnnotation?.metadata?.FrameOfReferenceUID) {
+          commandsManager.run('triggerCreateAnnotationMemo', {
+            annotation: removedAnnotation,
+            FrameOfReferenceUID: removedAnnotation.metadata.FrameOfReferenceUID,
+            options: { deleting: true },
+          });
+        }
+      } catch (e) {
+        console.warn('[MeasurementService] Failed to remove annotation:', uid, e);
+      }
     }
 
     // trigger a render
-    cornerstoneViewportService.getRenderingEngine().render();
+    const renderingEngine = cornerstoneViewportService.getRenderingEngine();
+    if (renderingEngine) {
+      renderingEngine.render();
+    }
   });
 
   measurementService.subscribe(
@@ -452,7 +463,7 @@ const connectMeasurementServiceToTools = ({
       if (measurement?.metadata?.referencedImageId) {
         imageId = measurement.metadata.referencedImageId;
         frameNumber = getSOPInstanceAttributes(measurement.metadata.referencedImageId).frameNumber;
-      } else {
+      } else if (instance) {
         imageId = dataSource.getImageIdsForInstance({ instance });
       }
 
@@ -465,11 +476,13 @@ const connectMeasurementServiceToTools = ({
         annotationUID: measurement.uid,
         highlighted: false,
         isLocked: false,
-        invalidated: false,
+        invalidated: true,
         metadata: {
+          ...measurement.metadata,
           toolName: measurement.toolName,
           FrameOfReferenceUID: measurement.FrameOfReferenceUID,
           referencedImageId: imageId,
+          predecessorImageId: measurement.metadata?.referencedImageId,
         },
         data: {
           /**
@@ -499,17 +512,23 @@ const connectMeasurementServiceToTools = ({
       if (source?.name && source.name !== CORNERSTONE_3D_TOOLS_SOURCE_NAME) {
         return;
       }
-      const removedAnnotation = annotation.state.getAnnotation(removedMeasurementId);
-      removeAnnotation(removedMeasurementId);
-      commandsManager.run('triggerCreateAnnotationMemo', {
-        annotation: removedAnnotation,
-        FrameOfReferenceUID: removedAnnotation.metadata.FrameOfReferenceUID,
-        options: { deleting: true },
-      });
+      try {
+        const removedAnnotation = annotation.state.getAnnotation(removedMeasurementId);
+        removeAnnotation(removedMeasurementId);
+        if (removedAnnotation) {
+          commandsManager.run('triggerCreateAnnotationMemo', {
+            annotation: removedAnnotation,
+            FrameOfReferenceUID: removedAnnotation.metadata?.FrameOfReferenceUID,
+            options: { deleting: true },
+          });
+        }
+      } catch (e) {
+        console.warn('[MeasurementService] Failed to remove annotation:', removedMeasurementId, e);
+      }
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
-      // Note: We could do a better job by triggering the render on the
-      // viewport itself, but the removeAnnotation does not include that info...
-      renderingEngine.render();
+      if (renderingEngine) {
+        renderingEngine.render();
+      }
     }
   );
 };

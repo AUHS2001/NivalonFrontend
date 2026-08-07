@@ -83,6 +83,7 @@ const Thumbnail = ({
   });
 
   const [lastTap, setLastTap] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleTouchEnd = e => {
     const currentTime = new Date().getTime();
@@ -122,7 +123,7 @@ const Thumbnail = ({
       <div
         className={classnames(
           'flex h-full w-full flex-col items-center justify-center gap-[2px] p-[4px]',
-          isActive && 'bg-popover rounded'
+          isActive && 'rounded'
         )}
       >
         <div className="h-[114px] w-[128px]">
@@ -234,7 +235,7 @@ const Thumbnail = ({
       <div
         className={classnames(
           'flex h-full w-full items-center justify-between pr-[8px] pl-[8px] pt-[4px] pb-[4px]',
-          isActive && 'bg-popover rounded'
+          isActive && 'rounded'
         )}
       >
         <div className="relative flex h-[32px] w-full items-center gap-[8px] overflow-hidden">
@@ -323,10 +324,23 @@ const Thumbnail = ({
     <div
       className={classnames(
         className,
-        'bg-muted hover:bg-primary/30 group flex cursor-pointer select-none flex-col rounded outline-none',
+        'group flex cursor-pointer select-none flex-col rounded outline-none',
         viewPreset === 'thumbnails' && 'h-[170px] w-[135px]',
         viewPreset === 'list' && 'h-[40px] w-full'
       )}
+      style={{
+        backgroundColor: isActive
+          ? 'rgba(10,111,253,0.15)'
+          : isHovered
+            ? 'rgba(52,140,253,0.08)'
+            : 'rgba(14,20,42,0.65)',
+        border: isActive
+          ? '1px solid rgba(52,140,253,0.45)'
+          : '1px solid rgba(52,140,253,0.15)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        transition: 'all 0.15s ease',
+      }}
       id={`thumbnail-${displaySetInstanceUID}`}
       data-cy={
         thumbnailType === 'thumbnailNoImage'
@@ -337,6 +351,8 @@ const Thumbnail = ({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onTouchEnd={handleTouchEnd}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       role="button"
     >
       <div

@@ -523,7 +523,7 @@ const LocalThreeDCompareViewer: React.FC<LocalThreeDCompareViewerProps> = ({
       <div
         ref={leftDropRef}
         style={{
-          flex: 1, position: 'relative', borderRight: '2px solid #ffffff',
+          flex: 1, position: 'relative', borderRight: '1px solid rgba(52,140,253,0.25)',
           outline: isOverLeft ? '2px dashed #00ffff' : 'none',
         }}
       >

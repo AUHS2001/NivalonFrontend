@@ -26,7 +26,7 @@ const ThumbnailList = ({
   );
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-[#050A14]">
       <div
         ref={ref}
         className="flex flex-col gap-[2px] pt-[4px] pr-[2.5px] pl-[5px] pb-[4px]"
@@ -34,7 +34,7 @@ const ThumbnailList = ({
         {thumbnailItems.length > 0 && (
           <div
             id="ohif-thumbnail-list"
-            className="bg-[#0a0e17] grid grid-cols-[repeat(auto-fit,_minmax(0,135px))] place-items-start gap-[4px]"
+            className="bg-[#050A14] grid grid-cols-[repeat(auto-fit,_minmax(0,135px))] place-items-start gap-[4px]"
           >
             {thumbnailItems.map((item,index) => {
               // console.log(`my thubnail ${index}`, item.StudyInstanceUID              )
@@ -65,7 +65,7 @@ const ThumbnailList = ({
         {listItems.length > 0 && (
           <div
             id="ohif-thumbnail-list"
-            className="bg-[#0a0e17] grid grid-cols-[repeat(auto-fit,_minmax(0,275px))] place-items-start gap-[2px]"
+            className="bg-[#050A14] grid grid-cols-[repeat(auto-fit,_minmax(0,275px))] place-items-start gap-[2px]"
           >
             {listItems.map((item,index) => {
               // console.log(`my thubnail ${index}`, item)

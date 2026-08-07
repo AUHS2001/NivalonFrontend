@@ -34,6 +34,16 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: 'MoreToolsIcon',
+    uiType: 'stl.moreToolsIconDropdown',
+    props: {},
+  },
+  {
+    id: 'MovementTools',
+    uiType: 'stl.movementToolsDropdown',
+    props: {},
+  },
+  {
     id: 'AdvancedRenderingControls',
     uiType: 'ohif.advancedRenderingControls',
     props: {
@@ -293,7 +303,7 @@ const toolbarButtons: Button[] = [
     id: 'Reset',
     uiType: 'ohif.toolButton',
     props: {
-      icon: 'tool-reset',
+      icon: 'Refresh',
       label: 'Reset View',
       tooltip: 'Reset View',
       commands: 'resetViewport',
