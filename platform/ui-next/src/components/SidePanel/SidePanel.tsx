@@ -360,7 +360,7 @@ const SidePanel = ({
         data-cy={`side-panel-header-${side}`}
       >
         <div
-          className="flex items-center justify-center w-9 h-9 rounded-xl shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
+          className="flex items-center justify-center w-9 h-9 rounded-lg shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
           style={{ backgroundColor: '#182E59' }}
           onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}
@@ -455,7 +455,7 @@ const SidePanel = ({
       return (
         <div className="absolute top-[2px] left-[4px] z-20 flex items-center justify-center h-8">
           <div
-            className="flex items-center justify-center w-8 h-8 rounded-xl cursor-pointer shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
+            className="flex items-center justify-center w-8 h-8 rounded-lg cursor-pointer shadow-[0_0_16px_rgba(52,140,253,0.22)] hover:shadow-[0_0_24px_rgba(52,140,253,0.48)] transition-all duration-200"
             style={{ backgroundColor: '#182E59' }}
             onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1e3870'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#182E59'; }}

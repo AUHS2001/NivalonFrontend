@@ -28,7 +28,7 @@ const MovementToolsDropdown: React.FC = () => {
               <div className="flex items-center">
                 {/* Main icon */}
                 <div className="inline-flex items-center justify-center h-10 w-10 rounded-lg transition-all duration-200 cursor-pointer text-foreground/80 hover:bg-[rgba(52,140,253,0.12)] hover:text-highlight hover:shadow-[0_0_10px_rgba(52,140,253,0.18)]">
-                  <i className="fas fa-arrows-alt" style={{ fontSize: '18px' }} />
+                  <i className="fas fa-exchange-alt" style={{ fontSize: '18px' }} />
                 </div>
                 {/* Divider */}
                 <div className="h-5 w-px self-center bg-[rgba(52,140,253,0.35)]" />
