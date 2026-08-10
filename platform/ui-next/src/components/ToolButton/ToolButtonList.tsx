@@ -115,6 +115,16 @@ const ToolButtonListDropDown = React.forwardRef<HTMLDivElement, ToolButtonListDr
         side="bottom"
         align="start"
         alignOffset={-40}
+        style={{
+          backgroundColor: 'rgba(6,9,20,0.97)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(52,140,253,0.22)',
+          boxShadow: '0 0 40px rgba(10,111,253,0.12), 0 16px 60px rgba(0,0,0,0.85)',
+          borderRadius: '12px',
+          padding: '6px',
+          minWidth: '190px',
+        }}
       >
         {children}
       </DropdownMenuContent>
@@ -147,6 +157,7 @@ const ToolButtonListItem = React.forwardRef<
       ref={ref}
       className={cn('flex items-center space-x-2', className)}
       disabled={disabled}
+      style={{ color: '#ffffff', fontSize: '13px' }}
       {...props}
     >
       {icon && (

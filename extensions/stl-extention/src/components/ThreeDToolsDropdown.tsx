@@ -57,7 +57,16 @@ const ThreeDToolsDropdown: React.FC = () => {
       <DropdownMenuContent
         side="bottom"
         align="start"
-        className="min-w-[200px] bg-gradient-to-b from-[rgba(52,140,253,0.07)] to-[rgba(8,12,24,0.82)]"
+        style={{
+          backgroundColor: 'rgba(6,9,20,0.97)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(52,140,253,0.22)',
+          boxShadow: '0 0 40px rgba(10,111,253,0.12), 0 16px 60px rgba(0,0,0,0.85)',
+          borderRadius: '12px',
+          padding: '6px',
+          minWidth: '200px',
+        }}
       >
         {tools.map(tool => {
           const isActive = tool.active;
@@ -68,6 +77,7 @@ const ThreeDToolsDropdown: React.FC = () => {
               <DropdownMenuSub key={tool.id}>
                 <DropdownMenuSubTrigger
                   className={`${ITEM_CLASS} ${isActive ? 'bg-[rgba(52,140,253,0.18)] !text-highlight' : ''}`}
+                  style={{ color: '#ffffff', fontSize: '13px' }}
                 >
                   <i
                     className={`fas ${tool.icon} flex-shrink-0`}
@@ -75,7 +85,16 @@ const ThreeDToolsDropdown: React.FC = () => {
                   />
                   <span>{tool.label}</span>
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="min-w-[180px] bg-gradient-to-b from-[rgba(52,140,253,0.07)] to-[rgba(8,12,24,0.82)]">
+                <DropdownMenuSubContent style={{
+                    backgroundColor: 'rgba(6,9,20,0.97)',
+                    backdropFilter: 'blur(24px)',
+                    WebkitBackdropFilter: 'blur(24px)',
+                    border: '1px solid rgba(52,140,253,0.22)',
+                    boxShadow: '0 0 40px rgba(10,111,253,0.12), 0 16px 60px rgba(0,0,0,0.85)',
+                    borderRadius: '12px',
+                    padding: '6px',
+                    minWidth: '180px',
+                  }}>
                   {tool.children.map(child => {
                     const childActive = child.active;
                     const childDanger = child.danger && childActive;
@@ -90,6 +109,7 @@ const ThreeDToolsDropdown: React.FC = () => {
                               ? 'bg-[rgba(52,140,253,0.18)] !text-highlight'
                               : ''
                         }`}
+                        style={{ color: '#ffffff', fontSize: '13px' }}
                         onSelect={() => child.onClick()}
                       >
                         <i
@@ -116,6 +136,7 @@ const ThreeDToolsDropdown: React.FC = () => {
                     ? 'bg-[rgba(52,140,253,0.18)] !text-highlight'
                     : ''
               }`}
+              style={{ color: '#ffffff', fontSize: '13px' }}
               onSelect={() => tool.onClick()}
             >
               <i
