@@ -48,6 +48,9 @@ const toggleSyncFunctions = {
   voi: toggleVOISliceSync,
 };
 
+// Stores cleanup functions (unsubscribe) for tools that need dynamic event listeners
+const toolEventCleanups = new Map<string, () => void>();
+
 const { segmentation: segmentationUtils } = cstUtils;
 
 const getLabelmapTools = ({ toolGroupService }) => {
@@ -104,6 +107,7 @@ function commandsModule({
   const {
     viewportGridService,
     toolGroupService,
+    toolbarService,
     cineService,
     uiDialogService,
     cornerstoneViewportService,
@@ -795,16 +799,76 @@ function commandsModule({
     },
     toggleEnabledDisabledToolbar({ value, itemId, toolGroupId }) {
       const toolName = itemId || value;
-      toolGroupId = toolGroupId ?? _getActiveViewportToolGroupId();
-
       const toolGroup = toolGroupService.getToolGroup(toolGroupId);
       if (!toolGroup || !toolGroup.hasTool(toolName)) {
         return;
       }
 
       const toolIsEnabled = toolGroup.getToolOptions(toolName).mode === Enums.ToolModes.Enabled;
+      const subKey = `${toolName}-${toolGroup.id}`;
 
-      toolIsEnabled ? toolGroup.setToolDisabled(toolName) : toolGroup.setToolEnabled(toolName);
+      if (toolIsEnabled) {
+        toolGroup.setToolDisabled(toolName);
+        // Clean up any dynamic event subscriptions for this tool
+        toolEventCleanups.get(subKey)?.();
+        toolEventCleanups.delete(subKey);
+      } else {
+        toolGroup.setToolEnabled(toolName);
+
+        const activeViewportId = viewportGridService.getActiveViewportId();
+        if (activeViewportId) {
+          try {
+            // sourceViewportId: which viewport's plane to display in others
+            // showFullDimension: extend lines to full image bounds for visibility
+            toolGroup.setToolConfiguration(
+              toolName,
+              { sourceViewportId: activeViewportId, showFullDimension: true },
+              true
+            );
+          } catch (e) {
+            // not all tools support setToolConfiguration
+          }
+        }
+
+        // Apply attractive styling and dynamic source tracking for ReferenceLines
+        if (toolName === 'ReferenceLines' && toolGroup.id) {
+          const existingStyles = annotation.config.style.getToolGroupToolStyles(toolGroup.id) || {};
+          annotation.config.style.setToolGroupToolStyles(toolGroup.id, {
+            ...existingStyles,
+            ReferenceLines: {
+              color: 'rgb(0, 168, 255)',
+              colorHighlighted: 'rgb(100, 210, 255)',
+              lineWidth: '2',
+              shadow: true,
+              lineDash: '',
+            },
+          });
+
+          // Dynamically update sourceViewportId when user clicks a different viewport
+          const sub = viewportGridService.subscribe(
+            viewportGridService.EVENTS.ACTIVE_VIEWPORT_ID_CHANGED,
+            ({ viewportId }) => {
+              const nextViewportId = viewportId || viewportGridService.getActiveViewportId();
+              if (nextViewportId) {
+                try {
+                  toolGroup.setToolConfiguration(
+                    toolName,
+                    { sourceViewportId: nextViewportId },
+                    true
+                  );
+                } catch (e) {
+                  // ignore
+                }
+              }
+            }
+          );
+          toolEventCleanups.set(subKey, () => sub.unsubscribe());
+        }
+      }
+
+      // Refresh toolbar so evaluators re-run and the dropdown shows the updated active state
+      const refreshViewportId = viewportGridService.getActiveViewportId();
+      toolbarService?.refreshToolbarState({ viewportId: refreshViewportId });
     },
     toggleActiveDisabledToolbar({ value, itemId, toolGroupId }) {
       const toolName = itemId || value;
