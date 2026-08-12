@@ -12,6 +12,7 @@ import { ToolBoxButtonGroupWrapper, ToolBoxButtonWrapper } from './Toolbar/ToolB
 import { ToolButtonWrapper } from './Toolbar/ToolButtonWrapper';
 import MoreToolsIconDropdown from './Toolbar/MoreToolsIconDropdown';
 import MovementToolsDropdown from './Toolbar/MovementToolsDropdown';
+import ProbeToolsDropdown from './Toolbar/ProbeToolsDropdown';
 
 export default function getToolbarModule({ commandsManager, servicesManager }: withAppTypes) {
   const { cineService } = servicesManager.services;
@@ -54,6 +55,10 @@ export default function getToolbarModule({ commandsManager, servicesManager }: w
     {
       name: 'stl.movementToolsDropdown',
       defaultComponent: MovementToolsDropdown,
+    },
+    {
+      name: 'stl.probeToolsDropdown',
+      defaultComponent: ProbeToolsDropdown,
     },
     {
       name: 'evaluate.cine',

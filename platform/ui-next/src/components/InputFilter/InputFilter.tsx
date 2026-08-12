@@ -117,7 +117,7 @@ interface SearchIconProps {
 function SearchIcon({ className }: SearchIconProps) {
   return (
     <span className={cn('absolute inset-y-0 left-0 flex items-center pl-2', className)}>
-      <Icons.Search className="text-muted-foreground" />
+      <Icons.Search />
     </span>
   );
 }

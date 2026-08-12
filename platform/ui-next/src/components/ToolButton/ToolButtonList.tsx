@@ -155,7 +155,7 @@ const ToolButtonListItem = React.forwardRef<
   const menuItem = (
     <DropdownMenuItem
       ref={ref}
-      className={cn('flex items-center space-x-2', className)}
+      className={cn('flex items-center gap-[10px] px-3 py-2', className)}
       disabled={disabled}
       style={{ color: '#ffffff', fontSize: '13px' }}
       {...props}
@@ -163,7 +163,7 @@ const ToolButtonListItem = React.forwardRef<
       {icon && (
         <Icons.ByName
           name={icon || 'MissingIcon'}
-          className="h-6 w-6"
+          className="h-[14px] w-[14px] flex-shrink-0"
         />
       )}
       {children}

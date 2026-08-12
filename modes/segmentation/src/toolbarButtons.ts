@@ -39,6 +39,18 @@ const toolbarButtons: Button[] = [
     props: {},
   },
   {
+    id: 'ProbeTools',
+    uiType: 'ohif.toolButtonList',
+    props: {
+      buttonSection: true,
+    },
+  },
+  {
+    id: 'ProbeToolsIcon',
+    uiType: 'stl.probeToolsDropdown',
+    props: {},
+  },
+  {
     id: 'MovementTools',
     uiType: 'stl.movementToolsDropdown',
     props: {},

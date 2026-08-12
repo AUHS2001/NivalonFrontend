@@ -66,7 +66,7 @@ export default function ToolButtonListWrapper({ buttonSection, id }: ToolButtonL
                 data-active={item.isActive}
                 onSelect={() => onInteraction?.({ id, itemId: item.id, commands: item.commands })}
               >
-                <span className="pl-1">{item.label || item.tooltip || item.id}</span>
+                <span>{item.label || item.tooltip || item.id}</span>
               </ToolButtonListItem>
             );
           })}

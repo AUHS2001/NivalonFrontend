@@ -132,7 +132,9 @@ function modeFactory({ modeConfiguration }) {
         'MeasurementTools',
         'WindowLevel',
         'Pan',
+        'TagBrowser',
         'Cine',
+        'ProbeToolsIcon',
         'MovementTools',
         'Zoom',
         'Capture',
@@ -183,6 +185,8 @@ function modeFactory({ modeConfiguration }) {
         'SplineROI',
         'LivewireContour',
         'CalibrationLine',
+        'Angle',
+        'CobbAngle',
       ]);
 
       toolbarService.updateSection('MovementTools', [
@@ -196,14 +200,14 @@ function modeFactory({ modeConfiguration }) {
         'ReferenceLines',
         'ImageOverlayViewer',
         'StackScroll',
-        'Probe',
-        'Angle',
-        'CobbAngle',
         'Magnify',
-        'TagBrowser',
-        'AdvancedMagnify',
         'UltrasoundDirectionalTool',
         'WindowLevelRegion',
+      ]);
+
+      toolbarService.updateSection('ProbeTools', [
+        'Probe',
+        'AdvancedMagnify',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.segmentationToolbox, [

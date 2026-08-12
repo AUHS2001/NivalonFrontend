@@ -14,7 +14,7 @@ import {
   TooltipProvider,
 } from '@ohif/ui-next';
 
-const ITEM_CLASS = 'px-3 py-[10px] gap-3';
+const ITEM_CLASS = 'px-3 py-2 gap-[10px]';
 
 const ThreeDToolsDropdown: React.FC = () => {
   const allTools = useThreeDTools();
@@ -81,7 +81,7 @@ const ThreeDToolsDropdown: React.FC = () => {
                 >
                   <i
                     className={`fas ${tool.icon} flex-shrink-0`}
-                    style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
+                    style={{ fontSize: '14px', width: '14px', textAlign: 'center' }}
                   />
                   <span>{tool.label}</span>
                 </DropdownMenuSubTrigger>
@@ -114,7 +114,7 @@ const ThreeDToolsDropdown: React.FC = () => {
                       >
                         <i
                           className={`fas ${child.icon} flex-shrink-0`}
-                          style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
+                          style={{ fontSize: '14px', width: '14px', textAlign: 'center' }}
                         />
                         <span>{child.label}</span>
                       </DropdownMenuItem>
@@ -141,7 +141,7 @@ const ThreeDToolsDropdown: React.FC = () => {
             >
               <i
                 className={`fas ${tool.icon} flex-shrink-0`}
-                style={{ fontSize: '18px', width: '22px', textAlign: 'center' }}
+                style={{ fontSize: '14px', width: '14px', textAlign: 'center' }}
               />
               <span>{tool.label}</span>
             </DropdownMenuItem>
