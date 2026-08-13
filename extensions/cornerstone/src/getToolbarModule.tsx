@@ -1,4 +1,5 @@
 import { Enums } from '@cornerstonejs/tools';
+import { IMAGE_SLICE_SYNC_NAME, syncListeners } from './utils/imageSliceSync/toggleImageSliceSync';
 import { utils } from '@ohif/ui-next';
 import { ViewportDataOverlayMenuWrapper } from './components/ViewportDataOverlaySettingMenu/ViewportDataOverlayMenuWrapper';
 import { ViewportOrientationMenuWrapper } from './components/ViewportOrientationMenu/ViewportOrientationMenuWrapper';
@@ -479,39 +480,9 @@ export default function getToolbarModule({ servicesManager, extensionManager }: 
     },
     {
       name: 'evaluate.cornerstone.synchronizer',
-      evaluate: ({ viewportId, button }) => {
-        let synchronizers = syncGroupService.getSynchronizersForViewport(viewportId);
-
-        if (!synchronizers?.length || synchronizers.length <= 1) {
-          return {
-            className: utils.getToggledClassName(false),
-          };
-        }
-
-        const isArray = Array.isArray(button.props?.commands);
-
-        const synchronizerType = isArray
-          ? button.props?.commands?.[0].commandOptions.type
-          : button.props?.commands?.commandOptions.type;
-
-        synchronizers = syncGroupService.getSynchronizersOfType(synchronizerType);
-
-        if (!synchronizers?.length) {
-          return {
-            className: utils.getToggledClassName(false),
-          };
-        }
-
-        // Todo: we need a better way to find the synchronizers based on their
-        // type, but for now we just check the first one and see if it is
-        // enabled
-        const synchronizer = synchronizers[0];
-
-        const isEnabled = synchronizer?._enabled;
-
-        return {
-          className: utils.getToggledClassName(isEnabled),
-        };
+      evaluate: () => {
+        const isActive = syncListeners.has(IMAGE_SLICE_SYNC_NAME);
+        return { className: utils.getToggledClassName(isActive) };
       },
     },
     {

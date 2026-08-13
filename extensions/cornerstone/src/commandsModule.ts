@@ -1243,22 +1243,13 @@ function commandsModule({
      * @param options.type - The type of synchronization to perform
      */
     toggleSynchronizer: ({ type, viewports, syncId }) => {
-      const synchronizer = syncGroupService.getSynchronizer(syncId);
-
-      if (synchronizer) {
-        synchronizer.isDisabled() ? synchronizer.setEnabled(true) : synchronizer.setEnabled(false);
-        return;
-      }
-
       const fn = toggleSyncFunctions[type];
-
       if (fn) {
-        fn({
-          servicesManager,
-          viewports,
-          syncId,
-        });
+        fn({ servicesManager, viewports, syncId });
       }
+
+      const { activeViewportId } = viewportGridService.getState();
+      toolbarService?.refreshToolbarState({ viewportId: activeViewportId });
     },
     setViewportForToolConfiguration: ({ viewportId, toolName }) => {
       if (!viewportId) {
