@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Measurement } from '../types/three.types';
+import FractureReportDialog from './FractureReportDialog';
+import CalculationsDialog from './CalculationsDialog';
 
 // Volume preset preview images
 import imgCTAAA from '../../../../platform/ui-next/assets/images/CT-AAA.png';
@@ -90,6 +92,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   } = useStlVisibilityContext();
   const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset, tissueOpacity, setTissueOpacity } = useOvfLegendContext();
   const [showPresetPopup, setShowPresetPopup] = useState(false);
+  const [showFractureReport, setShowFractureReport] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
@@ -221,14 +225,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
 
                 <button
+                  onClick={() => setShowFractureReport(true)}
                   style={{
                     width: '100%',
                     marginTop: '12px',
                     padding: '5px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #555',
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    color: '#ccc',
+                    border: '1px solid rgba(239,68,68,0.5)',
+                    backgroundColor: 'rgba(239,68,68,0.1)',
+                    color: '#fca5a5',
                     fontSize: '13px',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -238,18 +243,23 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     gap: '6px',
                   }}
                 >
-                  Fracture Detection Report
+                  🦴 Fracture Detection Report
                 </button>
+                <FractureReportDialog
+                  isOpen={showFractureReport}
+                  onClose={() => setShowFractureReport(false)}
+                />
 
                 <button
+                  onClick={() => setShowCalculations(true)}
                   style={{
                     width: '100%',
                     marginTop: '8px',
                     padding: '5px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #555',
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    color: '#ccc',
+                    border: '1px solid rgba(135,219,252,0.35)',
+                    backgroundColor: 'rgba(135,219,252,0.08)',
+                    color: '#87dbfc',
                     fontSize: '13px',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -259,8 +269,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     gap: '6px',
                   }}
                 >
-                  Show Calculations
+                  📐 Show Calculations
                 </button>
+                <CalculationsDialog
+                  isOpen={showCalculations}
+                  onClose={() => setShowCalculations(false)}
+                />
 
                 <button
                   onClick={() => setColorsDisabled(!colorsDisabled)}
