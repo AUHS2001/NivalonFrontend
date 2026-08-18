@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Measurement } from '../types/three.types';
-import FractureReportDialog from './FractureReportDialog';
+import FractureReportDialog, { SpineReportData } from './FractureReportDialog';
 import CalculationsDialog from './CalculationsDialog';
+import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
+import { SERVER_URL } from '../../../../config/server';
 
 // Volume preset preview images
 import imgCTAAA from '../../../../platform/ui-next/assets/images/CT-AAA.png';
@@ -94,6 +96,36 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [showPresetPopup, setShowPresetPopup] = useState(false);
   const [showFractureReport, setShowFractureReport] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
+  const [reportData, setReportData] = useState<SpineReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const stlCtx = useContext(StlInstanceContext);
+  const stlInstanceId = stlCtx?.stlInstanceId ?? null;
+
+  const fetchSpineReport = async () => {
+    if (!stlInstanceId) {
+      setReportError('No series instance UID available');
+      return;
+    }
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${SERVER_URL}/imaging/spine-report?series_instance_uid=${encodeURIComponent(stlInstanceId)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Failed to fetch report');
+      setReportData(json.data as SpineReportData);
+    } catch (err: any) {
+      setReportError(err.message || 'Failed to fetch spine report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
@@ -225,7 +257,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setShowFractureReport(true)}
+                  onClick={() => { fetchSpineReport(); setShowFractureReport(true); }}
                   style={{
                     width: '100%',
                     marginTop: '12px',
@@ -248,10 +280,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <FractureReportDialog
                   isOpen={showFractureReport}
                   onClose={() => setShowFractureReport(false)}
+                  reportData={reportData}
+                  isLoading={reportLoading}
+                  error={reportError}
                 />
 
                 <button
-                  onClick={() => setShowCalculations(true)}
+                  onClick={() => { if (!reportData) fetchSpineReport(); setShowCalculations(true); }}
                   style={{
                     width: '100%',
                     marginTop: '8px',
@@ -274,6 +309,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <CalculationsDialog
                   isOpen={showCalculations}
                   onClose={() => setShowCalculations(false)}
+                  reportData={reportData}
+                  isLoading={reportLoading}
                 />
 
                 <button
