@@ -132,7 +132,7 @@ function modeFactory({ modeConfiguration }) {
         'MeasurementTools',
         'WindowLevel',
         'Pan',
-        'TagBrowser',
+        'SpineLabel',
         'Cine',
         'ProbeToolsIcon',
         'MovementTools',
@@ -141,7 +141,6 @@ function modeFactory({ modeConfiguration }) {
         'Reset',
         'Layout',
         'Crosshairs',
-        'SpineLabel',
         '3DTools',
         '3DUndo',
         'MoreToolsIcon',
@@ -196,6 +195,7 @@ function modeFactory({ modeConfiguration }) {
       ]);
 
       toolbarService.updateSection('MoreTools', [
+        'TagBrowser',
         'ImageSliceSync',
         'ReferenceLines',
         'ImageOverlayViewer',

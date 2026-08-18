@@ -329,16 +329,8 @@ const JsonViewer: React.FC<{ data: Record<string, any> }> = ({ data: json }) => 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div style={{ fontSize: '11px', color: '#6b7280' }}>spine_report.json — vertebral measurements and metadata</div>
-        <button onClick={copy} style={{ padding: '4px 12px', fontSize: '11px', fontWeight: 600, borderRadius: '5px', border: '1px solid #1f2937', backgroundColor: copied ? 'rgba(34,197,94,0.15)' : '#111827', color: copied ? '#22c55e' : '#9ca3af', cursor: 'pointer' }}>
-          {copied ? '✓ Copied' : 'Copy JSON'}
-        </button>
-      </div>
-      <div style={{ backgroundColor: '#060a14', border: '1px solid #1f2937', borderRadius: '8px', padding: '14px 16px', overflowY: 'auto' as const, fontFamily: '"JetBrains Mono", "Fira Code", monospace', flex: 1, minHeight: 0 }}>
-        {renderValue(json, 0, 'root')}
-      </div>
+    <div>
+      {renderValue(json, 0, 'root')}
     </div>
   );
 };
@@ -346,7 +338,7 @@ const JsonViewer: React.FC<{ data: Record<string, any> }> = ({ data: json }) => 
 // ---------------------------------------------------------------------------
 // Images / files tab
 // ---------------------------------------------------------------------------
-type FileTab = 'frontpage' | 'combined' | 'mask' | 'json';
+type FileTab = 'frontpage' | 'combined';
 
 const ImagesTab: React.FC<{ reportData: SpineReportData }> = ({ reportData }) => {
   const [activeFile, setActiveFile] = useState<FileTab>('frontpage');
@@ -355,14 +347,13 @@ const ImagesTab: React.FC<{ reportData: SpineReportData }> = ({ reportData }) =>
   const frontpageBlobUrl = useBlobUrl(reportData.report_png_url || null);
   const combinedBlobUrl  = useBlobUrl(reportData.combined_preview_png_url || null);
 
-  const fileTabs: { id: FileTab; label: string; badge?: string }[] = [
+  const fileTabs: { id: FileTab; label: string }[] = [
     { id: 'frontpage', label: 'Report PNG' },
     { id: 'combined',  label: 'Combined Preview' },
-    { id: 'mask',      label: 'Vertebrae Mask' },
-    { id: 'json',      label: 'JSON Data' },
   ];
 
   const imgSrc = activeFile === 'frontpage' ? frontpageBlobUrl : combinedBlobUrl;
+  const imgUrl = activeFile === 'frontpage' ? reportData.report_png_url : reportData.combined_preview_png_url;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -381,14 +372,14 @@ const ImagesTab: React.FC<{ reportData: SpineReportData }> = ({ reportData }) =>
             }}
           >
             {t.label}
-            {t.badge && <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', backgroundColor: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>{t.badge}</span>}
           </button>
         ))}
       </div>
 
-      {(activeFile === 'frontpage' || activeFile === 'combined') && (
-        <div style={{ backgroundColor: '#050a12', border: '1px solid #1f2937', borderRadius: '8px', overflow: 'hidden', minHeight: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {imgError[activeFile] || (!imgSrc && !(activeFile === 'frontpage' ? reportData.report_png_url : reportData.combined_preview_png_url)) ? (
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'stretch', height: '700px' }}>
+        {/* Image */}
+        <div style={{ flex: 1, backgroundColor: '#050a12', border: '1px solid #1f2937', borderRadius: '8px', overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+          {imgError[activeFile] || (!imgSrc && !imgUrl) ? (
             <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px' }}>
               <div style={{ fontSize: '28px', marginBottom: '8px' }}>🖼️</div>
               <div style={{ fontSize: '12px' }}>Image unavailable</div>
@@ -401,14 +392,29 @@ const ImagesTab: React.FC<{ reportData: SpineReportData }> = ({ reportData }) =>
               src={imgSrc}
               alt={activeFile}
               onError={() => setImgError(prev => ({ ...prev, [activeFile]: true }))}
-              style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain', display: 'block' }}
+              style={{ width: '100%', display: 'block' }}
             />
           )}
         </div>
-      )}
 
-      {activeFile === 'mask' && <NiftiMaskViewer maskUrl={reportData.vertebrae_mask_url || null} />}
-      {activeFile === 'json' && <JsonViewer data={reportData.results} />}
+        {/* JSON — only shown next to combined preview */}
+        {activeFile === 'combined' && (
+          <div style={{ flex: 1, backgroundColor: '#060a14', border: '1px solid #1f2937', borderRadius: '8px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
+              <div style={{ fontSize: '11px', color: '#6b7280' }}>vertebral measurements</div>
+              <button
+                onClick={() => { navigator.clipboard.writeText(JSON.stringify(reportData.results, null, 2)); }}
+                style={{ padding: '4px 12px', fontSize: '11px', fontWeight: 600, borderRadius: '5px', border: '1px solid #1f2937', backgroundColor: '#111827', color: '#9ca3af', cursor: 'pointer' }}
+              >
+                Copy JSON
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', fontFamily: '"JetBrains Mono", "Fira Code", monospace', minHeight: 0 }}>
+              <JsonViewer data={reportData.results} />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -649,7 +655,7 @@ const FractureReportDialog: React.FC<FractureReportDialogProps> = ({ isOpen, onC
       style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ backgroundColor: '#0d1117', border: '1px solid #1e2a3a', borderRadius: '12px', width: '100%', maxWidth: '960px', height: '88vh', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
+      <div style={{ backgroundColor: '#0d1117', border: '1px solid #1e2a3a', borderRadius: '12px', width: '100%', maxWidth: '960px', height: '96vh', maxHeight: '96vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
 
         {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e2a3a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'linear-gradient(135deg,#0d1117 0%,#111827 100%)' }}>
