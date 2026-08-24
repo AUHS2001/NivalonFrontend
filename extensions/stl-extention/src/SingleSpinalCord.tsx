@@ -58,6 +58,7 @@ import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineL
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
+import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled } from './utils/spineLabelOverlayManager';
 import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
 import {
   maskVoxelsForRemovedVertices,
@@ -223,6 +224,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [showMerge, setShowMergeView] = useState(false);
+  const [centerlinePoints, setCenterlinePoints] = useState<Array<{ label: string; x: number; y: number; z: number }>>([]);
 
   // Camera sync
   const [syncCameras, setSyncCameras] = useState(false);
@@ -1650,8 +1652,22 @@ useEffect(() => {
     meshRefs,
     leftSceneRef,
     rightSceneRef,
-    servicesManager: effectiveServicesManager
+    servicesManager: effectiveServicesManager,
+    centerlinePoints,
   });
+
+  // Bridge: Spine Labels toggle (OHIF toolbar) also shows/hides the 3D alignment tube
+  useEffect(() => {
+    const handleSpineLabelToggle = () => {
+      if (isSpineLabelOverlayEnabled()) {
+        showCenterLine();
+      } else {
+        removeCenterLine();
+      }
+    };
+    window.addEventListener('spineLabelOverlayToggle', handleSpineLabelToggle);
+    return () => window.removeEventListener('spineLabelOverlayToggle', handleSpineLabelToggle);
+  }, [showCenterLine, removeCenterLine]);
 
   useCrosshairSync({
     leftSceneRef,
@@ -2478,6 +2494,11 @@ const createAutomaticSegmentation = async () => {
         console.log('No versions, using processed URLs:', data?.data?.processed?.urls);
         setTestStls(data?.data?.processed?.urls || []);
       }
+
+      // Extract backend centerline for Spine Labels + Alignment
+      const centerline = data?.data?.centerline || [];
+      setCenterlinePoints(centerline);
+      setBackendCenterline(centerline);
     } catch (err: any) {
       setError(err.message);
     }
@@ -3438,7 +3459,6 @@ const createAutomaticSegmentation = async () => {
     boneRemoval: () => setRemovalMode(!removalMode),
     undo: handleUnifiedUndo,
     linking: toggleLinking,
-    alignment: toggleCenterLine,
     download: downloadGenerated3D,
     brightness: toggleBrightness,
     measurement: toggleMeasurement,
@@ -3505,9 +3525,8 @@ const createAutomaticSegmentation = async () => {
         { id: 'colorMode', label: 'Color Mode', icon: 'fa-palette', active: colorModeEnabled, onClick: makeOnClick('colorMode') },
         { id: 'brightness', label: 'Brightness', icon: 'fa-sun', active: brightnessEnabled, onClick: makeOnClick('brightness') },
       ]},
-      { id: 'connections', label: 'Connections', icon: 'fa-project-diagram', active: isLinkingActive || centerLineEnabled || showMerge, onClick: () => {}, hidden: showComparePanel, children: [
+      { id: 'connections', label: 'Connections', icon: 'fa-project-diagram', active: isLinkingActive || showMerge, onClick: () => {}, hidden: showComparePanel, children: [
         { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking') },
-        { id: 'alignment', label: 'Alignment', icon: 'fa-route', active: centerLineEnabled, onClick: makeOnClick('alignment') },
         { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
       ]},
       { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation'), hidden: true },
@@ -3515,7 +3534,7 @@ const createAutomaticSegmentation = async () => {
     ];
     registerTools(toolDefs);
   }, [
-    loading, removalMode, undoStack.length, isLinkingActive, centerLineEnabled, isDownloading,
+    loading, removalMode, undoStack.length, isLinkingActive, isDownloading,
     brightnessEnabled, measurementEnabled, angleMeasurementEnabled,
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
     implantMoveMode, inertialRotationMode, showSmoothDialog, isWrapActive, isFreehandSmoothActive, canActivateWrap, showMerge, clickRemovalMode,
