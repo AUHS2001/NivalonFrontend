@@ -988,7 +988,7 @@ function drawOnViewport(
 
   if (viewType === 'axial') {
     const closest = canvasPoints.reduce((p, c) => (p.distance < c.distance ? p : c));
-    if (closest.distance < 10) {
+    {
       const size = 20;
       const { x, y } = closest;
       if (x >= 0 && x <= canvas.width && y >= 0 && y <= canvas.height) {

@@ -723,8 +723,8 @@ export const useCenterLine = ({
       rightGlow: rightGlowTube
     };
 
-    // DICOM centerlines are handled by the Spine Label button (spineLabelOverlayManager)
-    // so we only create the 3D tube here
+    // DICOM overlays (axial/sagittal/coronal) are drawn by spineLabelOverlayManager
+    // using the same API points — no duplication needed here.
 
     makeMeshesTransparent();
     setCenterLineEnabled(true);
