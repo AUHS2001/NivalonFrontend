@@ -37,11 +37,18 @@ const RowComponent = ({
 
   return (
     <div
-      style={{ ...style, ...rowStyle }}
+      style={{
+        ...style,
+        ...rowStyle,
+        borderBottom: '1px solid rgba(52,140,253,0.08)',
+        transition: 'background-color 0.15s ease',
+      }}
       className={classNames(
-        'hover:bg-secondary-main border-secondary-light text-foreground flex w-full flex-row items-center break-all bg-black text-base transition duration-300',
+        'flex w-full flex-row items-center break-all text-sm',
         lineHeightClassName
       )}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(52,140,253,0.10)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent'; }}
       key={keyPrefix}
     >
       {isChildOrParent && (
@@ -50,6 +57,7 @@ const RowComponent = ({
             <div
               className="cursor-pointer p-1"
               onClick={handleToggle}
+              style={{ color: 'rgba(52,140,253,0.8)' }}
             >
               <Icons.ChevronDown />
             </div>
@@ -57,16 +65,52 @@ const RowComponent = ({
             <div
               className="cursor-pointer p-1"
               onClick={handleToggle}
+              style={{ color: 'rgba(52,140,253,0.8)' }}
             >
               <Icons.ChevronRight />
             </div>
           )}
         </div>
       )}
-      <div className="w-4/24 px-3">{row.tag}</div>
-      <div className="w-2/24 px-3">{row.valueRepresentation}</div>
-      <div className="w-6/24 px-3">{row.keyword}</div>
-      <div className="w-5/24 grow px-3">{row.value}</div>
+      {/* Tag — monospace, blue tint */}
+      <div
+        className="w-4/24 px-3"
+        style={{ color: 'rgba(100,180,255,0.85)', fontFamily: 'monospace', fontSize: '12px', letterSpacing: '0.02em' }}
+      >
+        {row.tag}
+      </div>
+      {/* VR — green tint badge-like */}
+      <div className="w-2/24 px-3">
+        {row.valueRepresentation ? (
+          <span style={{
+            display: 'inline-block',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            backgroundColor: 'rgba(52,200,120,0.12)',
+            border: '1px solid rgba(52,200,120,0.25)',
+            color: 'rgba(80,220,150,0.9)',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            fontWeight: 600,
+          }}>
+            {row.valueRepresentation}
+          </span>
+        ) : null}
+      </div>
+      {/* Keyword — bright white */}
+      <div
+        className="w-6/24 px-3"
+        style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 500 }}
+      >
+        {row.keyword}
+      </div>
+      {/* Value — muted white */}
+      <div
+        className="w-5/24 grow px-3"
+        style={{ color: 'rgba(200,215,240,0.75)', fontSize: '12px' }}
+      >
+        {row.value}
+      </div>
     </div>
   );
 };
@@ -74,41 +118,48 @@ const RowComponent = ({
 function ColumnHeaders({ tagRef, vrRef, keywordRef, valueRef }) {
   return (
     <div
-      className={classNames(
-        'bg-secondary-dark ohif-scrollbar flex w-full flex-row overflow-y-scroll'
-      )}
-      style={rowVerticalPaddingStyle}
+      className={classNames('ohif-scrollbar flex w-full flex-row overflow-y-scroll')}
+      style={{
+        ...rowVerticalPaddingStyle,
+        backgroundColor: 'rgba(52,140,253,0.10)',
+        borderBottom: '1px solid rgba(52,140,253,0.25)',
+        borderTop: '1px solid rgba(52,140,253,0.15)',
+      }}
     >
       <div className="w-4/24 px-3">
         <label
           ref={tagRef}
-          className="flex flex-1 select-none flex-col pl-1 text-lg text-white"
+          className="flex flex-1 select-none flex-col pl-1"
+          style={{ color: 'rgba(100,180,255,0.7)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
-          <span className="flex flex-row items-center focus:outline-none">Tag</span>
+          <span className="flex flex-row items-center">Tag</span>
         </label>
       </div>
       <div className="w-2/24 px-3">
         <label
           ref={vrRef}
-          className="flex flex-1 select-none flex-col pl-1 text-lg text-white"
+          className="flex flex-1 select-none flex-col pl-1"
+          style={{ color: 'rgba(80,220,150,0.7)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
-          <span className="flex flex-row items-center focus:outline-none">VR</span>
+          <span className="flex flex-row items-center">VR</span>
         </label>
       </div>
       <div className="w-6/24 px-3">
         <label
           ref={keywordRef}
-          className="flex flex-1 select-none flex-col pl-1 text-lg text-white"
+          className="flex flex-1 select-none flex-col pl-1"
+          style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
-          <span className="flex flex-row items-center focus:outline-none">Keyword</span>
+          <span className="flex flex-row items-center">Keyword</span>
         </label>
       </div>
       <div className="w-5/24 grow px-3">
         <label
           ref={valueRef}
-          className="flex flex-1 select-none flex-col pl-1 text-lg text-white"
+          className="flex flex-1 select-none flex-col pl-1"
+          style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
-          <span className="flex flex-row items-center focus:outline-none">Value</span>
+          <span className="flex flex-row items-center">Value</span>
         </label>
       </div>
     </div>
@@ -283,8 +334,16 @@ function DicomTagTable({ rows }: { rows: Row[] }) {
         valueRef={valueRef}
       />
       <div
-        className="relative m-auto border-2 border-black bg-black"
-        style={{ height: '32rem' }}
+        className="relative m-auto"
+        style={{
+          height: '32rem',
+          backgroundColor: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(52,140,253,0.15)',
+          borderTop: 'none',
+          borderBottomLeftRadius: '10px',
+          borderBottomRightRadius: '10px',
+          overflow: 'hidden',
+        }}
       >
         {isHeaderRendered() && (
           <List

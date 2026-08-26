@@ -57,7 +57,8 @@ const MoreToolsIconDropdown: React.FC = () => {
         {toolbarButtons.map(({ id, componentProps }) => {
           const label = componentProps?.label || componentProps?.tooltip || id;
           const icon = componentProps?.icon;
-          const isActive = componentProps?.isActive;
+          // The toggle evaluator sets className to '!text-primary' when the tool is enabled
+          const isActive = componentProps?.className?.includes('!text-primary');
           return (
             <DropdownMenuItem
               key={id}
@@ -68,22 +69,42 @@ const MoreToolsIconDropdown: React.FC = () => {
                 gap: '10px',
                 padding: '8px 12px',
                 borderRadius: '8px',
-                color: '#ffffff',
-                backgroundColor: isActive ? 'rgba(10,111,253,0.18)' : 'transparent',
+                color: isActive ? 'rgb(0, 168, 255)' : '#ffffff',
+                backgroundColor: isActive ? 'rgba(0, 168, 255, 0.12)' : 'transparent',
+                border: isActive ? '1px solid rgba(0, 168, 255, 0.28)' : '1px solid transparent',
                 cursor: 'pointer',
                 fontSize: '13px',
                 transition: 'all 0.1s ease',
               }}
             >
               {icon && (
-                <span style={{ color: '#ffffff', flexShrink: 0 }}>
+                <span style={{ color: isActive ? 'rgb(0, 168, 255)' : '#ffffff', flexShrink: 0 }}>
                   <Icons.ByName
                     name={icon}
                     className="h-4 w-4"
                   />
                 </span>
               )}
-              <span>{label}</span>
+              <span style={{ flex: 1 }}>{label}</span>
+              {isActive && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(0, 168, 255, 0.2)',
+                    color: 'rgb(0, 168, 255)',
+                    fontSize: '9px',
+                    flexShrink: 0,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  ✕
+                </span>
+              )}
             </DropdownMenuItem>
           );
         })}

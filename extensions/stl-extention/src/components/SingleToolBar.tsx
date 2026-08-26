@@ -6,7 +6,6 @@ import { useClickRemoveContext } from '../context/ClickRemoveContext';
 import { useLabelingViewContext } from '../context/LabelingViewContext';
 import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { useImplantContext } from '../context/ImplantContext';
-import { useCenterLineContext } from '../context/CenterLineContext';
 import { useVersionHistory } from '../hooks/useVersionHistory'
 import { useAngleMeasurementContext } from '../context/AngleMeasurementContext';
 import { useSpineLabelingContext } from '../context/SpineLabelingContext';
@@ -123,8 +122,6 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
   const { clickRemovalMode, onToggleClickRemoval } = useClickRemoveContext();
   const { showRightView, onToggleRightView } = useLabelingViewContext();
   const { versionHistoryEnabled, toggleVersionHistory } = useVersionHistoryContext();
-  const { centerLineEnabled, toggleCenterLine } = useCenterLineContext();
-
   const [loading1, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
@@ -280,16 +277,6 @@ export const SingleToolbar: React.FC<SingleToolbarProps> = ({
             style={{ minWidth: '45px', minHeight: '45px' }}
           >
             <i className="fas fa-link" />
-          </button>
-
-          <button
-            className={`icon-button${centerLineEnabled ? " selected" : ""}`}
-            type="button"
-            data-tooltip={centerLineEnabled ? "Alignment" : "Alignment"}
-            onClick={toggleCenterLine}
-            style={{ minWidth: '45px', minHeight: '45px' }}
-          >
-            <i className="fas fa-route" /> {/* You can change this icon */}
           </button>
 
           {/* Download */}

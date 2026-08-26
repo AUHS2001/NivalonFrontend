@@ -1,101 +1,155 @@
 import { DisplaySetService, ViewportGridService } from '@ohif/core';
+import { Enums, utilities } from '@cornerstonejs/core';
 
-const IMAGE_SLICE_SYNC_NAME = 'IMAGE_SLICE_SYNC';
+export const IMAGE_SLICE_SYNC_NAME = 'IMAGE_SLICE_SYNC';
+
+interface SyncEntry {
+  listeners: { element: HTMLElement; listener: EventListener }[];
+  unsubscribeFns: Array<() => void>;
+}
+
+export const syncListeners: Map<string, SyncEntry> = new Map();
 
 export default function toggleImageSliceSync({
   servicesManager,
-  viewports: providedViewports,
   syncId,
 }: withAppTypes) {
-  const { syncGroupService, viewportGridService, displaySetService, cornerstoneViewportService } =
-    servicesManager.services;
-
   syncId ||= IMAGE_SLICE_SYNC_NAME;
 
-  const viewports =
-    providedViewports || getReconstructableStackViewports(viewportGridService, displaySetService);
-
-  // Todo: right now we don't have a proper way to define specific
-  // viewports to add to synchronizers, and right now it is global or not
-  // after we do that, we should do fine grained control of the synchronizers
-  const someViewportHasSync = viewports.some(viewport => {
-    const syncStates = syncGroupService.getSynchronizersForViewport(
-      viewport.viewportOptions.viewportId
-    );
-
-    const imageSync = syncStates.find(syncState => syncState.id === syncId);
-
-    return !!imageSync;
-  });
-
-  if (someViewportHasSync) {
-    return disableSync(syncId, servicesManager);
+  if (syncListeners.has(syncId)) {
+    return disableSync(syncId);
   }
 
-  // create synchronization group and add the viewports to it.
-  viewports.forEach(gridViewport => {
-    const { viewportId } = gridViewport.viewportOptions;
-    const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-    if (!viewport) {
+  const { viewportGridService, displaySetService, cornerstoneViewportService } =
+    servicesManager.services;
+
+  // Register entry immediately so evaluator shows active
+  const entry: SyncEntry = { listeners: [], unsubscribeFns: [] };
+  syncListeners.set(syncId, entry);
+
+  const attachListeners = () => {
+    // Remove old element listeners
+    entry.listeners.forEach(({ element, listener }) =>
+      element.removeEventListener(Enums.Events.STACK_NEW_IMAGE, listener)
+    );
+    entry.listeners = [];
+
+    // Get ALL non-empty viewports that have a stack viewport
+    const viewportIds = getAllStackViewportIds(
+      viewportGridService,
+      displaySetService,
+      cornerstoneViewportService
+    );
+
+    if (viewportIds.length < 2) {
       return;
     }
-    syncGroupService.addViewportToSyncGroup(viewportId, viewport.getRenderingEngine().id, {
-      type: 'imageSlice',
-      id: syncId,
-      source: true,
-      target: true,
+
+    viewportIds.forEach(sourceId => {
+      const sourceVp = cornerstoneViewportService.getCornerstoneViewport(sourceId);
+      if (!sourceVp?.element) {
+        return;
+      }
+
+      let isSyncing = false;
+
+      const listener = () => {
+        if (isSyncing) {
+          return;
+        }
+        isSyncing = true;
+        try {
+          const sourceViewport = cornerstoneViewportService.getCornerstoneViewport(sourceId);
+          if (!sourceViewport) {
+            return;
+          }
+          const sourceIndex = sourceViewport.getCurrentImageIdIndex?.();
+          if (sourceIndex == null || sourceIndex < 0) {
+            return;
+          }
+
+          viewportIds.forEach(targetId => {
+            if (targetId === sourceId) {
+              return;
+            }
+            const targetViewport = cornerstoneViewportService.getCornerstoneViewport(targetId);
+            if (!targetViewport?.element) {
+              return;
+            }
+            if (targetViewport.getCurrentImageIdIndex?.() === sourceIndex) {
+              return;
+            }
+            utilities
+              .jumpToSlice(targetViewport.element, { imageIndex: sourceIndex })
+              .catch(() => {});
+          });
+        } finally {
+          setTimeout(() => {
+            isSyncing = false;
+          }, 50);
+        }
+      };
+
+      sourceVp.element.addEventListener(Enums.Events.STACK_NEW_IMAGE, listener);
+      entry.listeners.push({ element: sourceVp.element, listener });
     });
+  };
+
+  // Attach now
+  attachListeners();
+
+  // Re-attach on any viewport change
+  const events = [
+    viewportGridService.EVENTS.VIEWPORTS_READY,
+    viewportGridService.EVENTS.LAYOUT_CHANGED,
+    viewportGridService.EVENTS.GRID_STATE_CHANGED,
+  ];
+
+  events.forEach(event => {
+    const sub = viewportGridService.subscribe(event, () => {
+      if (!syncListeners.has(syncId)) {
+        return;
+      }
+      // Small delay to let viewport elements fully mount
+      setTimeout(attachListeners, 100);
+    });
+    entry.unsubscribeFns.push(() => sub.unsubscribe());
   });
 }
 
-function disableSync(syncName, servicesManager: AppTypes.ServicesManager) {
-  const { syncGroupService, viewportGridService, displaySetService, cornerstoneViewportService } =
-    servicesManager.services;
-  const viewports = getReconstructableStackViewports(viewportGridService, displaySetService);
-  viewports.forEach(gridViewport => {
-    const { viewportId } = gridViewport.viewportOptions;
-    const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-    if (!viewport) {
-      return;
-    }
-    syncGroupService.removeViewportFromSyncGroup(
-      viewport.id,
-      viewport.getRenderingEngine().id,
-      syncName
-    );
-  });
+function disableSync(syncId: string) {
+  const entry = syncListeners.get(syncId);
+  if (!entry) {
+    return;
+  }
+  entry.listeners.forEach(({ element, listener }) =>
+    element.removeEventListener(Enums.Events.STACK_NEW_IMAGE, listener)
+  );
+  entry.unsubscribeFns.forEach(fn => fn());
+  syncListeners.delete(syncId);
 }
 
 /**
- * Gets the consistent spacing stack viewport types, which are the ones which
- * can be navigated using the stack image sync right now.
+ * Returns IDs of all loaded viewports that support stack scrolling
  */
-function getReconstructableStackViewports(
+function getAllStackViewportIds(
   viewportGridService: ViewportGridService,
-  displaySetService: DisplaySetService
-) {
+  displaySetService: DisplaySetService,
+  cornerstoneViewportService
+): string[] {
   let { viewports } = viewportGridService.getState();
-
   viewports = [...viewports.values()];
-  // filter empty viewports
+
+  // Only viewports that have display sets loaded
   viewports = viewports.filter(
-    viewport => viewport.displaySetInstanceUIDs && viewport.displaySetInstanceUIDs.length
+    vp => vp.displaySetInstanceUIDs?.length && vp.viewportId
   );
 
-  // filter reconstructable viewports
-  viewports = viewports.filter(viewport => {
-    const { displaySetInstanceUIDs } = viewport;
-
-    for (const displaySetInstanceUID of displaySetInstanceUIDs) {
-      const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
-
-      // TODO - add a better test than isReconstructable
-      if (displaySet && displaySet.isReconstructable) {
-        return true;
-      }
-
-      return false;
-    }
-  });
-  return viewports;
+  return viewports
+    .map(vp => vp.viewportId)
+    .filter(viewportId => {
+      const csVp = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      // Keep only viewports that support getCurrentImageIdIndex (stack viewports)
+      return csVp && typeof csVp.getCurrentImageIdIndex === 'function';
+    });
 }

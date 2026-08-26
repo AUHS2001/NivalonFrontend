@@ -2,7 +2,6 @@ import dcmjs from 'dcmjs';
 import moment from 'moment';
 import React, { useState, useMemo, useCallback } from 'react';
 import { classes, Types } from '@ohif/core';
-import { InputFilter } from '@ohif/ui-next';
 import { Select, SelectTrigger, SelectContent, SelectItem, Slider } from '@ohif/ui-next';
 
 import DicomTagTable from './DicomTagTable';
@@ -69,7 +68,7 @@ const DicomTagBrowser = ({
 
       return {
         value: displaySetInstanceUID,
-        label: `${SeriesNumber} (${Modality}):  ${SeriesDescription}`,
+        label: `${SeriesNumber} (${Modality}): ${SeriesDescription || displayDate}`,
         description: displayDate,
       };
     });
@@ -124,11 +123,11 @@ const DicomTagBrowser = ({
   }, [rows, filterValue]);
 
   return (
-    <div className="dicom-tag-browser-content bg-muted">
-      <div className="mb-6 flex flex-row items-start pl-1">
+    <div className="dicom-tag-browser-content">
+      <div className="mb-5 flex flex-row items-start pl-1">
         <div className="flex w-full flex-row items-start gap-4">
           <div className="flex w-1/3 flex-col">
-            <span className="text-muted-foreground flex h-6 items-center pb-2 text-base">
+            <span className="flex h-6 items-center pb-2 text-sm font-medium text-white/70">
               Series
             </span>
             <Select
@@ -147,7 +146,7 @@ const DicomTagBrowser = ({
                       value={item.value}
                     >
                       {item.label}
-                      <span className="text-muted-foreground ml-1 text-xs">{item.description}</span>
+                      <span className="ml-1 text-xs text-white/50">{item.description}</span>
                     </SelectItem>
                   );
                 })}
@@ -156,36 +155,69 @@ const DicomTagBrowser = ({
           </div>
           {shouldShowInstanceList && (
             <div className="mx-auto mt-0.5 flex w-1/4 flex-col">
-              <span className="text-muted-foreground flex h-6 items-center pb-2 text-base">
-                Instance Number ({instanceNumber} of {activeDisplaySet?.images?.length})
+              <span className="flex h-6 items-center pb-2 text-sm font-medium text-white/70">
+                Instance&nbsp;
+                <span style={{ color: 'rgba(100,180,255,0.95)', fontWeight: 700 }}>{instanceNumber}</span>
+                <span style={{ color: 'rgba(255,255,255,0.3)', marginLeft: '3px' }}>/ {activeDisplaySet?.images?.length}</span>
               </span>
-              <Slider
-                value={[instanceNumber]}
-                onValueChange={([value]) => {
-                  setInstanceNumber(value);
+              <div
+                style={{
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(52,140,253,0.07)',
+                  border: '1px solid rgba(52,140,253,0.18)',
+                  borderRadius: '8px',
+                  padding: '0 14px',
                 }}
-                min={1}
-                max={activeDisplaySet?.images?.length}
-                step={1}
-                className="pt-4"
-              />
+              >
+                <Slider
+                  value={[instanceNumber]}
+                  onValueChange={([value]) => setInstanceNumber(value)}
+                  min={1}
+                  max={activeDisplaySet?.images?.length}
+                  step={1}
+                />
+              </div>
             </div>
           )}
           <div className="ml-auto mr-1 flex w-1/3 flex-col">
-            <span className="text-muted-foreground flex h-6 items-center pb-2 text-base">
+            <span className="flex h-6 items-center pb-2 text-sm font-medium text-white/70">
               Search metadata
             </span>
-            <InputFilter
-              className="text-muted-foreground"
-              onChange={setFilterValue}
-            >
-              <InputFilter.SearchIcon />
-              <InputFilter.Input
-                placeholder="Search metadata"
-                className="pl-9 pr-9"
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <i
+                className="fas fa-search"
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  pointerEvents: 'none',
+                }}
               />
-              <InputFilter.ClearButton className="text-primary mr-0.5 p-0.5" />
-            </InputFilter>
+              <input
+                type="text"
+                placeholder="Search metadata..."
+                value={filterValue}
+                onChange={e => setFilterValue(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  paddingLeft: '30px',
+                  paddingRight: '12px',
+                  backgroundColor: 'rgba(52,140,253,0.07)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'rgba(255,255,255,0.9)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  transition: 'background-color 0.2s',
+                }}
+                onFocus={e => { e.currentTarget.style.backgroundColor = 'rgba(52,140,253,0.12)'; }}
+                onBlur={e => { e.currentTarget.style.backgroundColor = 'rgba(52,140,253,0.07)'; }}
+              />
+            </div>
           </div>
         </div>
       </div>

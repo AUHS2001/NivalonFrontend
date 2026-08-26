@@ -132,14 +132,15 @@ function modeFactory({ modeConfiguration }) {
         'MeasurementTools',
         'WindowLevel',
         'Pan',
+        'SpineLabel',
         'Cine',
+        'ProbeToolsIcon',
         'MovementTools',
         'Zoom',
         'Capture',
         'Reset',
         'Layout',
         'Crosshairs',
-        'SpineLabel',
         '3DTools',
         '3DUndo',
         'MoreToolsIcon',
@@ -183,6 +184,8 @@ function modeFactory({ modeConfiguration }) {
         'SplineROI',
         'LivewireContour',
         'CalibrationLine',
+        'Angle',
+        'CobbAngle',
       ]);
 
       toolbarService.updateSection('MovementTools', [
@@ -192,18 +195,19 @@ function modeFactory({ modeConfiguration }) {
       ]);
 
       toolbarService.updateSection('MoreTools', [
+        'TagBrowser',
         'ImageSliceSync',
         'ReferenceLines',
         'ImageOverlayViewer',
         'StackScroll',
-        'Probe',
-        'Angle',
-        'CobbAngle',
         'Magnify',
-        'TagBrowser',
-        'AdvancedMagnify',
         'UltrasoundDirectionalTool',
         'WindowLevelRegion',
+      ]);
+
+      toolbarService.updateSection('ProbeTools', [
+        'Probe',
+        'AdvancedMagnify',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.segmentationToolbox, [

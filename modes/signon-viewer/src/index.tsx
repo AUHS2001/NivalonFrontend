@@ -112,7 +112,7 @@ function modeFactory({ modeConfiguration }) {
         // 'CobbAngle',
         // 'Magnify',
         // 'CalibrationLine',
-        // 'TagBrowser',
+        'TagBrowser',
         // 'AdvancedMagnify',
         // 'UltrasoundDirectionalTool',
         // 'WindowLevelRegion',

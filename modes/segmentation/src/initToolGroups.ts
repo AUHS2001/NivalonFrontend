@@ -156,7 +156,6 @@ function createTools(utilityModule,commandsManager) {
     ],
     enabled: [
       { toolName: toolNames.ImageOverlayViewer },
-      { toolName: toolNames.ReferenceLines },
       {
         toolName: SRToolNames.SRSCOORD3DPoint,
       },

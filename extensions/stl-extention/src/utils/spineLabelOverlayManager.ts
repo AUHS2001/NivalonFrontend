@@ -79,6 +79,14 @@ const state: SpineLabelState = {
   mouseListeners: [],
 };
 
+// Backend centerline data: set once after the API response is received.
+// When set, showSpineLabelOverlay() uses this directly instead of computing from STL/DICOM.
+let backendCenterline: Array<{ label: string; x: number; y: number; z: number }> | null = null;
+
+export function setBackendCenterline(points: Array<{ label: string; x: number; y: number; z: number }>) {
+  backendCenterline = points.length >= 2 ? points : null;
+}
+
 /**
  * Store vertebra center data from loaded STL meshes.
  * Called by useSTLLoader after meshes are created.
@@ -948,13 +956,8 @@ function drawOnViewport(
       let adj = [...wp] as [number, number, number];
       if (viewType === 'sagittal') {
         adj[2] = wp[2] - volumeHeight * 0.02;
-        // Anatomy-based posterior shift into spinal canal
-        adj[1] = wp[1] + state.canalOffsetMM;
       } else if (viewType === 'coronal') {
         adj[2] = wp[2] - volumeHeight * 0.02;
-      } else if (viewType === 'axial') {
-        // Anatomy-based posterior shift into spinal canal
-        adj[1] = wp[1] + state.canalOffsetMM;
       }
 
       const cp = viewport.worldToCanvas(adj);
@@ -985,7 +988,7 @@ function drawOnViewport(
 
   if (viewType === 'axial') {
     const closest = canvasPoints.reduce((p, c) => (p.distance < c.distance ? p : c));
-    if (closest.distance < 10) {
+    {
       const size = 20;
       const { x, y } = closest;
       if (x >= 0 && x <= canvas.width && y >= 0 && y <= canvas.height) {
@@ -1480,7 +1483,21 @@ export function showSpineLabelOverlay(servicesManager: any) {
 
   servicesManagerRef = servicesManager;
 
-  // Check localStorage for cached positions FIRST (works even without STL data)
+  // === Backend centerline: highest priority — use directly, no computation needed ===
+  if (backendCenterline && backendCenterline.length >= 2) {
+    state.worldPoints = backendCenterline.map(p => [p.x, p.y, p.z] as [number, number, number]);
+    state.vertebraNames = backendCenterline.map(p => p.label);
+    state.canalOffsetMM = 0;
+    state.enabled = true;
+    console.log(`SpineLabelOverlay: using ${state.worldPoints.length} backend centerline points`);
+    setTimeout(() => {
+      redrawAll(servicesManager);
+      setupListeners(servicesManager);
+    }, 300);
+    return;
+  }
+
+  // Check localStorage for cached positions (works even without STL data)
   const studyUID = getStudyUID(servicesManager);
 
   const cached = loadLabelsFromStorage(studyUID);

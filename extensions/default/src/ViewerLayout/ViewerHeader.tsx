@@ -127,22 +127,7 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
   const location = useLocation();
 
   const onClickReturnButton = () => {
-    const { pathname } = location;
-    const dataSourceIdx = pathname.indexOf('/', 1);
-
-    const dataSourceName = pathname.substring(dataSourceIdx + 1);
-    const existingDataSource = extensionManager.getDataSources(dataSourceName);
-
-    const searchQuery = new URLSearchParams();
-    if (dataSourceIdx !== -1 && existingDataSource) {
-      searchQuery.append('datasources', pathname.substring(dataSourceIdx + 1));
-    }
-    preserveQueryParameters(searchQuery);
-
-    navigate({
-      pathname: '/',
-      search: decodeURIComponent(searchQuery.toString()),
-    });
+    navigate('/localWorklist');
   };
 
   const { t } = useTranslation();

@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Measurement } from '../types/three.types';
+import FractureReportDialog, { SpineReportData } from './FractureReportDialog';
+import CalculationsDialog from './CalculationsDialog';
+import { StlInstanceContext } from '../../../../platform/app/src/context/StlInstanceContext';
+import { SERVER_URL } from '../../../../config/server';
 
 // Volume preset preview images
 import imgCTAAA from '../../../../platform/ui-next/assets/images/CT-AAA.png';
@@ -90,6 +94,38 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   } = useStlVisibilityContext();
   const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset, tissueOpacity, setTissueOpacity } = useOvfLegendContext();
   const [showPresetPopup, setShowPresetPopup] = useState(false);
+  const [showFractureReport, setShowFractureReport] = useState(false);
+  const [showCalculations, setShowCalculations] = useState(false);
+  const [reportData, setReportData] = useState<SpineReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const stlCtx = useContext(StlInstanceContext);
+  const stlInstanceId = stlCtx?.stlInstanceId ?? null;
+
+  const fetchSpineReport = async () => {
+    if (!stlInstanceId) {
+      setReportError('No series instance UID available');
+      return;
+    }
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${SERVER_URL}/imaging/spine-report?series_instance_uid=${encodeURIComponent(stlInstanceId)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Failed to fetch report');
+      setReportData(json.data as SpineReportData);
+    } catch (err: any) {
+      setReportError(err.message || 'Failed to fetch spine report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   const type = localStorage.getItem('myLayout');
   const isCompareLayout = type === '3d-compare';
@@ -221,14 +257,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
 
                 <button
+                  onClick={() => { fetchSpineReport(); setShowFractureReport(true); }}
                   style={{
                     width: '100%',
                     marginTop: '12px',
                     padding: '5px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #555',
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    color: '#ccc',
+                    border: '1px solid rgba(239,68,68,0.5)',
+                    backgroundColor: 'rgba(239,68,68,0.1)',
+                    color: '#fca5a5',
                     fontSize: '13px',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -238,18 +275,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     gap: '6px',
                   }}
                 >
-                  Fracture Detection Report
+                  🦴 Fracture Detection Report
                 </button>
+                <FractureReportDialog
+                  isOpen={showFractureReport}
+                  onClose={() => setShowFractureReport(false)}
+                  reportData={reportData}
+                  isLoading={reportLoading}
+                  error={reportError}
+                />
 
                 <button
+                  onClick={() => { if (!reportData) fetchSpineReport(); setShowCalculations(true); }}
                   style={{
                     width: '100%',
                     marginTop: '8px',
                     padding: '5px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #555',
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    color: '#ccc',
+                    border: '1px solid rgba(135,219,252,0.35)',
+                    backgroundColor: 'rgba(135,219,252,0.08)',
+                    color: '#87dbfc',
                     fontSize: '13px',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -259,8 +304,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     gap: '6px',
                   }}
                 >
-                  Show Calculations
+                  📐 Show Calculations
                 </button>
+                <CalculationsDialog
+                  isOpen={showCalculations}
+                  onClose={() => setShowCalculations(false)}
+                  reportData={reportData}
+                  isLoading={reportLoading}
+                />
 
                 <button
                   onClick={() => setColorsDisabled(!colorsDisabled)}
