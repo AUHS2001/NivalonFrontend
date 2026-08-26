@@ -8,8 +8,8 @@ COPY . .
 
 RUN touch commit.txt
 
-# Install dependencies
-RUN yarn install
+# Install dependencies and clean cache to reduce image size
+RUN yarn install && yarn cache clean
 
 # Build the application
 RUN yarn run build
