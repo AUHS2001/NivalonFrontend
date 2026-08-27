@@ -41,6 +41,7 @@ function formatDate(raw: string): string {
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 function formatName(raw: string): string {
+  if (!raw) return '—';
   return raw.replace(/\^/g, ' ').trim() || '—';
 }
 function lwsColor(diff: number, fractured: boolean): string {
