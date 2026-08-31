@@ -99,6 +99,8 @@ export function useOVFSetup({
   const csIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
   const contextMenuHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const controlsChangeHandlerRef = useRef<(() => void) | null>(null);
+  const volumeLoadedCleanupRef = useRef<(() => void) | null>(null);
   const volumeReadyRef = useRef(false);
   const isResizingRef = useRef(false);
   const hasInitializedRef = useRef(false);
@@ -204,7 +206,7 @@ export function useOVFSetup({
     canvas.addEventListener('contextmenu', preventContext);
 
     // On change: render both layers
-    controls.addEventListener('change', () => {
+    const onControlsChange = () => {
       if (csMapperRef.current) csMapperRef.current.setSampleDistance(0.5);
       renderBoth();
       // Full quality after idle
@@ -213,10 +215,13 @@ export function useOVFSetup({
         if (csMapperRef.current) csMapperRef.current.setSampleDistance(0.2);
         renderBoth();
       }, 200);
-    });
+    };
+    controlsChangeHandlerRef.current = onControlsChange;
+    controls.addEventListener('change', onControlsChange);
 
     // Animation loop — TrackballControls needs continuous update() for smooth damping
     const animate = () => {
+      if (cancelledRef.current) return;
       animLoopRef.current = requestAnimationFrame(animate);
       controls.update();
     };
@@ -295,6 +300,8 @@ export function useOVFSetup({
         const cleanupListener = () => {
           try { eventTarget.removeEventListener(loadingCompletedEvent, onVolumeLoaded); } catch (_) {}
         };
+        // Store so unmount can clean up even if the promise never resolves
+        volumeLoadedCleanupRef.current = cleanupListener;
 
         const poll = () => {
           if (resolved) return;
@@ -583,7 +590,7 @@ export function useOVFSetup({
       setLoading(false);
 
       // Render again after loading overlay is removed
-      requestAnimationFrame(() => renderBoth());
+      animFrameRef.current = requestAnimationFrame(() => renderBoth());
 
       console.log('[OVF] STL meshes loaded:', vertebraUrls.length);
     } catch (err: any) {
@@ -755,7 +762,17 @@ export function useOVFSetup({
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (animLoopRef.current) cancelAnimationFrame(animLoopRef.current);
 
+      // Remove volumeLoaded global listener (in case setup was cancelled mid-flight)
+      if (volumeLoadedCleanupRef.current) {
+        volumeLoadedCleanupRef.current();
+        volumeLoadedCleanupRef.current = null;
+      }
+
       // Dispose Three.js
+      if (controlsRef.current && controlsChangeHandlerRef.current) {
+        controlsRef.current.removeEventListener('change', controlsChangeHandlerRef.current);
+        controlsChangeHandlerRef.current = null;
+      }
       if (controlsRef.current) { controlsRef.current.dispose(); controlsRef.current = null; }
       if (threeCanvasRef.current && contextMenuHandlerRef.current) {
         threeCanvasRef.current.removeEventListener('contextmenu', contextMenuHandlerRef.current);
