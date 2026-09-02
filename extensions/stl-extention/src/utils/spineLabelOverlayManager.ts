@@ -87,6 +87,23 @@ export function setBackendCenterline(points: Array<{ label: string; x: number; y
   backendCenterline = points.length >= 2 ? points : null;
 }
 
+// Centerline overlay color — shared across all DICOM viewports
+let overlayColor = '#00e5ff';
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function setCenterlineOverlayColor(color: string) {
+  overlayColor = color;
+  if (state.enabled && servicesManagerRef) {
+    redrawAll(servicesManagerRef);
+  }
+}
+
 /**
  * Store vertebra center data from loaded STL meshes.
  * Called by useSTLLoader after meshes are created.
@@ -979,8 +996,8 @@ function drawOnViewport(
   const samplePt = canvasPoints[0];
   console.log(`SpineLabelOverlay drawOnViewport ${viewportId}: ${canvasPoints.length} points (viewType=${viewType}, canvas=${canvas.width}x${canvas.height}, sample=[${samplePt.x.toFixed(0)},${samplePt.y.toFixed(0)},dist=${samplePt.distance.toFixed(1)}])`);
 
-  const color = '#00e5ff';
-  const glowColor = 'rgba(0, 229, 255, 0.4)';
+  const color = overlayColor;
+  const glowColor = hexToRgba(overlayColor, 0.4);
   const highlightColor = '#ffeb3b';
   ctx.save();
 

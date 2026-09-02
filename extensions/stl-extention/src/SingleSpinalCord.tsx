@@ -58,7 +58,7 @@ import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineL
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
-import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled } from './utils/spineLabelOverlayManager';
+import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled, setCenterlineOverlayColor } from './utils/spineLabelOverlayManager';
 import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
 import {
   maskVoxelsForRemovedVertices,
@@ -225,6 +225,8 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [showMerge, setShowMergeView] = useState(false);
   const [centerlinePoints, setCenterlinePoints] = useState<Array<{ label: string; x: number; y: number; z: number }>>([]);
+  const [centerlineColor, setCenterlineColorState] = useState('#00e5ff');
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Camera sync
   const [syncCameras, setSyncCameras] = useState(false);
@@ -1645,6 +1647,7 @@ useEffect(() => {
     removeCenterLine,
     toggleCenterLine,
     toggleTransparency,
+    setCenterlineColor,
     hasCenterLine,
     centerLineEnabled,
     transparencyEnabled
@@ -4088,6 +4091,54 @@ const createAutomaticSegmentation = async () => {
               <i className={`fas ${transparencyEnabled ? 'fa-cube' : 'fa-eye'}`} />
               {transparencyEnabled ? 'Solid' : 'Transparent'}
             </button>
+          )}
+          {/* Centerline Color Picker - Only shows when centerline is enabled */}
+          {centerLineEnabled && (
+            <>
+              <input
+                ref={colorInputRef}
+                type="color"
+                value={centerlineColor}
+                onChange={e => {
+                  const hex = e.target.value;
+                  setCenterlineColorState(hex);
+                  setCenterlineColor(hex);
+                  setCenterlineOverlayColor(hex);
+                }}
+                style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+              />
+              <button
+                onClick={() => colorInputRef.current?.click()}
+                style={{
+                  position: 'absolute',
+                  top: '90px',
+                  left: '10px',
+                  zIndex: 200,
+                  backgroundColor: '#1a1a2e',
+                  color: '#fff',
+                  border: `2px solid ${centerlineColor}`,
+                  borderRadius: '4px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                }}
+                title="Change centerline color"
+              >
+                <span style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  backgroundColor: centerlineColor,
+                  display: 'inline-block',
+                  flexShrink: 0,
+                }} />
+                Colors
+              </button>
+            </>
           )}
         </SingleViewerContainer>
       </div>

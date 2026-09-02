@@ -41,6 +41,7 @@ export const useCenterLine = ({
 
   const [centerLineEnabled, setCenterLineEnabled] = useState(false);
   const [transparencyEnabled, setTransparencyEnabled] = useState(true);
+  const centerlineColorRef = useRef<string>('#00e5ff');
 
   // Store centerline points in both coordinate systems
   const centerLineWorldPointsRef = useRef<Array<[number, number, number]>>([]);
@@ -695,17 +696,19 @@ export const useCenterLine = ({
 
     const { threePoints } = centerData;
 
-    // Create 3D tube (cyan color)
+    // Create 3D tube using current color
     const curve = new THREE.CatmullRomCurve3(threePoints);
+    const tubeColor = new THREE.Color(centerlineColorRef.current);
+    const glowColor = tubeColor.clone().multiplyScalar(0.72);
 
     const tubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 1.5, 8, false);
-    const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 1.0 });
+    const tubeMaterial = new THREE.MeshBasicMaterial({ color: tubeColor, transparent: true, opacity: 1.0 });
 
     const leftTube = new THREE.Mesh(tubeGeometry, tubeMaterial);
     const rightTube = new THREE.Mesh(tubeGeometry.clone(), tubeMaterial);
 
     const glowTubeGeometry = new THREE.TubeGeometry(curve, threePoints.length * 20, 2.5, 8, false);
-    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x00b8cc, transparent: true, opacity: 0.6 });
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.6 });
 
     const leftGlowTube = new THREE.Mesh(glowTubeGeometry, glowMaterial);
     const rightGlowTube = new THREE.Mesh(glowTubeGeometry.clone(), glowMaterial);
@@ -737,6 +740,19 @@ export const useCenterLine = ({
     removeCenterLine
   ]);
 
+  const setCenterlineColor = useCallback((hex: string) => {
+    centerlineColorRef.current = hex;
+    const c = centerLineRefs.current;
+    if (c.left && c.right && c.leftGlow && c.rightGlow) {
+      (c.left.material as THREE.MeshBasicMaterial).color.set(hex);
+      (c.right.material as THREE.MeshBasicMaterial).color.set(hex);
+      const glow = new THREE.Color(hex).multiplyScalar(0.72);
+      (c.leftGlow.material as THREE.MeshBasicMaterial).color.copy(glow);
+      (c.rightGlow.material as THREE.MeshBasicMaterial).color.copy(glow);
+      // Three.js picks up material changes on the next animation frame automatically
+    }
+  }, []);
+
   const toggleCenterLine = useCallback(() => {
     if (centerLineRefs.current.left) {
       removeCenterLine();
@@ -760,6 +776,7 @@ export const useCenterLine = ({
     removeCenterLine,
     toggleCenterLine,
     toggleTransparency,
+    setCenterlineColor,
     hasCenterLine: !!centerLineRefs.current.left,
     centerLineEnabled,
     transparencyEnabled
