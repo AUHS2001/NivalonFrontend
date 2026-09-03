@@ -4,6 +4,28 @@ import {
   Enums,
 } from '@cornerstonejs/core';
 
+// Creates a billboard sprite label for the 3D scene at a given world position.
+function make3DLabelSprite(name: string, position: THREE.Vector3, color: string): THREE.Sprite {
+  const cw = 128, ch = 48;
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(4, 6, cw - 8, ch - 12);
+  ctx.fillStyle = color;
+  ctx.font = 'bold 22px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, cw / 2, ch / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(material);
+  sprite.position.copy(position);
+  sprite.scale.set(30, 12, 1);
+  return sprite;
+}
+
 interface CenterlinePoint {
   label: string;
   x: number;
@@ -31,8 +53,10 @@ export const useCenterLine = ({
     right: THREE.Mesh | null;
     leftGlow: THREE.Mesh | null;
     rightGlow: THREE.Mesh | null;
+    leftLabels: THREE.Sprite[];
+    rightLabels: THREE.Sprite[];
     dicomCanvases: Map<string, HTMLCanvasElement>;
-  }>({ left: null, right: null, leftGlow: null, rightGlow: null, dicomCanvases: new Map() });
+  }>({ left: null, right: null, leftGlow: null, rightGlow: null, leftLabels: [], rightLabels: [], dicomCanvases: new Map() });
 
   const originalMaterials = useRef<{
     left: (THREE.Material | THREE.Material[])[];
@@ -669,6 +693,18 @@ export const useCenterLine = ({
       (centerLineRefs.current.rightGlow.material as THREE.Material).dispose();
     }
 
+    // Remove 3D label sprites
+    centerLineRefs.current.leftLabels.forEach(s => {
+      leftSceneRef.current?.remove(s);
+      (s.material as THREE.SpriteMaterial).map?.dispose();
+      (s.material as THREE.SpriteMaterial).dispose();
+    });
+    centerLineRefs.current.rightLabels.forEach(s => {
+      rightSceneRef.current?.remove(s);
+      (s.material as THREE.SpriteMaterial).map?.dispose();
+      (s.material as THREE.SpriteMaterial).dispose();
+    });
+
     // Remove DICOM centerlines
     removeDICOMCenterlines();
 
@@ -677,7 +713,9 @@ export const useCenterLine = ({
       left: null,
       right: null,
       leftGlow: null,
-      rightGlow: null
+      rightGlow: null,
+      leftLabels: [],
+      rightLabels: [],
     };
 
     restoreOriginalMaterials();
@@ -694,7 +732,11 @@ export const useCenterLine = ({
       return;
     }
 
-    const { threePoints } = centerData;
+    const { threePoints, worldPoints, vertebraNames } = centerData;
+
+    // Store for color-change rebuild
+    centerLineWorldPointsRef.current = worldPoints;
+    vertebraNamesRef.current = vertebraNames;
 
     // Create 3D tube using current color
     const curve = new THREE.CatmullRomCurve3(threePoints);
@@ -718,12 +760,29 @@ export const useCenterLine = ({
     rightSceneRef.current?.add(rightGlowTube);
     rightSceneRef.current?.add(rightTube);
 
+    // Create 3D vertebra label sprites for both scenes
+    const leftLabels: THREE.Sprite[] = [];
+    const rightLabels: THREE.Sprite[] = [];
+    worldPoints.forEach((wp, i) => {
+      const name = vertebraNames[i];
+      if (!name) return;
+      const pos = new THREE.Vector3(wp[0], wp[1], wp[2]);
+      const leftSprite = make3DLabelSprite(name, pos, centerlineColorRef.current);
+      const rightSprite = make3DLabelSprite(name, pos, centerlineColorRef.current);
+      leftSceneRef.current?.add(leftSprite);
+      rightSceneRef.current?.add(rightSprite);
+      leftLabels.push(leftSprite);
+      rightLabels.push(rightSprite);
+    });
+
     centerLineRefs.current = {
       ...centerLineRefs.current,
       left: leftTube,
       right: rightTube,
       leftGlow: leftGlowTube,
-      rightGlow: rightGlowTube
+      rightGlow: rightGlowTube,
+      leftLabels,
+      rightLabels,
     };
 
     // DICOM overlays (axial/sagittal/coronal) are drawn by spineLabelOverlayManager
@@ -743,14 +802,46 @@ export const useCenterLine = ({
   const setCenterlineColor = useCallback((hex: string) => {
     centerlineColorRef.current = hex;
     const c = centerLineRefs.current;
+    // Update tube colors
     if (c.left && c.right && c.leftGlow && c.rightGlow) {
       (c.left.material as THREE.MeshBasicMaterial).color.set(hex);
       (c.right.material as THREE.MeshBasicMaterial).color.set(hex);
       const glow = new THREE.Color(hex).multiplyScalar(0.72);
       (c.leftGlow.material as THREE.MeshBasicMaterial).color.copy(glow);
       (c.rightGlow.material as THREE.MeshBasicMaterial).color.copy(glow);
-      // Three.js picks up material changes on the next animation frame automatically
     }
+    // Rebuild label sprites with the new color
+    const names = vertebraNamesRef.current;
+    const wps = centerLineWorldPointsRef.current;
+    const rebuildSprites = (sprites: THREE.Sprite[], scene: THREE.Scene | null) => {
+      sprites.forEach((s, i) => {
+        const name = names[i];
+        const wp = wps[i];
+        if (!name || !wp) return;
+        const mat = s.material as THREE.SpriteMaterial;
+        mat.map?.dispose();
+        const cw = 128, ch = 48;
+        const canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(4, 6, cw - 8, ch - 12);
+        ctx.fillStyle = hex;
+        ctx.font = 'bold 22px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, cw / 2, ch / 2);
+        mat.map = new THREE.CanvasTexture(canvas);
+        mat.needsUpdate = true;
+      });
+    };
+    rebuildSprites(c.leftLabels, leftSceneRef.current);
+    rebuildSprites(c.rightLabels, rightSceneRef.current);
+  }, [leftSceneRef, rightSceneRef]);
+
+  const setLabels3DVisible = useCallback((visible: boolean) => {
+    centerLineRefs.current.leftLabels.forEach(s => { s.visible = visible; });
+    centerLineRefs.current.rightLabels.forEach(s => { s.visible = visible; });
   }, []);
 
   const toggleCenterLine = useCallback(() => {
@@ -777,6 +868,7 @@ export const useCenterLine = ({
     toggleCenterLine,
     toggleTransparency,
     setCenterlineColor,
+    setLabels3DVisible,
     hasCenterLine: !!centerLineRefs.current.left,
     centerLineEnabled,
     transparencyEnabled

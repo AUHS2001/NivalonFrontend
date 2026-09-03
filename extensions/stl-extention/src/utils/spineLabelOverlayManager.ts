@@ -90,6 +90,9 @@ export function setBackendCenterline(points: Array<{ label: string; x: number; y
 // Centerline overlay color — shared across all DICOM viewports
 let overlayColor = '#00e5ff';
 
+// Whether to render vertebra name labels on DICOM viewports
+let labelsVisible = true;
+
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -99,6 +102,13 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function setCenterlineOverlayColor(color: string) {
   overlayColor = color;
+  if (state.enabled && servicesManagerRef) {
+    redrawAll(servicesManagerRef);
+  }
+}
+
+export function setOverlayLabelsVisible(visible: boolean) {
+  labelsVisible = visible;
   if (state.enabled && servicesManagerRef) {
     redrawAll(servicesManagerRef);
   }
@@ -1039,7 +1049,7 @@ function drawOnViewport(
         regions.push({ kind: 'dot', originalIndex: closest.originalIndex, x: x - 10, y: y - 10, w: 20, h: 20 });
 
         const name = vertebraNames[closest.originalIndex];
-        if (name) {
+        if (name && labelsVisible) {
           ctx.shadowBlur = 0;
           ctx.font = 'bold 14px Arial';
 
@@ -1084,18 +1094,20 @@ function drawOnViewport(
       );
       if (valid.length >= 2) {
         // Cross-section dashed lines (follow dot position)
-        valid.forEach(point => {
-          if (vertebraNames[point.originalIndex]) {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.moveTo(0, point.y);
-            ctx.lineTo(canvas.width, point.y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          }
-        });
+        if (labelsVisible) {
+          valid.forEach(point => {
+            if (vertebraNames[point.originalIndex]) {
+              ctx.beginPath();
+              ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+              ctx.lineWidth = 1;
+              ctx.setLineDash([4, 4]);
+              ctx.moveTo(0, point.y);
+              ctx.lineTo(canvas.width, point.y);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+          });
+        }
         // Smooth curve helper using quadratic Bezier through midpoints
         const drawSmoothCurve = (pts: typeof valid) => {
           if (pts.length < 3) {
@@ -1153,51 +1165,53 @@ function drawOnViewport(
           regions.push({ kind: 'dot', originalIndex: p.originalIndex, x: p.x - 10, y: p.y - 10, w: 20, h: 20 });
         });
         // Labels with offsets and hover/drag highlight
-        ctx.shadowBlur = 0;
-        valid.forEach(point => {
-          const name = vertebraNames[point.originalIndex];
-          if (!name) return;
+        if (labelsVisible) {
+          ctx.shadowBlur = 0;
+          valid.forEach(point => {
+            const name = vertebraNames[point.originalIndex];
+            if (!name) return;
 
-          // Apply label offset
-          const offsetKey = `${viewportId}:${point.originalIndex}`;
-          const lOff = state.labelOffsets.get(offsetKey) || { dx: 0, dy: 0 };
-          const labelX = point.x - 55 + lOff.dx;
-          const labelY = point.y + lOff.dy;
+            // Apply label offset
+            const offsetKey = `${viewportId}:${point.originalIndex}`;
+            const lOff = state.labelOffsets.get(offsetKey) || { dx: 0, dy: 0 };
+            const labelX = point.x - 55 + lOff.dx;
+            const labelY = point.y + lOff.dy;
 
-          const isHoveredLabel = state.hover.kind === 'label' && state.hover.originalIndex === point.originalIndex;
-          const isDragLabel = state.drag.active && state.drag.kind === 'label' && state.drag.originalIndex === point.originalIndex;
+            const isHoveredLabel = state.hover.kind === 'label' && state.hover.originalIndex === point.originalIndex;
+            const isDragLabel = state.drag.active && state.drag.kind === 'label' && state.drag.originalIndex === point.originalIndex;
 
-          // Connecting line from dot to label
-          ctx.beginPath();
-          ctx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
-          ctx.lineWidth = 1;
-          ctx.moveTo(point.x - 5, point.y);
-          ctx.lineTo(labelX + 30, labelY);
-          ctx.stroke();
+            // Connecting line from dot to label
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(point.x - 5, point.y);
+            ctx.lineTo(labelX + 30, labelY);
+            ctx.stroke();
 
-          ctx.font = 'bold 14px Arial';
-          const tw = ctx.measureText(name).width;
-          const pad = 4;
-          const bgX = labelX - pad;
-          const bgY = labelY - 10 - pad;
-          const bgW = tw + pad * 2;
-          const bgH = 14 + pad * 2;
+            ctx.font = 'bold 14px Arial';
+            const tw = ctx.measureText(name).width;
+            const pad = 4;
+            const bgX = labelX - pad;
+            const bgY = labelY - 10 - pad;
+            const bgW = tw + pad * 2;
+            const bgH = 14 + pad * 2;
 
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-          ctx.fillRect(bgX, bgY, bgW, bgH);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(bgX, bgY, bgW, bgH);
 
-          if (isHoveredLabel || isDragLabel) {
-            ctx.strokeStyle = highlightColor;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(bgX, bgY, bgW, bgH);
-          }
+            if (isHoveredLabel || isDragLabel) {
+              ctx.strokeStyle = highlightColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(bgX, bgY, bgW, bgH);
+            }
 
-          ctx.fillStyle = color;
-          ctx.fillText(name, labelX, labelY + 4);
+            ctx.fillStyle = color;
+            ctx.fillText(name, labelX, labelY + 4);
 
-          // Hit region for label
-          regions.push({ kind: 'label', originalIndex: point.originalIndex, x: bgX, y: bgY, w: bgW, h: bgH });
-        });
+            // Hit region for label
+            regions.push({ kind: 'label', originalIndex: point.originalIndex, x: bgX, y: bgY, w: bgW, h: bgH });
+          });
+        }
       }
     }
   }

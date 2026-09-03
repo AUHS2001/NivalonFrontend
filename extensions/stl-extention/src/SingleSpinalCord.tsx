@@ -58,7 +58,7 @@ import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineL
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
-import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled, setCenterlineOverlayColor } from './utils/spineLabelOverlayManager';
+import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled, setCenterlineOverlayColor, setOverlayLabelsVisible } from './utils/spineLabelOverlayManager';
 import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
 import {
   maskVoxelsForRemovedVertices,
@@ -226,6 +226,7 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [showMerge, setShowMergeView] = useState(false);
   const [centerlinePoints, setCenterlinePoints] = useState<Array<{ label: string; x: number; y: number; z: number }>>([]);
   const [centerlineColor, setCenterlineColorState] = useState('#00e5ff');
+  const [labelsVisible, setLabelsVisible] = useState(true);
   const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Camera sync
@@ -1648,6 +1649,7 @@ useEffect(() => {
     toggleCenterLine,
     toggleTransparency,
     setCenterlineColor,
+    setLabels3DVisible,
     hasCenterLine,
     centerLineEnabled,
     transparencyEnabled
@@ -4137,6 +4139,32 @@ const createAutomaticSegmentation = async () => {
                   flexShrink: 0,
                 }} />
                 Colors
+              </button>
+              <button
+                onClick={() => {
+                  const next = !labelsVisible;
+                  setLabelsVisible(next);
+                  setLabels3DVisible(next);
+                  setOverlayLabelsVisible(next);
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '130px',
+                  left: '10px',
+                  zIndex: 200,
+                  backgroundColor: '#1a1a2e',
+                  color: '#fff',
+                  border: `2px solid ${centerlineColor}`,
+                  borderRadius: '4px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {labelsVisible ? 'Hide Labels' : 'Show Labels'}
               </button>
             </>
           )}
