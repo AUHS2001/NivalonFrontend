@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useRef } from 'react';
 import { Measurement } from '../types/three.types';
 import FractureReportDialog, { SpineReportData } from './FractureReportDialog';
 import CalculationsDialog from './CalculationsDialog';
@@ -53,6 +53,7 @@ import { useVersionHistoryContext } from '../context/VersionHistoryContext';
 import { useImplantContext } from '../context/ImplantContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useOvfLegendContext } from '../context/OvfLegendContext';
+import { useSpineLabelOverlayContext } from '../context/SpineLabelOverlayContext';
 
 interface ControlPanelProps {
   loading: boolean;
@@ -93,6 +94,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     toggleAllCompareLeftVisibility,
   } = useStlVisibilityContext();
   const { vertebraLegend, colorsDisabled, setColorsDisabled, hiddenVertebrae, toggleVertebraVisibility, selectedPreset, setSelectedPreset, tissueOpacity, setTissueOpacity } = useOvfLegendContext();
+  const {
+    spineLabelOverlayEnabled,
+    centerlineColor,
+    labelsVisible,
+    transparencyEnabled,
+    setCenterlineColor,
+    setLabelsVisible,
+    toggleTransparency,
+  } = useSpineLabelOverlayContext();
+  const colorInputRef = useRef<HTMLInputElement>(null);
   const [showPresetPopup, setShowPresetPopup] = useState(false);
   const [showFractureReport, setShowFractureReport] = useState(false);
   const [showCalculations, setShowCalculations] = useState(false);
@@ -656,6 +667,116 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Spine Label Controls — only visible when spine labels are enabled */}
+            {spineLabelOverlayEnabled && !loading && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                background: 'rgba(159, 207, 255, 0.04)',
+                border: '1px solid rgba(159, 207, 255, 0.15)',
+                borderRadius: '8px',
+              }}>
+                <div style={{
+                  fontSize: '10px',
+                  color: '#9fcfff',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase' as const,
+                  marginBottom: '4px',
+                  fontWeight: 600,
+                }}>Spine Label Controls</div>
+
+                {/* Solid / Transparent */}
+                <button
+                  onClick={toggleTransparency}
+                  style={{
+                    backgroundColor: transparencyEnabled ? 'rgba(33, 150, 243, 0.15)' : 'rgba(76, 175, 80, 0.15)',
+                    color: transparencyEnabled ? '#90caf9' : '#a5d6a7',
+                    border: `1px solid ${transparencyEnabled ? 'rgba(33, 150, 243, 0.6)' : 'rgba(76, 175, 80, 0.6)'}`,
+                    borderRadius: '6px',
+                    padding: '9px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    boxShadow: transparencyEnabled ? '0 0 10px rgba(33, 150, 243, 0.2)' : '0 0 10px rgba(76, 175, 80, 0.2)',
+                  }}
+                  title={transparencyEnabled ? 'Click to show solid bones' : 'Click to show transparent bones'}
+                >
+                  <i className={`fas ${transparencyEnabled ? 'fa-cube' : 'fa-eye'}`} style={{ fontSize: '11px', flexShrink: 0 }} />
+                  {transparencyEnabled ? 'Solid' : 'Transparent'}
+                </button>
+
+                {/* Colors */}
+                <input
+                  ref={colorInputRef}
+                  type="color"
+                  value={centerlineColor}
+                  onChange={e => setCenterlineColor(e.target.value)}
+                  style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+                />
+                <button
+                  onClick={() => colorInputRef.current?.click()}
+                  style={{
+                    backgroundColor: `${centerlineColor}18`,
+                    color: '#fff',
+                    border: `1px solid ${centerlineColor}99`,
+                    borderRadius: '6px',
+                    padding: '9px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    boxShadow: `0 0 10px ${centerlineColor}33`,
+                  }}
+                  title="Change centerline color"
+                >
+                  <span style={{
+                    width: '14px',
+                    height: '14px',
+                    borderRadius: '50%',
+                    backgroundColor: centerlineColor,
+                    display: 'inline-block',
+                    flexShrink: 0,
+                    boxShadow: `0 0 6px ${centerlineColor}`,
+                    border: '1px solid rgba(255,255,255,0.3)',
+                  }} />
+                  Centerline Color
+                </button>
+
+                {/* Hide / Show Labels */}
+                <button
+                  onClick={() => setLabelsVisible(!labelsVisible)}
+                  style={{
+                    backgroundColor: labelsVisible ? 'rgba(0, 229, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                    color: labelsVisible ? '#87dbfc' : '#888',
+                    border: `1px solid ${labelsVisible ? 'rgba(0, 229, 255, 0.5)' : 'rgba(255, 255, 255, 0.15)'}`,
+                    borderRadius: '6px',
+                    padding: '9px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    boxShadow: labelsVisible ? '0 0 10px rgba(0, 229, 255, 0.15)' : 'none',
+                  }}
+                >
+                  <i className={`fas ${labelsVisible ? 'fa-eye' : 'fa-eye-slash'}`} style={{ fontSize: '11px', flexShrink: 0 }} />
+                  {labelsVisible ? 'Labels Visible' : 'Labels Hidden'}
+                </button>
               </div>
             )}
 
