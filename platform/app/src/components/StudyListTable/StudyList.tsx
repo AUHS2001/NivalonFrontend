@@ -1237,7 +1237,7 @@ export default function StudyList() {
                             : 'No Date'}
                         </div>
                         <div style={{ width: '14%' }} className="text-truncate">{study.description || 'No Description'}</div>
-                        <div style={{ width: '10%' }} className="text-center">{study.series.reduce((sum, item) => sum + parseFloat(item.series_number), 0) || 'No Series'}</div>
+                        <div style={{ width: '10%' }} className="text-center">{study.series.length || 'No Series'}</div>
                         <div style={{ width: '10%' }} className="text-center">{[...new Set(study.series.map(item => item.modality))].join(' | ') || 'No Modality'}</div>
                         <div style={{ width: '10%' }} className="text-center">
                             <span>{study.series.reduce((sum, item) => sum + parseFloat(item.num_series_instances), 0) || 'No Instances'}</span>
