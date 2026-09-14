@@ -56,6 +56,7 @@ import { useActivePanelContext } from './context/ActivePanelContext';
 
 import { SpineLabelingProvider, useSpineLabelingContext } from './context/SpineLabelingContext';
 import { SpineLabelingPopup } from './components/SpineLabelingPopup';
+import { useSpineLabelOverlayContext } from './context/SpineLabelOverlayContext';
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
 import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled } from './utils/spineLabelOverlayManager';
@@ -225,7 +226,6 @@ const SingleSpinalCord: React.FC<SingleSpinalCordProps> = ({
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [showMerge, setShowMergeView] = useState(false);
   const [centerlinePoints, setCenterlinePoints] = useState<Array<{ label: string; x: number; y: number; z: number }>>([]);
-
   // Camera sync
   const [syncCameras, setSyncCameras] = useState(false);
   const isSyncingRef = useRef(false);
@@ -1645,6 +1645,8 @@ useEffect(() => {
     removeCenterLine,
     toggleCenterLine,
     toggleTransparency,
+    setCenterlineColor,
+    setLabels3DVisible,
     hasCenterLine,
     centerLineEnabled,
     transparencyEnabled
@@ -1655,6 +1657,16 @@ useEffect(() => {
     servicesManager: effectiveServicesManager,
     centerlinePoints,
   });
+
+  // Register 3D hook callbacks into the global context so the sidebar panel can call them
+  const { registerCenterlineHooks } = useSpineLabelOverlayContext();
+  useEffect(() => {
+    registerCenterlineHooks({
+      setCenterlineColor3D: setCenterlineColor,
+      setLabels3DVisible,
+      toggleTransparency3D: toggleTransparency,
+    });
+  }, [registerCenterlineHooks, setCenterlineColor, setLabels3DVisible, toggleTransparency]);
 
   // Bridge: Spine Labels toggle (OHIF toolbar) also shows/hides the 3D alignment tube
   useEffect(() => {
@@ -4059,34 +4071,6 @@ const createAutomaticSegmentation = async () => {
             >
               <i className={`fas ${isDragMode ? 'fa-hand-paper' : 'fa-paint-brush'}`} />
               {isDragMode ? 'Drag Mode' : 'Smooth Mode'}
-            </button>
-          )}
-          {/* Transparency Toggle Button - Only shows when centerline is enabled */}
-          {centerLineEnabled && (
-            <button
-              onClick={toggleTransparency}
-              style={{
-                position: 'absolute',
-                top: '50px',
-                left: '10px',
-                zIndex: 200,
-                backgroundColor: transparencyEnabled ? '#2196F3' : '#4CAF50',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '8px 12px',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                transition: 'background-color 0.2s'
-              }}
-              title={transparencyEnabled ? 'Click to show solid bones' : 'Click to show transparent bones'}
-            >
-              <i className={`fas ${transparencyEnabled ? 'fa-cube' : 'fa-eye'}`} />
-              {transparencyEnabled ? 'Solid' : 'Transparent'}
             </button>
           )}
         </SingleViewerContainer>
