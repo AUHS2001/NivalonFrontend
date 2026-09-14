@@ -41,6 +41,9 @@ export default function StudyList() {
     const [loadingStudyIndex, setLoadingStudyIndex] = useState<number | null>(null);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [expandedStudyId, setExpandedStudyId] = useState<string | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalStudies, setTotalStudies] = useState(0);
     const userRole = localStorage.getItem('userRole');
     const userToken = localStorage.getItem('token');
     const context = useContext(StlInstanceContext);
@@ -233,7 +236,8 @@ export default function StudyList() {
         console.log("role => ",userRole);
         const fetchData = async () => {
             try {
-                const response = await axios.get<{ data: { series: { series_instance_uid: string }[] }[] }>(`${SERVER_URL}/imaging/studies`,{
+                setLoading(true);
+                const response = await axios.get<{ data: any }>(`${SERVER_URL}/imaging/studies?page=${currentPage}&limit=10`,{
                     headers: {
                         Authorization: `Bearer ${userToken}`,
                         "Content-Type": "application/json"
@@ -242,7 +246,13 @@ export default function StudyList() {
                 const payload = response.data?.data;
                 const studiesArray = Array.isArray(payload) ? payload : (payload?.items ?? []);
                 setData(studiesArray);
-                updateStlInstanceListData(studiesArray)
+                updateStlInstanceListData(studiesArray);
+                if (!Array.isArray(payload)) {
+                    setTotalPages(payload?.total_pages ?? 1);
+                    setTotalStudies(payload?.total ?? studiesArray.length);
+                } else {
+                    setTotalStudies(studiesArray.length);
+                }
             } catch (error) {
                 console.error('Failed to fetch studies:', error);
             } finally {
@@ -251,7 +261,7 @@ export default function StudyList() {
         };
 
         fetchData();
-    }, []);
+    }, [currentPage]);
 
     console.log("data =>",data);
 
@@ -1034,7 +1044,8 @@ export default function StudyList() {
                 minHeight: '100vh',
                 position: 'relative',
                 overflow: 'hidden',
-                color: "white"
+                color: "white",
+                paddingBottom: '64px',
             }}>
 
         {/* Animated Background Elements */}
@@ -1076,7 +1087,7 @@ export default function StudyList() {
                         Compare 3D
                     </button>
                     <div className="text-end">
-                        <span className="text-primary me-2">{filteredData?.length ?? 0}</span>
+                        <span className="text-primary me-2">{totalStudies}</span>
                         <span className="text">Studies</span>
                     </div>
                 </div>
@@ -1364,6 +1375,90 @@ export default function StudyList() {
             ))
             }
             </div>
+
+            {/* Pagination */}
+            <div style={{
+                    position: 'fixed',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '12px 16px',
+                    backgroundColor: '#0d1117',
+                    borderTop: '1px solid #1f2937',
+                    zIndex: 100,
+                }}>
+                    <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1 || loading}
+                        style={{
+                            padding: '3px 10px',
+                            backgroundColor: currentPage === 1 ? '#1f2937' : '#1e3a5f',
+                            color: currentPage === 1 ? '#555' : '#90caf9',
+                            border: '1px solid #333',
+                            borderRadius: '4px',
+                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                            fontSize: '11px',
+                        }}
+                    >
+                        ← Prev
+                    </button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                        .reduce((acc: (number | string)[], p, i, arr) => {
+                            if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push('...');
+                            acc.push(p);
+                            return acc;
+                        }, [])
+                        .map((p, i) =>
+                            p === '...' ? (
+                                <span key={`ellipsis-${i}`} style={{ color: '#555', padding: '0 2px', fontSize: '11px' }}>…</span>
+                            ) : (
+                                <button
+                                    key={p}
+                                    onClick={() => setCurrentPage(p as number)}
+                                    disabled={loading}
+                                    style={{
+                                        padding: '3px 8px',
+                                        backgroundColor: currentPage === p ? '#1e3a5f' : 'transparent',
+                                        color: currentPage === p ? '#fff' : '#888',
+                                        border: currentPage === p ? '1px solid #3d8bfd' : '1px solid #333',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '11px',
+                                        fontWeight: currentPage === p ? 600 : 400,
+                                    }}
+                                >
+                                    {p}
+                                </button>
+                            )
+                        )
+                    }
+
+                    <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages || loading}
+                        style={{
+                            padding: '3px 10px',
+                            backgroundColor: currentPage === totalPages ? '#1f2937' : '#1e3a5f',
+                            color: currentPage === totalPages ? '#555' : '#90caf9',
+                            border: '1px solid #333',
+                            borderRadius: '4px',
+                            cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                            fontSize: '11px',
+                        }}
+                    >
+                        Next →
+                    </button>
+
+                    <span style={{ color: '#666', fontSize: '12px', marginLeft: '8px' }}>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                </div>
 
             {/* Download 3D Popup */}
             {downloadPopupStudy && (
