@@ -54,6 +54,7 @@ import { SpineLabelOverlayProvider } from '../../../extensions/stl-extention/src
 import { ThreeDToolsBridgeProvider } from '../../../extensions/stl-extention/src/context/ThreeDToolsBridgeContext';
 import { ActivePanelProvider } from '../../../extensions/stl-extention/src/context/ActivePanelContext';
 import { OvfLegendProvider } from '../../../extensions/stl-extention/src/context/OvfLegendContext';
+import { ImplantDrawingProvider } from '../../../extensions/stl-extention/src/context/ImplantDrawingContext';
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -190,6 +191,7 @@ function App({
       <AngleMeasurementProvider>
       <StlVisibilityProvider>
       <ImplantProvider>
+      <ImplantDrawingProvider>
       <VersionHistoryProvider>
       <LabelingViewProvider>
       <ClickRemoveProvider>
@@ -212,6 +214,7 @@ function App({
       </ClickRemoveProvider>
       </LabelingViewProvider>
       </VersionHistoryProvider>
+      </ImplantDrawingProvider>
       </ImplantProvider>
       </StlVisibilityProvider>
       </AngleMeasurementProvider>

@@ -60,6 +60,20 @@ import { useSpineLabelOverlayContext } from './context/SpineLabelOverlayContext'
 import { useSpineLabeling } from './hooks/useSpineLabeling';
 import { LPS_UP } from './utils/coordinateSystem';
 import { setBackendCenterline, isEnabled as isSpineLabelOverlayEnabled } from './utils/spineLabelOverlayManager';
+import { useImplantDrawingContext } from './context/ImplantDrawingContext';
+import {
+  setServicesManager as setImplantDrawingServicesManager,
+  setImplantDrawingEnabled,
+  setImplantDrawingColor,
+  setImplantDrawingThickness,
+  setOnShapeComplete,
+  addFinalizedShape,
+  removeFinalizedShape,
+  updateFinalizedShape,
+  clearAllFinalizedShapes,
+  cleanup as cleanupImplantDrawing,
+} from './utils/implantDrawingManager';
+import { generateImplantMesh } from './utils/implantMeshGenerator';
 import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
 import {
   maskVoxelsForRemovedVertices,
@@ -1720,6 +1734,241 @@ useEffect(() => {
   } = useBrightnessContext();
 
   const { registerTools } = useThreeDToolsBridge();
+
+  // ─── Draw Implant ────────────────────────────────────────────────────────
+  const {
+    drawImplantEnabled,
+    implants: drawnImplants,
+    implantColor,
+    implantThickness,
+    toggleDrawImplant,
+    addImplant,
+    removeImplant: removeDrawnImplant,
+    clearImplants,
+    setImplantColor,
+    setImplantThickness,
+    setImplantWorldPoints,
+    registerMeshCallbacks,
+  } = useImplantDrawingContext();
+
+  // Stable ref so drag handlers always see the latest implants without re-attaching
+  const drawnImplantsRef = useRef(drawnImplants);
+  useEffect(() => { drawnImplantsRef.current = drawnImplants; }, [drawnImplants]);
+
+  // Keep drawn implant meshes in scene
+  const drawnImplantMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+
+  useEffect(() => {
+    registerMeshCallbacks(
+      (mesh: THREE.Mesh) => {
+        const id = mesh.userData.implantId;
+        drawnImplantMeshesRef.current.set(id, mesh);
+        leftSceneRef.current.add(mesh);
+      },
+      (id: string) => {
+        const mesh = drawnImplantMeshesRef.current.get(id);
+        if (mesh) {
+          leftSceneRef.current.remove(mesh);
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
+          drawnImplantMeshesRef.current.delete(id);
+        }
+        removeFinalizedShape(id);
+      },
+      (id: string, _scale: number, scaledWorldPoints: Array<[number, number, number]>, normal: [number, number, number], thickness: number, color: string) => {
+        // Remove old mesh
+        const oldMesh = drawnImplantMeshesRef.current.get(id);
+        if (oldMesh) {
+          leftSceneRef.current.remove(oldMesh);
+          oldMesh.geometry.dispose();
+          (oldMesh.material as THREE.Material).dispose();
+        }
+        // Generate new mesh at scaled size
+        const newMesh = generateImplantMesh(scaledWorldPoints, normal, thickness, color, id);
+        drawnImplantMeshesRef.current.set(id, newMesh);
+        leftSceneRef.current.add(newMesh);
+        // Update all three DICOM canvas overlays to match new size
+        updateFinalizedShape(id, scaledWorldPoints);
+      }
+    );
+  }, [registerMeshCallbacks]);
+
+  // Sync enabled state with manager
+  useEffect(() => {
+    if (effectiveServicesManager) {
+      setImplantDrawingServicesManager(effectiveServicesManager);
+    }
+    setImplantDrawingEnabled(drawImplantEnabled, effectiveServicesManager);
+  }, [drawImplantEnabled, effectiveServicesManager]);
+
+  // Sync color & thickness with manager
+  useEffect(() => { setImplantDrawingColor(implantColor); }, [implantColor]);
+  useEffect(() => { setImplantDrawingThickness(implantThickness); }, [implantThickness]);
+
+  // Register shape-complete handler
+  useEffect(() => {
+    setOnShapeComplete((worldPoints, normal, canvasPoints, viewportId) => {
+      const id = `implant-${Date.now()}`;
+      const mesh = generateImplantMesh(worldPoints, normal, implantThickness, implantColor, id);
+      addImplant({
+        id,
+        label: `Implant ${drawnImplants.length + 1}`,
+        color: implantColor,
+        worldPoints,
+        normal,
+        thickness: implantThickness,
+        viewportId,
+        canvasPoints,
+        mesh,
+      });
+      addFinalizedShape(id, viewportId, canvasPoints, implantColor, worldPoints, normal);
+    });
+  }, [implantColor, implantThickness, drawnImplants.length, addImplant]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupImplantDrawing();
+      clearAllFinalizedShapes();
+    };
+  }, []);
+
+  // ─── Drag-to-reposition drawn implant meshes ───────────────────────────────
+  useEffect(() => {
+    const mount = leftMountRef.current;
+    if (!mount) return;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    type DragState = {
+      implantId: string;
+      mesh: THREE.Mesh;
+      plane: THREE.Plane;
+      prevHit: THREE.Vector3;
+      totalDelta: THREE.Vector3;
+    };
+    let drag: DragState | null = null;
+    let pendingRaf: number | null = null;
+
+    const getNDC = (e: MouseEvent) => {
+      const rect = mount.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      const meshes = Array.from(drawnImplantMeshesRef.current.values());
+      if (meshes.length === 0) return;
+      const cam = cameraRef.current;
+      if (!cam) return;
+
+      getNDC(e);
+      raycaster.setFromCamera(mouse, cam);
+      const hits = raycaster.intersectObjects(meshes, false);
+      if (hits.length === 0) return;
+
+      e.stopPropagation();
+      const hit = hits[0];
+      const mesh = hit.object as THREE.Mesh;
+      const id = mesh.userData.implantId as string;
+
+      // Drag plane: screen-parallel plane through hit point so movement feels natural
+      const camDir = new THREE.Vector3();
+      cam.getWorldDirection(camDir);
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camDir.clone().negate(), hit.point);
+      const prevHit = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, prevHit);
+
+      drag = { implantId: id, mesh, plane, prevHit: prevHit.clone(), totalDelta: new THREE.Vector3() };
+      if (leftControlsRef.current) leftControlsRef.current.enabled = false;
+      mount.style.cursor = 'grabbing';
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      const cam = cameraRef.current;
+      if (!cam) return;
+      getNDC(e);
+
+      if (!drag) {
+        // Hover: change cursor when over an implant mesh
+        const meshes = Array.from(drawnImplantMeshesRef.current.values());
+        if (meshes.length > 0) {
+          raycaster.setFromCamera(mouse, cam);
+          const hits = raycaster.intersectObjects(meshes, false);
+          mount.style.cursor = hits.length > 0 ? 'grab' : '';
+        }
+        return;
+      }
+
+      raycaster.setFromCamera(mouse, cam);
+      const newHit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(drag.plane, newHit)) return;
+
+      const delta = newHit.clone().sub(drag.prevHit);
+      drag.prevHit = newHit.clone();
+      drag.totalDelta.add(delta);
+      drag.mesh.position.add(delta);
+
+      // Throttled live update of DICOM overlays
+      const id = drag.implantId;
+      const snap = drag.totalDelta.clone();
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = null;
+        const implant = drawnImplantsRef.current.find(i => i.id === id);
+        if (implant) {
+          const pts: Array<[number, number, number]> = implant.worldPoints.map(
+            ([x, y, z]) => [x + snap.x, y + snap.y, z + snap.z]
+          );
+          updateFinalizedShape(id, pts);
+        }
+      });
+    };
+
+    const onMouseUp = () => {
+      if (!drag) return;
+      if (pendingRaf !== null) { cancelAnimationFrame(pendingRaf); pendingRaf = null; }
+
+      const { implantId, mesh, totalDelta } = drag;
+      drag = null;
+      if (leftControlsRef.current) leftControlsRef.current.enabled = true;
+      mount.style.cursor = '';
+
+      if (totalDelta.lengthSq() < 0.0001) return; // no real movement
+
+      const implant = drawnImplantsRef.current.find(i => i.id === implantId);
+      if (!implant) return;
+
+      const tx = totalDelta.x, ty = totalDelta.y, tz = totalDelta.z;
+      const newWorldPoints: Array<[number, number, number]> =
+        implant.worldPoints.map(([x, y, z]) => [x + tx, y + ty, z + tz]);
+      const newOriginalWorldPoints: Array<[number, number, number]> =
+        implant.originalWorldPoints.map(([x, y, z]) => [x + tx, y + ty, z + tz]);
+
+      // Rebuild geometry at final world position (resets mesh.position to 0)
+      mesh.position.set(0, 0, 0);
+      const newMesh = generateImplantMesh(newWorldPoints, implant.normal, implant.thickness, implant.color, implantId);
+      leftSceneRef.current.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      drawnImplantMeshesRef.current.set(implantId, newMesh);
+      leftSceneRef.current.add(newMesh);
+
+      // Sync DICOM overlays and context state
+      updateFinalizedShape(implantId, newWorldPoints);
+      setImplantWorldPoints(implantId, newWorldPoints, newOriginalWorldPoints);
+    };
+
+    mount.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      mount.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []); // stable: all mutable state accessed via refs
 
   useEffect(() => {
     const useRightPanel = showComparePanel && activePanel === 'right';
@@ -3494,6 +3743,7 @@ const createAutomaticSegmentation = async () => {
     upload: () => document.getElementById('stl-upload-input')?.click(),
     versionHistory: () => { toggleVersionHistory(); versionHistory.getVersionHistory(); },
     implant: () => { if (showImplantView) { toggleImplantView(); } else { document.getElementById('implant-file-input')?.click(); } },
+    drawImplant: toggleDrawImplant,
   };
 
   const makeOnClick = useCallback((id: string) => () => toolCallbacksRef.current[id]?.(), []);
@@ -3541,6 +3791,7 @@ const createAutomaticSegmentation = async () => {
         { id: 'linking', label: 'Linking', icon: 'fa-link', active: isLinkingActive, onClick: makeOnClick('linking') },
         { id: 'merge', label: 'Merge', icon: showMerge ? 'fa-times' : 'fa-object-group', active: showMerge, onClick: makeOnClick('merge') },
       ]},
+      { id: 'drawImplant', label: 'Draw Implant', icon: 'fa-draw-polygon', active: drawImplantEnabled, onClick: makeOnClick('drawImplant') },
       { id: 'rotation', label: 'Rotation', icon: 'fa-sync-alt', active: rotationMode2, onClick: makeOnClick('rotation'), hidden: true },
       { id: 'undo', label: 'Undo', icon: 'fa-undo-alt', active: false, disabled: undoStack.length === 0 && clickRemovalUndoStack.length === 0 && movementUndoCount === 0, onClick: makeOnClick('undo'), hidden: true },
     ];
@@ -3551,7 +3802,7 @@ const createAutomaticSegmentation = async () => {
     rotationMode, rotationMode1, rotationMode2, rotationMode3,
     implantMoveMode, inertialRotationMode, showSmoothDialog, isWrapActive, isFreehandSmoothActive, canActivateWrap, showMerge, clickRemovalMode,
     clickRemovalUndoStack.length, movementUndoCount, labelViewEnabled, spineLabelingMode, colorModeEnabled,
-    isApproving, isUploading, versionHistoryEnabled, showImplantView,
+    isApproving, isUploading, versionHistoryEnabled, showImplantView, drawImplantEnabled,
     registerTools, makeOnClick,
   ]);
 
