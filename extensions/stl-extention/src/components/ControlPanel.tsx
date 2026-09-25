@@ -54,6 +54,7 @@ import { useImplantContext } from '../context/ImplantContext';
 import { useStlVisibilityContext } from '../context/StlVisibilityContext';
 import { useOvfLegendContext } from '../context/OvfLegendContext';
 import { useSpineLabelOverlayContext } from '../context/SpineLabelOverlayContext';
+import { useImplantDrawingContext } from '../context/ImplantDrawingContext';
 
 interface ControlPanelProps {
   loading: boolean;
@@ -103,6 +104,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     setLabelsVisible,
     toggleTransparency,
   } = useSpineLabelOverlayContext();
+  const {
+    implants: drawnImplants,
+    removeImplant: removeDrawnImplant,
+    updateImplantScale,
+  } = useImplantDrawingContext();
+
   const colorInputRef = useRef<HTMLInputElement>(null);
   const [showPresetPopup, setShowPresetPopup] = useState(false);
   const [showFractureReport, setShowFractureReport] = useState(false);
@@ -1352,6 +1359,93 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               </div>
             )}
+            {/* ── Drawn Implants ─────────────────────────────────────── */}
+            {drawnImplants.length > 0 && (
+              <div style={{
+                marginTop: '12px',
+                background: 'rgba(0,188,212,0.04)',
+                border: '1px solid rgba(0,188,212,0.2)',
+                borderRadius: '8px',
+                padding: '10px',
+              }}>
+                <div style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#00bcd4',
+                  letterSpacing: '0.5px',
+                  textTransform: 'uppercase',
+                  marginBottom: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <i className="fas fa-draw-polygon" />
+                  Drawn Implants
+                </div>
+
+                {drawnImplants.map(implant => (
+                  <div key={implant.id} style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                    marginBottom: '6px',
+                  }}>
+                    {/* Header row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                      <span style={{
+                        width: '10px', height: '10px', borderRadius: '50%',
+                        backgroundColor: implant.color, flexShrink: 0,
+                        boxShadow: `0 0 4px ${implant.color}`,
+                      }} />
+                      <span style={{ fontSize: '12px', color: '#ccc', flex: 1, fontWeight: 500 }}>
+                        {implant.label}
+                      </span>
+                      <button
+                        onClick={() => removeDrawnImplant(implant.id)}
+                        title="Delete implant"
+                        style={{
+                          background: 'rgba(239,68,68,0.15)',
+                          border: '1px solid rgba(239,68,68,0.4)',
+                          borderRadius: '4px',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          width: '22px', height: '22px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '11px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <i className="fas fa-trash-alt" />
+                      </button>
+                    </div>
+
+                    {/* Scale slider */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '10px', color: '#888', width: '38px', flexShrink: 0 }}>
+                        Size
+                      </span>
+                      <input
+                        type="range"
+                        min={0.2}
+                        max={3}
+                        step={0.05}
+                        value={implant.scale}
+                        onChange={e => updateImplantScale(implant.id, parseFloat(e.target.value))}
+                        style={{ flex: 1, accentColor: implant.color, cursor: 'pointer' }}
+                      />
+                      <span style={{
+                        fontSize: '10px', color: '#aaa',
+                        width: '32px', textAlign: 'right', flexShrink: 0,
+                      }}>
+                        {implant.scale.toFixed(2)}×
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
           </div>
        : <></>
       }

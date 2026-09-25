@@ -35,6 +35,8 @@ interface ToolbarProps {
   onImplantUpload: () => void;
   onMergeWithDicom?: () => void;
   onCreateSegmentation?: () => void;
+  drawImplantEnabled?: boolean;
+  onToggleDrawImplant?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -71,7 +73,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleVersionHistory,
   onImplantUpload,
   onMergeWithDicom,
-  onCreateSegmentation
+  onCreateSegmentation,
+  drawImplantEnabled = false,
+  onToggleDrawImplant,
 }) => {
   if (userRole === 'analyst' || userRole === 'admin') {
     return (
@@ -266,6 +270,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <i className="fas fa-vector-square" />
               )}
             </button>
+          <span style={{ width: "10px" }}></span>
+
+          {/* Draw Implant */}
+          <button
+            className={`icon-button${drawImplantEnabled ? " selected" : ""}`}
+            type="button"
+            data-tooltip={drawImplantEnabled ? "Stop Drawing Implant" : "Draw Implant on DICOM"}
+            onClick={onToggleDrawImplant}
+            style={drawImplantEnabled ? { color: '#00bcd4', boxShadow: '0 0 6px rgba(0,188,212,0.6)' } : {}}
+          >
+            <i className="fas fa-draw-polygon" />
+          </button>
         </div>
       </div>
     );
