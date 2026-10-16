@@ -15,6 +15,10 @@ const processFile = async file => {
 };
 
 export default async function filesToStudies(files) {
+  // Clear any previously loaded studies so switching between studies
+  // doesn't accumulate stale UIDs from the old study.
+  DicomMetadataStore.purge();
+
   const processFilesPromises = files.map(processFile);
   await Promise.all(processFilesPromises);
 

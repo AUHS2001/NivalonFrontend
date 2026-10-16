@@ -282,6 +282,13 @@ const BaseImplementation = {
   getInstance: _getInstance,
   getInstanceByImageId: _getInstanceByImageId,
   updateMetadataForSeries: _updateMetadataForSeries,
+  /**
+   * Removes all studies from the store. Call before loading a new study so
+   * previous study UIDs are not carried over into the next session.
+   */
+  purge() {
+    _model.studies.length = 0;
+  },
 };
 const DicomMetadataStore = Object.assign(
   // get study

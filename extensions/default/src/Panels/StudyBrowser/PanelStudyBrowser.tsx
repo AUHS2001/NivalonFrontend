@@ -124,6 +124,23 @@ function PanelStudyBrowser({
     ]
   );
 
+  // Reset all accumulated state when the user navigates to a different study.
+  // This must be placed before the studyDisplayList effect so the ref is cleared
+  // before the fetch effect runs in the same render cycle.
+  const prevStudyKeyRef = useRef('');
+  useEffect(() => {
+    const key = StudyInstanceUIDs.join(',');
+    if (prevStudyKeyRef.current && prevStudyKeyRef.current !== key) {
+      setStudyDisplayList([]);
+      setExpandedStudyInstanceUIDs([...StudyInstanceUIDs]);
+      setDisplaySets([]);
+      setThumbnailImageSrcMap({});
+      setHasLoadedViewports(false);
+      fetchedStudiesRef.current = new Set();
+    }
+    prevStudyKeyRef.current = key;
+  }, [StudyInstanceUIDs]);
+
   // ~~ studyDisplayList
   useEffect(() => {
     // Fetch all studies for the patient in each primary study
