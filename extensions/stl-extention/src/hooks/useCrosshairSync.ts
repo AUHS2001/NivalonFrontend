@@ -8,6 +8,7 @@ import {
 import { Enums as ToolEnums } from '@cornerstonejs/tools';
 import { CrosshairSyncConfig } from '../types/three.types';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { redrawContourOverlay } from '../utils/vertebraContourOverlayManager';
 
 // --- Constants ---
 const CROSSHAIR_CENTER_GAP = 20; // pixels — matches 2D referenceLinesCenterGapRadius
@@ -804,10 +805,22 @@ export const useCrosshairSync = ({
         const { viewports: csViewports } = getCornerstoneViewportsAndBounds();
         csViewports.forEach(({ viewport }) => {
           try {
-            viewport.setCamera({ focalPoint: dicomPoint as [number, number, number] });
+            const cam = viewport.getCamera();
+            if (!cam?.focalPoint || !cam?.viewPlaneNormal || !cam?.position) return;
+            const vpn = cam.viewPlaneNormal as number[];
+            const absVpn = vpn.map(Math.abs);
+            const scrollAxis = absVpn.indexOf(Math.max(...absVpn));
+            const dp = dicomPoint as [number, number, number];
+            const delta = dp[scrollAxis] - cam.focalPoint[scrollAxis];
+            const newFP  = [...cam.focalPoint] as [number, number, number];
+            const newPos = [...cam.position]   as [number, number, number];
+            newFP[scrollAxis]  = dp[scrollAxis];
+            newPos[scrollAxis] = cam.position[scrollAxis] + delta;
+            viewport.setCamera({ focalPoint: newFP, position: newPos });
             viewport.render();
           } catch (_) {}
         });
+        redrawContourOverlay();
       };
 
       const onPointerUp = () => {

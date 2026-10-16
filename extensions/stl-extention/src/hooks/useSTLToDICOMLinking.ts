@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { cache } from '@cornerstonejs/core';
 import { STLToDICOMConfig } from '../types/three.types';
+import { redrawContourOverlay } from '../utils/vertebraContourOverlayManager';
 
 export const useSTLToDICOMLinking = (config: STLToDICOMConfig) => {
   const {
@@ -736,17 +737,22 @@ const calculateSpinalPosition = useCallback((meshData: any, viewportHeight: numb
     csViewports.forEach(vp => {
       try {
         const cam = vp.getCamera();
-        if (!cam?.focalPoint || !cam?.viewPlaneNormal) return;
+        if (!cam?.focalPoint || !cam?.viewPlaneNormal || !cam?.position) return;
         const vpn = cam.viewPlaneNormal;
         const absVpn = [Math.abs(vpn[0]), Math.abs(vpn[1]), Math.abs(vpn[2])];
         const scrollAxis = absVpn.indexOf(Math.max(...absVpn));
-
-        const newFP = [...cam.focalPoint] as [number, number, number];
-        newFP[scrollAxis] = dicomPoint[scrollAxis];
-        vp.setCamera({ focalPoint: newFP });
+        const delta = dicomPoint[scrollAxis] - cam.focalPoint[scrollAxis];
+        const newFP  = [...cam.focalPoint] as [number, number, number];
+        const newPos = [...cam.position]   as [number, number, number];
+        newFP[scrollAxis]  = dicomPoint[scrollAxis];
+        newPos[scrollAxis] = cam.position[scrollAxis] + delta;
+        vp.setCamera({ focalPoint: newFP, position: newPos });
         vp.render();
       } catch (_) {}
     });
+
+    // Redraw contour overlay after all viewports have navigated to the new slice.
+    redrawContourOverlay();
 
     console.log('[LinkingTool] Scrolled viewports to DICOM:', dicomPoint.map(v => v.toFixed(1)));
   }, [servicesManager]);

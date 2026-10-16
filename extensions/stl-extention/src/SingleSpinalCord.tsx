@@ -74,7 +74,8 @@ import {
   cleanup as cleanupImplantDrawing,
 } from './utils/implantDrawingManager';
 import { generateImplantMesh } from './utils/implantMeshGenerator';
-import { showContourOverlay, hideContourOverlay } from './utils/vertebraContourOverlayManager';
+import { showContourOverlay, hideContourOverlay, redrawContourOverlay } from './utils/vertebraContourOverlayManager';
+import { cache } from '@cornerstonejs/core';
 import {
   maskVoxelsForRemovedVertices,
   restoreVoxels,
@@ -1969,6 +1970,130 @@ useEffect(() => {
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, []); // stable: all mutable state accessed via refs
+
+  // ─── Color mode: click vertebra → scroll all DICOM views to that slice ───
+  const effectiveServicesManagerRef = useRef<any>(null);
+  useEffect(() => {
+    effectiveServicesManagerRef.current = effectiveServicesManager;
+  }, [effectiveServicesManager]);
+
+  useEffect(() => {
+    const mount = leftMountRef.current;
+    if (!mount) return;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onClick = (e: MouseEvent) => {
+      // Only active when color mode is on
+      if (!colorModeRef.current) return;
+
+      const cam = cameraRef.current;
+      if (!cam) return;
+
+      const rect = mount.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, cam);
+
+      // Only raycast vertebra meshes (not implant meshes)
+      const vertebraMeshes = meshRefs.current.left;
+      if (vertebraMeshes.length === 0) return;
+
+      const hits = raycaster.intersectObjects(vertebraMeshes, false);
+      if (hits.length === 0) return;
+
+      const mesh = hits[0].object as THREE.Mesh;
+      // Use the exact hit point on the mesh surface so every view navigates
+      // to precisely the slice the user clicked on.
+      const worldCenter = hits[0].point.clone();
+
+      // ─── Get DICOM viewports + bounds ───
+      const sm = effectiveServicesManagerRef.current;
+      if (!sm) return;
+      const { cornerstoneViewportService, viewportGridService } = sm.services || {};
+      if (!cornerstoneViewportService || !viewportGridService) return;
+
+      const viewportState = viewportGridService.getState();
+      const viewportMap = viewportState?.viewports;
+      if (!viewportMap) return;
+
+      const entries = viewportMap instanceof Map
+        ? Array.from(viewportMap.entries())
+        : Object.entries(viewportMap);
+
+      const dicomViewports: any[] = [];
+      let imageData: any = null;
+      let vtkImgData: any = null;
+
+      (entries as [string, any][]).forEach(([vpId, vpInfo]) => {
+        const opts = vpInfo?.viewportOptions || {};
+        if (opts.customLayout === 'stl' || vpId === 'stlViewport') return;
+        try {
+          const vp = cornerstoneViewportService.getCornerstoneViewport(vpId);
+          if (vp?.element) {
+            dicomViewports.push(vp);
+            if (!imageData) {
+              try { imageData = vp.getImageData?.(); } catch (_) {}
+            }
+            if (!vtkImgData) {
+              try {
+                const actors = vp.getActors?.();
+                if (actors?.length) {
+                  const vol = (cache as any).getVolume?.(
+                    (actors[0] as any).referencedId || actors[0].uid
+                  );
+                  if (vol?.imageData) vtkImgData = vol.imageData;
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      });
+
+      if (dicomViewports.length === 0) return;
+
+      // STL vertices are already in DICOM LPS mm world space — use worldCenter directly.
+      // Only update the scroll axis of each viewport so pan is preserved.
+      const dicomPoint: [number, number, number] = [worldCenter.x, worldCenter.y, worldCenter.z];
+
+      // ─── Navigate each DICOM viewport — mirrors wrap tool behaviour ───
+      // Set full focalPoint + position (same delta) to preserve viewPlaneNormal,
+      // so getCamera().viewPlaneNormal stays aligned with the axial/sag/cor axis.
+      // Without updating position, viewPlaneNormal drifts and the contour overlay
+      // computes a wrong slice plane — error is tiny when zoomed-out but clearly
+      // visible when zoomed in (parallelScale is small, pixels represent more mm).
+      dicomViewports.forEach(vp => {
+        try {
+          const cam = vp.getCamera();
+          if (!cam?.focalPoint || !cam?.position) return;
+
+          // Translate position by the same delta as focalPoint
+          const dx = dicomPoint[0] - cam.focalPoint[0];
+          const dy = dicomPoint[1] - cam.focalPoint[1];
+          const dz = dicomPoint[2] - cam.focalPoint[2];
+          const newPos: [number, number, number] = [
+            cam.position[0] + dx,
+            cam.position[1] + dy,
+            cam.position[2] + dz,
+          ];
+
+          const cameraUpdate: any = { focalPoint: dicomPoint, position: newPos };
+          if (cam.parallelScale) {
+            cameraUpdate.parallelScale = Math.max(cam.parallelScale * 0.4, 30);
+          }
+          vp.setCamera(cameraUpdate);
+          vp.render();
+        } catch (_) {}
+      });
+
+      redrawContourOverlay();
+    };
+
+    mount.addEventListener('click', onClick);
+    return () => { mount.removeEventListener('click', onClick); };
+  }, []); // stable via refs
 
   useEffect(() => {
     const useRightPanel = showComparePanel && activePanel === 'right';
