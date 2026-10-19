@@ -1258,7 +1258,7 @@ const createAutomaticSegmentation = async () => {
       let fileName = 'downloaded_3d_file';
 
       if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        const fileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/);
         if (fileNameMatch && fileNameMatch[1]) {
           fileName = fileNameMatch[1];
         }
